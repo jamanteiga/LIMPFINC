@@ -14,6 +14,7 @@
 <link rel="icon" href="icon-192.png">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/clipper-lib@6.4.2/clipper.js"></script>
 <style>
 :root{
   --bg:#f2f3f5;--card:#fff;--txt:#1c1c1e;--sub:#6b7280;--line:#e3e5e8;
@@ -90,6 +91,11 @@ h3{margin:4px 0 8px;font-size:15px}
 .vtx.del{border-color:var(--err);background:#ffcdd2}
 .mid{width:14px;height:14px;border-radius:7px;background:rgba(255,255,255,.7);border:2px dashed #1b5e20}
 .pos{width:16px;height:16px;border-radius:8px;background:#1e88e5;border:3px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3)}
+.arr{width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:11px solid #0d47a1;margin:0 auto}
+.lowz .arr{display:none}
+.pin{width:22px;height:22px;border-radius:11px;color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.busyOv{position:fixed;inset:0;z-index:4000;background:rgba(255,255,255,.75);display:flex;align-items:center;justify-content:center;text-align:center;font-weight:600}
+.busyOv small{font-weight:400;color:var(--sub)}
 .leaflet-control-layers{border-radius:10px!important}
 .leaflet-top{top:4px}
 </style>
@@ -119,6 +125,7 @@ h3{margin:4px 0 8px;font-size:15px}
     <button id="tLinde"><b>⬠</b>Linde</button>
     <button id="tExcl"><b>⛔</b>Exclusión</button>
     <button id="tEdit"><b>✎</b>Editar</button>
+    <button id="tPlan"><b>🧭</b>Plan</button>
     <button id="tInfo"><b>ⓘ</b>Datos</button>
   </div>
   <!-- panel grabación -->
@@ -151,7 +158,7 @@ h3{margin:4px 0 8px;font-size:15px}
 /* =========================================================
    LIMPFINC · F1 — Fincas, linde, exclusiones, área
    ========================================================= */
-const VERSION = 'F1 · 0.1.0';
+const VERSION = 'F2 · 0.2.0';
 
 /* ---------- Ajustes por defecto ---------- */
 const DEF = {
@@ -161,13 +168,16 @@ const DEF = {
   velocidad:2.5, consumo:5.0, solape:0.10, umbralDesv:1.0,
   anchoTractor:1.70, longTractorApero:5.0,
   umbralPrecision:8, holguraLinde:0.5,
-  mallaX:3.5, mallaY:3.5, holguraTronco:0.30
+  mallaX:3.5, mallaY:3.5, holguraTronco:0.30,
+  velocidadGiro:3.0, velocidadTraslado:5.0, tCambioSentido:4, tManiobra:20, tEsquina:15, margenObstaculo:0.30
 };
 const SET_FIELDS = [
   ['Tractor',[['tractor','Modelo','text'],['potencia','Potencia (CV)'],['anchoTractor','Ancho tractor (m)'],
     ['longTractorApero','Longitud tractor + apero (m)'],['radioGiro','Radio de giro mínimo (m)'],['marchaAtras','Maniobras marcha atrás','bool']]],
   ['Apero',[['aperoNombre','Apero','text'],['aperoAncho','Ancho de trabajo (m)'],['offsetApero','iPhone → centro apero (m)']]],
   ['Trabajo',[['velocidad','Velocidad por defecto (km/h)'],['consumo','Consumo (L/h)'],['solape','Solape entre pasadas (m)'],['umbralDesv','Umbral desviación (m)']]],
+  ['Planificación',[['velocidadGiro','Velocidad en giros (km/h)'],['velocidadTraslado','Velocidad en traslados (km/h)'],['tCambioSentido','Tiempo cambio de sentido (s)'],
+    ['tManiobra','Maniobra al iniciar traslado (s)'],['tEsquina','Maniobra en esquina (s)'],['margenObstaculo','Margen a exclusiones (m)']]],
   ['Medición GPS',[['umbralPrecision','Descartar puntos con precisión peor que (m)'],['holguraLinde','Holgura lateral tractor–linde (m)']]],
   ['Monte',[['mallaX','Separación entre filas (m)'],['mallaY','Separación en fila (m)'],['holguraTronco','Holgura al tronco (m)']]]
 ];
@@ -355,7 +365,7 @@ async function showList() {
     return `<div class="card finca" data-id="${f.id}">
       <div class="ic">${f.tipo === 'monte' ? '🌲' : '🌾'}</div>
       <div style="flex:1;min-width:0"><div class="t">${esc(f.nombre)}</div>
-      <div class="s">${f.tipo === 'monte' ? 'Monte / plantación' : 'Abierta'} · ${f.linde ? fmtArea(a.neta) : 'sin linde'}</div></div>
+      <div class="s">${f.tipo === 'monte' ? 'Monte / plantación' : 'Abierta'} · ${f.linde ? fmtArea(a.neta) : 'sin linde'}${f.plan ? ' · plan ' + fmtH(f.plan.stats.t.total / 3600) + ' / ' + fmt(f.plan.stats.litros, 1) + ' L' : ''}</div></div>
       <div style="color:#c7c7cc;font-size:20px">›</div></div>`;
   }).join('');
   el.querySelectorAll('.finca').forEach(c => c.onclick = () => openFinca(c.dataset.id));
@@ -470,9 +480,11 @@ function initMap() {
   L.control.layers({ 'Ortofoto PNOA': pnoa, 'OpenStreetMap': osm }, null, { position: 'topright' }).addTo(map);
   L.control.scale({ imperial: false, position: 'topleft' }).addTo(map);
   lyr.finca = L.layerGroup().addTo(map);
+  lyr.plan = L.layerGroup().addTo(map);
   lyr.tmp = L.layerGroup().addTo(map);
   lyr.edit = L.layerGroup().addTo(map);
   map.on('dragstart', () => { followPos = false; });
+  const zc = () => map.getContainer().classList.toggle('lowz', map.getZoom() < 20); map.on('zoomend', zc); zc();
 }
 
 async function openFinca(id) {
@@ -488,8 +500,9 @@ async function openFinca(id) {
 }
 
 function drawFinca(fit) {
-  lyr.finca.clearLayers();
+  lyr.finca.clearLayers(); lyr.plan.clearLayers();
   if (!cur) return;
+  if (cur.plan && planVisible && !planStale(cur)) drawPlan(cur.plan, lyr.plan);
   if (cur.linde) {
     L.polygon(cur.linde.coords, { color: '#1b5e20', weight: 2.5, fillColor: '#a5d6a7', fillOpacity: .35 }).addTo(lyr.finca);
   }
@@ -504,7 +517,7 @@ function drawFinca(fit) {
 }
 
 function showMain() { $('tbMain').classList.remove('hidden'); $('pRec').classList.add('hidden'); $('pTool').classList.add('hidden'); }
-function busy() { return !!(rec || draw || edit || review); }
+function busy() { return !!(rec || draw || edit || review || planRev); }
 
 /* ---------- GPS ---------- */
 let watchId = null, lastPos = null, wakeLock = null;
@@ -827,10 +840,15 @@ function infoSheet() {
       <div class="kv"><span>Perímetro</span><span>${fmt(a.perim, 0)} m</span></div>
       <div class="kv"><span>Superficie en m²</span><span>${fmt(a.neta, 0)} m²</span></div>
     </div>
-    ${a.neta > 0 && cur.tipo !== 'monte' ? `<div class="card"><h3>Estimación preliminar</h3>
+    ${cur.plan ? `<div class="card"><h3>Plan ${planStale(cur) ? '<span style="color:var(--warn)">(desactualizado)</span>' : ''}</h3>
+      <div class="kv"><span>Tiempo</span><span>${fmtH(cur.plan.stats.t.total / 3600)}</span></div>
+      <div class="kv"><span>Combustible</span><span>${fmt(cur.plan.stats.litros, 1)} L</span></div>
+      <div class="kv"><span>Trayectoria ideal</span><span>${fmt(cur.plan.stats.L.total, 0)} m</span></div>
+      <div class="kv"><span>Cobertura teórica</span><span>${fmt(cur.plan.stats.area.cobertura * 100, 1)} %</span></div></div>` : ''}
+    ${a.neta > 0 && cur.tipo !== 'monte' && !cur.plan ? `<div class="card"><h3>Estimación preliminar</h3>
       <div class="kv"><span>Tiempo (sin giros)</span><span>${fmtH(hPrev)}</span></div>
       <div class="kv"><span>Combustible (sin giros)</span><span>${fmt(hPrev * S.consumo, 1)} L</span></div>
-      <div class="note">Ancho efectivo ${fmt(ancho, 2)} m · ${fmt(S.velocidad, 1)} km/h · ${fmt(S.consumo, 1)} L/h. El cálculo con trayectoria y giros llega en la fase F2.</div></div>` : ''}
+      <div class="note">Ancho efectivo ${fmt(ancho, 2)} m · ${fmt(S.velocidad, 1)} km/h · ${fmt(S.consumo, 1)} L/h. Calcula el plan (🧭) para incluir giros y traslados.</div></div>` : ''}
     ${cur.notas ? `<div class="note">${esc(cur.notas)}</div>` : ''}
     <button class="btn sec" id="iGeo" style="margin-top:4px">Exportar finca (GeoJSON)</button>`,
     () => { $('iGeo').onclick = exportGeoJSON; });
@@ -841,8 +859,503 @@ function exportGeoJSON() {
   const feats = [];
   if (cur.linde) feats.push({ type: 'Feature', properties: { tipo: 'linde', nombre: cur.nombre, area_m2: Math.round(Geo.areaLL(cur.linde.coords)) }, geometry: { type: 'Polygon', coordinates: ring(cur.linde.coords) } });
   (cur.exclusiones || []).forEach(e => feats.push({ type: 'Feature', properties: { tipo: 'exclusion', nombre: e.nombre, area_m2: Math.round(Geo.areaLL(e.coords)) }, geometry: { type: 'Polygon', coordinates: ring(e.coords) } }));
+  if (cur.plan) cur.plan.parts.forEach((p, i) => feats.push({ type: 'Feature', properties: { tipo: 'plan_' + p.type, orden: i }, geometry: { type: 'LineString', coordinates: p.ll.map(q => [q[1], q[0]]) } }));
   const blob = new Blob([JSON.stringify({ type: 'FeatureCollection', features: feats }, null, 1)], { type: 'application/geo+json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = cur.nombre.replace(/[^\w\-]+/g, '_') + '.geojson'; a.click();
+}
+
+/* =========================================================
+   PLANIFICADOR (F2) — finca abierta
+   Vueltas perimetrales + pasadas paralelas + giros U / K / Ω
+   ========================================================= */
+const Planner = (() => {
+  const SC = 1000; // Clipper trabaja en enteros (mm)
+  const CL = () => window.ClipperLib;
+  const toC = xy => xy.map(p => ({ X: Math.round(p[0] * SC), Y: Math.round(p[1] * SC) }));
+  const frC = pa => pa.map(q => [q.X / SC, q.Y / SC]);
+  const areaP = p => Math.abs(CL().Clipper.Area(p)) / SC / SC;
+  const areaC = ps => Math.abs(ps.reduce((s, p) => s + CL().Clipper.Area(p), 0)) / SC / SC;
+  function off(paths, d, round, miter = 3) {
+    const C = CL(); const co = new C.ClipperOffset(miter, 0.02 * SC);
+    co.AddPaths(paths, round ? C.JoinType.jtRound : C.JoinType.jtMiter, C.EndType.etClosedPolygon);
+    const s = new C.Paths(); co.Execute(s, d * SC); return s;
+  }
+  function boolOp(op, a, b) {
+    const C = CL(); const c = new C.Clipper();
+    c.AddPaths(a, C.PolyType.ptSubject, true); if (b && b.length) c.AddPaths(b, C.PolyType.ptClip, true);
+    const s = new C.Paths();
+    c.Execute(op === 'diff' ? C.ClipType.ctDifference : op === 'int' ? C.ClipType.ctIntersection : C.ClipType.ctUnion, s, C.PolyFillType.pftNonZero, C.PolyFillType.pftNonZero);
+    return s;
+  }
+  function clipLines(lines, region) {
+    const C = CL(); const c = new C.Clipper();
+    lines.forEach(l => c.AddPath(toC(l), C.PolyType.ptSubject, false));
+    c.AddPaths(region, C.PolyType.ptClip, true);
+    const tree = new C.PolyTree();
+    c.Execute(C.ClipType.ctIntersection, tree, C.PolyFillType.pftNonZero, C.PolyFillType.pftNonZero);
+    return C.Clipper.OpenPathsFromPolyTree(tree).map(frC);
+  }
+  /* ---- anillos (polilíneas cerradas) ---- */
+  function mkRing(xy) { const n = xy.length, cum = [0]; for (let i = 0; i < n; i++) cum.push(cum[i] + Geo.dist(xy[i], xy[(i + 1) % n])); return { xy, cum, L: cum[n] }; }
+  function projRing(r, p) {
+    let best = { d: Infinity }; const n = r.xy.length;
+    for (let i = 0; i < n; i++) {
+      const a = r.xy[i], b = r.xy[(i + 1) % n], ab = [b[0] - a[0], b[1] - a[1]], L2 = ab[0] * ab[0] + ab[1] * ab[1] || 1e-12;
+      let t = ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1]) / L2; t = Math.max(0, Math.min(1, t));
+      const q = [a[0] + ab[0] * t, a[1] + ab[1] * t], d = Geo.dist(p, q);
+      if (d < best.d) best = { d, q, i, s: r.cum[i] + t * Math.sqrt(L2) };
+    }
+    return best;
+  }
+  function ringWalk(r, A, B, wantPath) {
+    let d1 = B.s - A.s; if (d1 < 0) d1 += r.L; const d2 = r.L - d1; const fwd = d1 <= d2, len = Math.min(d1, d2);
+    if (!wantPath) return { len };
+    const n = r.xy.length, pts = [A.q];
+    if (fwd) { for (let c = 0, k = (A.i + 1) % n; c < n; c++, k = (k + 1) % n) { const arc = (r.cum[k] - A.s + r.L) % r.L; if (arc >= d1 || arc === 0 && c > 0) break; pts.push(r.xy[k]); } }
+    else { for (let c = 0, k = A.i; c < n; c++, k = (k - 1 + n) % n) { const arc = (A.s - r.cum[k] + r.L) % r.L; if (arc >= d2) break; pts.push(r.xy[k]); } }
+    pts.push(B.q); return { len, pts };
+  }
+  const plen = xy => { let s = 0; for (let i = 1; i < xy.length; i++) s += Geo.dist(xy[i - 1], xy[i]); return s; };
+  function corners(xy, closed) {
+    let c = 0; const n = xy.length;
+    for (let i = closed ? 0 : 1; i < (closed ? n : n - 1); i++) {
+      const a = xy[(i - 1 + n) % n], b = xy[i], d = xy[(i + 1) % n];
+      const h1 = Math.atan2(b[1] - a[1], b[0] - a[0]), h2 = Math.atan2(d[1] - b[1], d[0] - b[0]);
+      let dh = Math.abs(h2 - h1); if (dh > Math.PI) dh = 2 * Math.PI - dh;
+      if (dh > Math.PI / 4) c++;
+    }
+    return c;
+  }
+  function rotateTo(xy, p) { let bi = 0, bd = Infinity; xy.forEach((q, i) => { const d = Geo.dist(p, q); if (d < bd) { bd = d; bi = i; } }); const r = xy.slice(bi).concat(xy.slice(0, bi)); return r.concat([r[0]]); }
+
+  /* ---- cabecera necesaria ---- */
+  function headlandNeed(S) {
+    const w = S.aperoAncho, we = w - Math.min(S.solape, w / 2), R = S.radioGiro;
+    const fr = Math.max(0.5, S.longTractorApero - S.offsetApero - 0.5);      // voladizo delantero desde eje trasero
+    const ro = Math.hypot(R + S.anchoTractor / 2, fr);                         // radio exterior esquina delantera
+    let need = S.offsetApero + ro + 0.3;
+    if (!S.marchaAtras) { const ad = Math.min(we, 2 * R); const h = Math.sqrt(Math.max(0, 4 * R * R - (ad / 2 + R) ** 2)); need = S.offsetApero + h + ro + 0.3; }
+    return need;
+  }
+
+  /* ---- plan principal ---- */
+  function plan(f, S, opt = {}) {
+    const T0 = performance.now();
+    const P = Geo.projFor(f.linde.coords);
+    const fieldXY = Geo.ccw(Geo.toXY(f.linde.coords, P));
+    const field = [toC(fieldXY)];
+    const obs = (f.exclusiones || []).map(e => toC(Geo.ccw(Geo.toXY(e.coords, P))));
+    const w = S.aperoAncho, s = Math.min(S.solape, w / 2), we = w - s, R = S.radioGiro;
+    const vw = S.velocidad / 3.6, vg = S.velocidadGiro / 3.6, vt = S.velocidadTraslado / 3.6;
+    const need = headlandNeed(S);
+    const nHauto = 1 + Math.ceil(Math.max(0, need - w) / we);
+    const nH = opt.nH > 0 ? Math.round(opt.nH) : nHauto;
+    const warn = [];
+
+    // anillos de cabecera
+    const hl = [];
+    for (let k = 0; k < nH; k++) {
+      const ps = off(field, -(w / 2 + k * we)).filter(p => areaP(p) > 4);
+      if (!ps.length) break;
+      hl.push(ps.map(p => Geo.ccw(frC(p))));
+    }
+    if (!hl.length) return { error: 'La finca es demasiado pequeña para el apero.' };
+    if (hl.length < nH) warn.push('La finca se cubre solo con vueltas perimetrales.');
+    const inner = off(field, -(w + (hl.length - 1) * we));
+    const marg = S.margenObstaculo;
+    const obsInf = obs.length ? off(obs, w / 2 + marg, true) : [];
+    const region = obsInf.length ? boolOp('diff', inner, obsInf) : inner;
+    const obsRings = obs.map(o => { const ps = off([o], w / 2 + marg, true); if (!ps.length) return null; const big = ps.reduce((a, b) => areaP(a) >= areaP(b) ? a : b); return mkRing(Geo.ccw(frC(big))); });
+    if (obs.length) {
+      const hlZone = boolOp('diff', field, inner);
+      if (areaC(boolOp('int', obsInf, hlZone)) > 0.5) warn.push('Hay exclusiones dentro de la zona de cabecera: revisa ahí los giros.');
+    }
+    // anillo de traslado (centro de la cabecera)
+    const trRingXY = hl[Math.floor((hl.length - 1) / 2)].reduce((a, b) => Geo.area(a) >= Geo.area(b) ? a : b);
+    const trRing = mkRing(trRingXY);
+
+    /* pasadas para un azimut */
+    const regionPts = region.flatMap(frC);
+    function swaths(az) {
+      const u = [Math.sin(az * D2R), Math.cos(az * D2R)], n = [u[1], -u[0]];
+      if (!regionPts.length) return { segs: [], u, n, lines: 0, az };
+      let tmin = Infinity, tmax = -Infinity, smin = Infinity, smax = -Infinity;
+      for (const p of regionPts) { const t = p[0] * n[0] + p[1] * n[1], q = p[0] * u[0] + p[1] * u[1]; if (t < tmin) tmin = t; if (t > tmax) tmax = t; if (q < smin) smin = q; if (q > smax) smax = q; }
+      const ts = [], t1 = tmin + w / 2 - s, tN = tmax - w / 2 + s;
+      if (tN <= t1) ts.push((tmin + tmax) / 2);
+      else { for (let t = t1; t < tN - 1e-6; t += we) ts.push(t); if (tN - ts[ts.length - 1] > 0.25 * we) ts.push(tN); }
+      const lines = ts.map(t => [[u[0] * (smin - 5) + n[0] * t, u[1] * (smin - 5) + n[1] * t], [u[0] * (smax + 5) + n[0] * t, u[1] * (smax + 5) + n[1] * t]]);
+      const segs = [];
+      for (const pl of clipLines(lines, region)) {
+        if (pl.length < 2) continue;
+        let a = pl[0], b = pl[pl.length - 1];
+        if ((b[0] - a[0]) * u[0] + (b[1] - a[1]) * u[1] < 0) [a, b] = [b, a];
+        const len = Geo.dist(a, b); if (len < 1) continue;
+        segs.push({ a, b, len });
+      }
+      return { segs, u, n, lines: ts.length, az };
+    }
+    const tU = Math.PI * R / vg;
+    const quick = sw => sw.segs.reduce((q, g) => q + g.len, 0) / vw + sw.segs.length * tU + Math.max(0, sw.segs.length - sw.lines) * 45;
+
+    // candidatos de dirección
+    let cands;
+    if (opt.az != null && isFinite(opt.az)) cands = [((opt.az % 180) + 180) % 180];
+    else {
+      const sc = []; for (let a = 0; a < 180; a++) sc.push([a, quick(swaths(a))]);
+      sc.sort((x, y) => x[1] - y[1]); cands = [];
+      const far = a => cands.every(c => Math.min(Math.abs(c - a), 180 - Math.abs(c - a)) >= 3);
+      // direcciones de los 3 lados más largos del linde (pasadas paralelas a lindes)
+      const edges = fieldXY.map((p, i) => { const q = fieldXY[(i + 1) % fieldXY.length]; return [Geo.dist(p, q), ((Math.round(Math.atan2(q[0] - p[0], q[1] - p[1]) / D2R) % 180) + 180) % 180]; }).sort((x, y) => y[0] - x[0]);
+      for (const [, a] of edges.slice(0, 3)) if (far(a)) cands.push(a);
+      for (const [a] of sc) { if (far(a) && cands.every(c => Math.min(Math.abs(c - a), 180 - Math.abs(c - a)) >= 8)) cands.push(a); if (cands.length >= 6) break; }
+    }
+
+    // clasificación de extremos
+    function kindAt(p) {
+      for (let i = 0; i < obsRings.length; i++) { const r = obsRings[i]; if (r && projRing(r, p).d < 0.25) return { kind: 'obs', obs: i }; }
+      return { kind: 'hl' };
+    }
+    const projCache = new Map();
+    const pjT = p => { const k = p[0].toFixed(3) + ',' + p[1].toFixed(3); let v = projCache.get(k); if (!v) { v = projRing(trRing, p); projCache.set(k, v); } return v; };
+
+    function trans(E, N) {
+      const h = E.h, nl = [-h[1], h[0]], d = [N.p[0] - E.p[0], N.p[1] - E.p[1]];
+      const du = d[0] * h[0] + d[1] * h[1], dv = d[0] * nl[0] + d[1] * nl[1], ad = Math.abs(dv);
+      const dot = h[0] * N.h[0] + h[1] * N.h[1];
+      if (E.kind === 'hl' && N.kind === 'hl' && dot < -0.99 && Math.abs(du) < 25 && ad > 0.05) {
+        if (ad >= 2 * R - 1e-6) { const L = Math.PI * R + (ad - 2 * R) + Math.abs(du); return { type: 'U', L, t: L / vg }; }
+        if (S.marchaAtras) { const L = Math.PI * R + (2 * R - ad) + Math.abs(du); return { type: 'K', L, t: L / vg + 2 * S.tCambioSentido }; }
+        const th = Math.atan2(Math.sqrt(Math.max(0, 4 * R * R - (ad / 2 + R) ** 2)), ad / 2 + R);
+        const L = R * (Math.PI + 4 * th) + Math.abs(du); return { type: 'O', L, t: L / vg };
+      }
+      if (E.kind === 'obs' && N.kind === 'obs' && E.obs === N.obs && dot > 0.99 && ad < 0.05 && du > 0) {
+        const r = obsRings[E.obs]; const L = ringWalk(r, projRing(r, E.p), projRing(r, N.p)).len;
+        return { type: 'rodeo', L, t: L / vg };
+      }
+      let L;
+      if (E.kind === 'hl' && N.kind === 'hl') { const A = pjT(E.p), B = pjT(N.p); L = A.d + ringWalk(trRing, A, B).len + B.d; }
+      else L = Geo.dist(E.p, N.p) * 1.2;
+      return { type: 'tras', L, t: L / vt + S.tManiobra };
+    }
+
+    function solve(sw, startP) {
+      const segs = sw.segs, N = segs.length; if (!N) return { seq: [], cost: 0, ex: [], en: [] };
+      const u = sw.u, mu = [-u[0], -u[1]], ex = [], en = [];
+      segs.forEach((g, i) => {
+        const ka = kindAt(g.a), kb = kindAt(g.b);
+        ex[2 * i] = { p: g.b, h: u, ...kb }; ex[2 * i + 1] = { p: g.a, h: mu, ...ka };
+        en[2 * i] = { p: g.a, h: u, ...ka }; en[2 * i + 1] = { p: g.b, h: mu, ...kb };
+      });
+      const M = 2 * N, C = new Float64Array(M * M), C0 = new Float64Array(M);
+      for (let i = 0; i < M; i++) for (let j = 0; j < M; j++) C[i * M + j] = (i >> 1) === (j >> 1) ? 1e9 : trans(ex[i], en[j]).t;
+      for (let j = 0; j < M; j++) C0[j] = Geo.dist(startP, en[j].p) / vt;
+      const cost = q => { let c = C0[q[0]]; for (let k = 1; k < q.length; k++) c += C[q[k - 1] * M + q[k]]; return c; };
+      function greedy() {
+        const used = new Uint8Array(N), q = []; let cur = -1;
+        for (let k = 0; k < N; k++) { let best = -1, bc = Infinity; for (let j = 0; j < M; j++) { if (used[j >> 1]) continue; const c = cur < 0 ? C0[j] : C[cur * M + j]; if (c < bc) { bc = c; best = j; } } used[best >> 1] = 1; q.push(best); cur = best; }
+        return q;
+      }
+      function bous() {
+        const idx = segs.map((g, i) => i).sort((a, b) => { const ta = (segs[a].a[0] * sw.n[0] + segs[a].a[1] * sw.n[1]), tb = (segs[b].a[0] * sw.n[0] + segs[b].a[1] * sw.n[1]); return ta - tb || (segs[a].a[0] * u[0] + segs[a].a[1] * u[1]) - (segs[b].a[0] * u[0] + segs[b].a[1] * u[1]); });
+        return idx.map((i, k) => 2 * i + (k & 1));
+      }
+      function twoOpt(q, ms) {
+        const n = q.length, tEnd = performance.now() + ms; let imp = true;
+        while (imp && performance.now() < tEnd) {
+          imp = false;
+          for (let i = -1; i < n - 1; i++) for (let j = i + 1; j < n; j++) {
+            const a = i < 0 ? C0[q[i + 1]] : C[q[i] * M + q[i + 1]], b = j < n - 1 ? C[q[j] * M + q[j + 1]] : 0;
+            const fj = q[j] ^ 1, fi = q[i + 1] ^ 1;
+            const a2 = i < 0 ? C0[fj] : C[q[i] * M + fj], b2 = j < n - 1 ? C[fi * M + q[j + 1]] : 0;
+            if (a2 + b2 < a + b - 1e-6) {
+              let x = i + 1, y = j; while (x < y) { const t = q[x]; q[x] = q[y] ^ 1; q[y] = t ^ 1; x++; y--; } if (x === y) q[x] ^= 1;
+              imp = true;
+            }
+          }
+        }
+        return q;
+      }
+      const budget = Math.max(150, 1200 / cands.length);
+      const sols = [twoOpt(greedy(), budget / 2), twoOpt(bous(), budget / 2)].map(q => ({ q, c: cost(q) })).sort((a, b) => a.c - b.c);
+      return { seq: sols[0].q, cost: sols[0].c, ex, en };
+    }
+
+    /* fase 1: vueltas perimetrales (espiral hacia dentro) */
+    const lindeXY = fieldXY;
+    let startP = opt.start ? P.fwd(opt.start[0], opt.start[1]) : lindeXY[0];
+    const pre = []; let cur = startP, nCorners = 0;
+    hl.forEach((pieces, k) => {
+      const left = pieces.slice();
+      while (left.length) {
+        let bi = 0, bd = Infinity; left.forEach((r, i) => r.forEach(q => { const d = Geo.dist(cur, q); if (d < bd) { bd = d; bi = i; } }));
+        const ring = left.splice(bi, 1)[0], loop = rotateTo(ring, cur);
+        pre.push({ type: k === 0 && pre.length === 0 ? 'tras' : (bd > 2.5 * we ? 'tras' : 'giro'), xy: [cur, loop[0]] });
+        pre.push({ type: 'trabajo', xy: loop, ring: true });
+        nCorners += corners(ring, true); cur = loop[0];
+      }
+    });
+    /* fase 2: vueltas alrededor de exclusiones */
+    const oleft = obsRings.filter(Boolean).map(r => r.xy);
+    while (oleft.length) {
+      let bi = 0, bd = Infinity; oleft.forEach((r, i) => r.forEach(q => { const d = Geo.dist(cur, q); if (d < bd) { bd = d; bi = i; } }));
+      const loop = rotateTo(oleft.splice(bi, 1)[0], cur);
+      pre.push({ type: 'tras', xy: [cur, loop[0]] }); pre.push({ type: 'trabajo', xy: loop, ring: true }); cur = loop[0];
+    }
+    /* fase 3: pasadas, se evalúan los candidatos */
+    let best = null;
+    for (const az of cands) {
+      const sw = swaths(az), so = solve(sw, cur);
+      if (!best || so.cost < best.so.cost) best = { sw, so, az };
+    }
+    const { sw, so } = best, parts = pre.slice();
+    const cnt = { U: 0, K: 0, O: 0, rodeo: 0, tras: 0 };
+
+    // geometría de transiciones
+    function turnGeom(E, N, type) {
+      const h = E.h, nl = [-h[1], h[0]], d = [N.p[0] - E.p[0], N.p[1] - E.p[1]];
+      const du = d[0] * h[0] + d[1] * h[1], dv = d[0] * nl[0] + d[1] * nl[1];
+      const W = (x, y) => [E.p[0] + x * h[0] + y * nl[0], E.p[1] + x * h[1] + y * nl[1]];
+      const sg = dv >= 0 ? 1 : -1, u0 = Math.max(0, du);
+      const arc = (cx, cy, a0, a1, dir) => {
+        let sw_ = a1 - a0;
+        if (dir > 0) { while (sw_ <= 1e-9) sw_ += 2 * Math.PI; while (sw_ > 2 * Math.PI) sw_ -= 2 * Math.PI; }
+        else { while (sw_ >= -1e-9) sw_ -= 2 * Math.PI; while (sw_ < -2 * Math.PI) sw_ += 2 * Math.PI; }
+        const ns = Math.max(4, Math.ceil(Math.abs(sw_) * R / 0.5)), o = [];
+        for (let i = 0; i <= ns; i++) { const a = a0 + sw_ * i / ns; o.push(W(cx + R * Math.cos(a), cy + R * Math.sin(a))); }
+        return o;
+      };
+      const ang = (cx, cy, x, y) => Math.atan2(y - cy, x - cx);
+      const preS = du > 0 ? [W(0, 0)] : [], postS = du < 0 ? [W(du, dv)] : [];
+      if (type === 'U' || type === 'K') {
+        const a1 = arc(u0, sg * R, -sg * Math.PI / 2, 0, sg), a2 = arc(u0, dv - sg * R, 0, sg * Math.PI / 2, sg);
+        if (type === 'U') return [{ type: 'giro', xy: [...preS, ...a1, ...a2, ...postS] }];
+        return [{ type: 'giro', xy: [...preS, ...a1] }, { type: 'reversa', xy: [a1[a1.length - 1], a2[0]] }, { type: 'giro', xy: [...a2, ...postS] }];
+      }
+      // Ω
+      const ad = Math.abs(dv), hh = Math.sqrt(Math.max(0, 4 * R * R - (ad / 2 + R) ** 2));
+      const c1 = [u0, -sg * R], c3 = [u0, dv + sg * R], c2 = [u0 + hh, dv / 2];
+      const t1 = [(c1[0] + c2[0]) / 2, (c1[1] + c2[1]) / 2], t2 = [(c2[0] + c3[0]) / 2, (c2[1] + c3[1]) / 2];
+      const A1 = arc(c1[0], c1[1], ang(c1[0], c1[1], u0, 0), ang(c1[0], c1[1], t1[0], t1[1]), -sg);
+      const A2 = arc(c2[0], c2[1], ang(c2[0], c2[1], t1[0], t1[1]), ang(c2[0], c2[1], t2[0], t2[1]), sg);
+      const A3 = arc(c3[0], c3[1], ang(c3[0], c3[1], t2[0], t2[1]), ang(c3[0], c3[1], u0, dv), -sg);
+      return [{ type: 'giro', xy: [...preS, ...A1, ...A2, ...A3, ...postS] }];
+    }
+    const arrows = [];
+    so.seq.forEach((v, k) => {
+      const g = sw.segs[v >> 1], dir = v & 1, a = dir ? g.b : g.a, b = dir ? g.a : g.b;
+      if (k === 0) parts.push({ type: 'tras', xy: [cur, a] });
+      else {
+        const E = so.ex[so.seq[k - 1]], N = so.en[v], tr = trans(E, N);
+        if (tr.type === 'U' || tr.type === 'K' || tr.type === 'O') { cnt[tr.type]++; parts.push(...turnGeom(E, N, tr.type)); }
+        else if (tr.type === 'rodeo') { cnt.rodeo++; const r = obsRings[E.obs]; parts.push({ type: 'giro', xy: [E.p, ...ringWalk(r, projRing(r, E.p), projRing(r, N.p), true).pts, N.p] }); }
+        else {
+          cnt.tras++;
+          if (E.kind === 'hl' && N.kind === 'hl') { const A = pjT(E.p), B = pjT(N.p); parts.push({ type: 'tras', xy: [E.p, ...ringWalk(trRing, A, B, true).pts, N.p] }); }
+          else parts.push({ type: 'tras', xy: [E.p, N.p] });
+        }
+      }
+      parts.push({ type: 'trabajo', xy: [a, b], swath: true });
+      arrows.push({ xy: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], az: (Math.atan2(b[0] - a[0], b[1] - a[1]) / D2R + 360) % 360 });
+    });
+
+    /* estadísticas */
+    const L = { trabajo: 0, giro: 0, reversa: 0, tras: 0 };
+    parts.forEach(p => { p.len = plen(p.xy); L[p.type] += p.len; });
+    const tTrab = L.trabajo / vw, tGiro = (L.giro + L.reversa) / vg + cnt.K * 2 * S.tCambioSentido, tTras = L.tras / vt + cnt.tras * S.tManiobra, tEsq = nCorners * S.tEsquina;
+    const tTot = tTrab + tGiro + tTras + tEsq; // s
+
+    /* cobertura teórica */
+    const C = CL(), co = new C.ClipperOffset(2, 0.05 * SC);
+    parts.filter(p => p.type === 'trabajo').forEach(p => { const xy = p.ring ? p.xy.slice(0, -1) : p.xy; co.AddPath(toC(xy), C.JoinType.jtRound, p.ring ? C.EndType.etClosedLine : C.EndType.etOpenButt); });
+    const covered = new C.Paths(); co.Execute(covered, w / 2 * SC);
+    const work = obs.length ? boolOp('diff', field, obs) : field;
+    const aWork = areaC(work), aCov = areaC(boolOp('int', work, covered));
+    const missed = boolOp('diff', work, covered).filter(p => areaP(p) > 0.5 && C.Clipper.Orientation(p));
+    const aMiss = Math.max(0, aWork - aCov);
+
+    const toLL = xy => Geo.toLL(xy, P).map(q => [+q[0].toFixed(7), +q[1].toFixed(7)]);
+    return {
+      fecha: Date.now(), geomKey: geomKey(f), az: best.az, nH: hl.length, nHauto, need, ms: Math.round(performance.now() - T0), warn,
+      params: { w, s, R, marchaAtras: !!S.marchaAtras, v: S.velocidad, consumo: S.consumo },
+      parts: parts.filter(p => p.len > 0.05).map(p => ({ type: p.type, ll: toLL(p.xy), swath: !!p.swath })),
+      arrows: arrows.map(a => ({ ll: toLL([a.xy])[0], az: Math.round(a.az) })),
+      missed: missed.map(p => toLL(frC(p))),
+      stats: {
+        nPasadas: sw.segs.length, nVueltas: hl.length, nObs: obsRings.filter(Boolean).length,
+        giros: cnt, esquinas: nCorners,
+        L: { trabajo: L.trabajo, giro: L.giro, reversa: L.reversa, traslado: L.tras, total: L.trabajo + L.giro + L.reversa + L.tras },
+        t: { trabajo: tTrab, giros: tGiro, traslado: tTras, esquinas: tEsq, total: tTot },
+        litros: tTot / 3600 * S.consumo,
+        area: { objetivo: aWork, cubierta: aCov, noAlcanzada: aMiss, cobertura: aWork ? aCov / aWork : 0 },
+        haH: aWork / 10000 / (tTot / 3600)
+      }
+    };
+  }
+  return { plan, headlandNeed };
+})();
+
+function geomKey(f) {
+  const s = JSON.stringify([f.linde && f.linde.coords, (f.exclusiones || []).map(e => e.coords)]);
+  let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36) + s.length.toString(36);
+}
+
+/* =========================================================
+   PLAN — interfaz
+   ========================================================= */
+let planRev = null, showMissed = false, planVisible = true;
+const PLAN_STYLE = {
+  trabajo: { color: '#1565c0', weight: 3.5, opacity: .95 },
+  giro: { color: '#1e88e5', weight: 2, opacity: .85 },
+  reversa: { color: '#1e88e5', weight: 2, opacity: .9, dashArray: '4 4' },
+  tras: { color: '#64b5f6', weight: 2, opacity: .9, dashArray: '1 6' }
+};
+function drawPlan(pl, layer) {
+  layer.clearLayers();
+  if (!pl) return;
+  if (showMissed) pl.missed.forEach(m => L.polygon(m, { color: '#ef6c00', weight: 1, fillColor: '#ff9800', fillOpacity: .55, interactive: false }).addTo(layer));
+  pl.parts.forEach(p => L.polyline(p.ll, { ...PLAN_STYLE[p.type], interactive: false }).addTo(layer));
+  pl.arrows.forEach(a => L.marker(a.ll, { interactive: false, icon: L.divIcon({ className: '', html: `<div class="arr" style="transform:rotate(${a.az}deg)"></div>`, iconSize: [12, 12], iconAnchor: [6, 6] }) }).addTo(layer));
+  const all = pl.parts; if (!all.length) return;
+  const st = all[0].ll[0], en = all[all.length - 1].ll[all[all.length - 1].ll.length - 1];
+  L.marker(st, { interactive: false, icon: L.divIcon({ className: '', html: '<div class="pin" style="background:#2e7d32">I</div>', iconSize: [22, 22], iconAnchor: [11, 11] }) }).addTo(layer);
+  L.marker(en, { interactive: false, icon: L.divIcon({ className: '', html: '<div class="pin" style="background:#c62828">F</div>', iconSize: [22, 22], iconAnchor: [11, 11] }) }).addTo(layer);
+}
+const planStale = f => f.plan && f.plan.geomKey !== geomKey(f);
+
+function planMenu() {
+  if (busy()) return;
+  if (!cur.linde) return toast('Primero define el linde de la finca');
+  if (cur.tipo === 'monte') return toast('La planificación de monte llega en la fase F4');
+  if (!window.ClipperLib) return toast('No se ha cargado la librería de geometría. Revisa la conexión.');
+  if (!cur.plan) return planOptions();
+  const st = cur.plan.stats;
+  sheet(`<h3>Plan de trabajo</h3>
+    ${planStale(cur) ? '<div class="card" style="background:#fff3e0;color:#e65100">⚠️ El linde o las exclusiones han cambiado. Recalcula el plan.</div>' : ''}
+    <div class="card">
+      <div class="kv"><span>Tiempo estimado</span><span>${fmtH(st.t.total / 3600)}</span></div>
+      <div class="kv"><span>Combustible</span><span>${fmt(st.litros, 1)} L</span></div>
+      <div class="kv"><span>Cobertura teórica</span><span>${fmt(st.area.cobertura * 100, 1)} %</span></div>
+    </div>
+    <button class="opt" id="pDet">📋 Ver detalle</button>
+    <button class="opt" id="pRe">🔄 Recalcular / cambiar opciones</button>
+    <button class="opt" id="pVis">${planVisible ? '🙈 Ocultar plan' : '👁 Mostrar plan'}</button>
+    <button class="opt" id="pMis">${showMissed ? '⬜ Ocultar zonas no alcanzadas' : '🟧 Mostrar zonas no alcanzadas'}</button>
+    <button class="opt" id="pDel" style="color:var(--err)">🗑 Borrar plan</button>`,
+    () => {
+      $('pDet').onclick = () => planDetail(cur.plan);
+      $('pRe').onclick = planOptions;
+      $('pVis').onclick = () => { planVisible = !planVisible; closeSheet(); drawFinca(); };
+      $('pMis').onclick = () => { showMissed = !showMissed; planVisible = true; closeSheet(); drawFinca(); };
+      $('pDel').onclick = () => confirmSheet('¿Borrar el plan?', 'Borrar', async () => { cur.plan = null; await saveCur(); drawFinca(); }, true);
+    });
+}
+
+function planOptions() {
+  const o = cur.planOpt || { dirMode: 'auto', az: 0, nHMode: 'auto', nH: 0, start: 'gps' };
+  const need = Planner.headlandNeed(S), we = S.aperoAncho - Math.min(S.solape, S.aperoAncho / 2);
+  const nHauto = 1 + Math.ceil(Math.max(0, need - S.aperoAncho) / we);
+  sheet(`<h3>Calcular plan</h3>
+    <label class="f">Dirección de las pasadas</label>
+    <div class="seg" id="oDir"><button data-v="auto">Automática (óptima)</button><button data-v="man">Manual</button></div>
+    <div class="srow ${o.dirMode === 'man' ? '' : 'hidden'}" id="oAzR"><span>Azimut (° desde el norte, 0–179)</span><input class="inp" id="oAz" inputmode="decimal" value="${o.az}" style="width:90px;text-align:right"></div>
+    <label class="f">Vueltas perimetrales (cabecera)</label>
+    <div class="seg" id="oNH"><button data-v="auto">Auto (${nHauto})</button><button data-v="man">Manual</button></div>
+    <div class="srow ${o.nHMode === 'man' ? '' : 'hidden'}" id="oNHR"><span>Número de vueltas</span><input class="inp" id="oNHv" inputmode="numeric" value="${o.nH || nHauto}" style="width:90px;text-align:right"></div>
+    <div class="note">Cabecera necesaria para girar: ${fmt(need, 1)} m → ${nHauto} vueltas de ${fmt(we, 2)} m.</div>
+    <label class="f">Punto de inicio</label>
+    <div class="seg" id="oSt"><button data-v="gps">Mi posición</button><button data-v="map">Elegir en mapa</button><button data-v="v0">1.er vértice</button></div>
+    <div class="card" style="margin-top:12px;font-size:13px;color:var(--sub)">
+      Apero ${fmt(S.aperoAncho, 2)} m · solape ${fmt(S.solape, 2)} m · R giro ${fmt(S.radioGiro, 1)} m · marcha atrás ${S.marchaAtras ? 'sí' : 'no'} ·
+      ${fmt(S.velocidad, 1)} km/h trabajo · ${fmt(S.velocidadGiro, 1)} km/h giro · ${fmt(S.consumo, 1)} L/h. <i>Se cambian en Ajustes.</i></div>
+    <button class="btn" id="oGo">Calcular</button>`,
+    () => {
+      const segs = { oDir: 'dirMode', oNH: 'nHMode', oSt: 'start' };
+      for (const [id, key] of Object.entries(segs)) {
+        const el = $(id); const paint = () => el.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === o[key]));
+        el.querySelectorAll('button').forEach(b => b.onclick = () => { o[key] = b.dataset.v; paint(); $('oAzR').classList.toggle('hidden', o.dirMode !== 'man'); $('oNHR').classList.toggle('hidden', o.nHMode !== 'man'); });
+        paint();
+      }
+      $('oGo').onclick = async () => {
+        o.az = parseFloat($('oAz').value.replace(',', '.')) || 0; o.nH = parseInt($('oNHv').value) || 0;
+        cur.planOpt = o; await saveCur(); closeSheet();
+        if (o.start === 'map') { pickStart(o); return; }
+        let st = null;
+        if (o.start === 'gps') {
+          if (lastPos && Geo.lenLL([[lastPos.lat, lastPos.lon], cur.linde.coords[0]]) < 2000) st = [lastPos.lat, lastPos.lon];
+          else toast('Sin posición GPS cercana: se usa el primer vértice', 3000);
+        }
+        runPlan(o, st);
+      };
+    });
+}
+function pickStart(o) {
+  planRev = { picking: true };
+  showTool('Punto de inicio', 'Toca en el mapa el punto por donde entra el tractor a la finca.', [['Cancelar', 'sec', () => { map.off('click', onPick); planRev = null; showMain(); }]]);
+  function onPick(e) { map.off('click', onPick); planRev = null; runPlan(o, [e.latlng.lat, e.latlng.lng]); }
+  map.on('click', onPick);
+}
+function runPlan(o, start) {
+  const ov = document.createElement('div'); ov.className = 'busyOv'; ov.innerHTML = '<div>Calculando plan…<br><small>Optimizando dirección y orden de pasadas</small></div>'; document.body.appendChild(ov);
+  setTimeout(() => {
+    let pl;
+    try { pl = Planner.plan(cur, S, { az: o.dirMode === 'man' ? o.az : null, nH: o.nHMode === 'man' ? o.nH : 0, start }); }
+    catch (e) { console.error(e); pl = { error: 'Error en el cálculo: ' + e.message }; }
+    ov.remove();
+    if (pl.error) { toast(pl.error, 4000); showMain(); return; }
+    planReview(pl);
+  }, 40);
+}
+function planReview(pl) {
+  planRev = { pl };
+  lyr.plan.clearLayers(); drawPlan(pl, lyr.tmp);
+  const st = pl.stats;
+  showTool('Plan calculado',
+    `<b>${fmtH(st.t.total / 3600)}</b> · <b>${fmt(st.litros, 1)} L</b> · ${fmt(st.haH, 2)} ha/h · cobertura ${fmt(st.area.cobertura * 100, 1)} %<br>
+     Rumbo ${pl.az}° · ${st.nVueltas} vueltas perimetrales · ${st.nPasadas} pasadas · giros U ${st.giros.U} / K ${st.giros.K} / Ω ${st.giros.O}` +
+    (pl.warn.length ? '<br>⚠️ ' + pl.warn.join('<br>⚠️ ') : ''),
+    [['Descartar', 'sec', () => { planRev = null; lyr.tmp.clearLayers(); drawFinca(); showMain(); }],
+     ['Detalle', 'sec', () => planDetail(pl)],
+     ['Guardar', '', async () => { cur.plan = pl; planVisible = true; await saveCur(); planRev = null; lyr.tmp.clearLayers(); drawFinca(); showMain(); toast('Plan guardado'); }]]);
+}
+function planDetail(pl) {
+  const st = pl.stats, m = v => fmt(v, 0) + ' m', h = s => fmtH(s / 3600);
+  sheet(`<h3>Detalle del plan</h3>
+    <div class="card">
+      <div class="kv"><span>Rumbo de pasadas</span><span>${pl.az}°</span></div>
+      <div class="kv"><span>Vueltas perimetrales</span><span>${st.nVueltas}${pl.nH !== pl.nHauto ? ' (auto ' + pl.nHauto + ')' : ''}</span></div>
+      <div class="kv"><span>Cabecera necesaria</span><span>${fmt(pl.need, 1)} m</span></div>
+      <div class="kv"><span>Vueltas a exclusiones</span><span>${st.nObs}</span></div>
+      <div class="kv"><span>Pasadas interiores</span><span>${st.nPasadas}</span></div>
+      <div class="kv"><span>Giros U / K (marcha atrás) / Ω</span><span>${st.giros.U} / ${st.giros.K} / ${st.giros.O}</span></div>
+      <div class="kv"><span>Rodeos de exclusión</span><span>${st.giros.rodeo}</span></div>
+      <div class="kv"><span>Traslados</span><span>${st.giros.tras}</span></div>
+      <div class="kv"><span>Esquinas con maniobra</span><span>${st.esquinas}</span></div>
+    </div>
+    <div class="card"><h3>Recorrido</h3>
+      <div class="kv"><span>Trabajando</span><span>${m(st.L.trabajo)}</span></div>
+      <div class="kv"><span>Giros</span><span>${m(st.L.giro)}</span></div>
+      <div class="kv"><span>Marcha atrás</span><span>${m(st.L.reversa)}</span></div>
+      <div class="kv"><span>Traslados</span><span>${m(st.L.traslado)}</span></div>
+      <div class="kv"><span>Total trayectoria ideal</span><span>${m(st.L.total)}</span></div>
+    </div>
+    <div class="card"><h3>Tiempo y combustible</h3>
+      <div class="kv"><span>Trabajando</span><span>${h(st.t.trabajo)}</span></div>
+      <div class="kv"><span>Giros y maniobras</span><span>${h(st.t.giros + st.t.esquinas)}</span></div>
+      <div class="kv"><span>Traslados</span><span>${h(st.t.traslado)}</span></div>
+      <div class="kv"><span>Total</span><span>${h(st.t.total)}</span></div>
+      <div class="kv"><span>Combustible (${fmt(pl.params.consumo, 1)} L/h)</span><span>${fmt(st.litros, 1)} L</span></div>
+      <div class="kv"><span>Rendimiento</span><span>${fmt(st.haH, 2)} ha/h · ${fmt(st.litros / (st.area.objetivo / 10000 || 1), 1)} L/ha</span></div>
+      <div class="kv"><span>Tiempo productivo</span><span>${fmt(st.t.trabajo / st.t.total * 100, 0)} %</span></div>
+    </div>
+    <div class="card"><h3>Superficie</h3>
+      <div class="kv"><span>A limpiar</span><span>${fmtArea(st.area.objetivo)}</span></div>
+      <div class="kv"><span>Cubierta por el plan</span><span>${fmtArea(st.area.cubierta)}</span></div>
+      <div class="kv"><span>No alcanzada (esquinas, bordes)</span><span>${fmtArea(st.area.noAlcanzada)}</span></div>
+      <div class="kv"><span>Cobertura teórica</span><span>${fmt(st.area.cobertura * 100, 1)} %</span></div>
+    </div>
+    <div class="note">Azul continuo: trabajo · azul fino: giros · discontinuo: marcha atrás · punteado: traslado. Calculado en ${pl.ms} ms.</div>`);
 }
 
 /* ---------- Panel de herramienta genérico ---------- */
@@ -856,6 +1369,7 @@ function showTool(title, hint, btns) {
 $('tLinde').onclick = lindeMenu;
 $('tExcl').onclick = exclMenu;
 $('tEdit').onclick = editMenu;
+$('tPlan').onclick = planMenu;
 $('tInfo').onclick = () => { if (!busy()) infoSheet(); };
 
 /* =========================================================
@@ -870,7 +1384,7 @@ $('tInfo').onclick = () => { if (!busy()) infoSheet(); };
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   showList();
 })();
-window.LIMPFINC = { Geo, processTrack, DB, get S() { return S; }, get cur() { return cur; } }; // para pruebas
+window.LIMPFINC = { Geo, processTrack, DB, Planner, get map() { return map; }, get S() { return S; }, get cur() { return cur; } }; // para pruebas
 </script>
 </body>
 </html>
