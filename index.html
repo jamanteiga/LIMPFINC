@@ -96,6 +96,16 @@ h3{margin:4px 0 8px;font-size:15px}
 .pin{width:22px;height:22px;border-radius:11px;color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
 .busyOv{position:fixed;inset:0;z-index:4000;background:rgba(255,255,255,.75);display:flex;align-items:center;justify-content:center;text-align:center;font-weight:600}
 .busyOv small{font-weight:400;color:var(--sub)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}.chip{background:#fff;border-radius:16px;padding:7px 12px;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.chip span{color:var(--err);margin-left:4px}
+.sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:8px;vertical-align:-1px}
+table.cmp{border-collapse:collapse;font-size:13px;background:#fff;border-radius:10px}
+table.cmp th{text-align:left;color:var(--sub);font-weight:500;padding:6px 8px;white-space:nowrap;position:sticky;left:0;background:#fff}
+table.cmp td{padding:6px 8px;border-left:1px solid var(--line);white-space:nowrap;font-weight:600}
+table.cmp tr+tr>*{border-top:1px solid var(--line)}
+.covimg{image-rendering:pixelated}
+#bLay{top:146px}
+#pWork .stats b{font-size:20px}
 .leaflet-control-layers{border-radius:10px!important}
 .leaflet-top{top:4px}
 </style>
@@ -121,11 +131,26 @@ h3{margin:4px 0 8px;font-size:15px}
 <div id="mapWrap" class="hidden">
   <div id="map"></div>
   <button class="mbtn" id="bLoc" title="Mi posición">◎</button>
+  <button class="mbtn" id="bLay" title="Capas y filtros">🗂</button>
+  <div class="panel hidden" id="pWork">
+    <div class="stats">
+      <div><b id="wSpd">–</b><small>km/h</small></div>
+      <div><b id="wDev">–</b><small id="wDevL">Desvío m</small></div>
+      <div><b id="wCov">–</b><small>Limpio</small></div>
+      <div><b id="wTime">–</b><small>Tiempo</small></div>
+      <div><b id="wLit">–</b><small>Litros</small></div>
+      <div><b id="wEta">–</b><small>η</small></div>
+    </div>
+    <button class="btn" id="wApero" style="padding:16px;font-size:17px;margin-bottom:8px">🟢 APERO EN TRABAJO</button>
+    <div class="row"><button class="btn sec" id="wPause">Pausa</button><button class="btn err" id="wEnd">Terminar</button></div>
+    <div class="note" style="text-align:center;margin-top:4px">GPS <span id="wAcc">–</span></div>
+  </div>
   <div class="tb" id="tbMain">
     <button id="tLinde"><b>⬠</b>Linde</button>
     <button id="tExcl"><b>⛔</b>Exclusión</button>
     <button id="tEdit"><b>✎</b>Editar</button>
     <button id="tPlan"><b>🧭</b>Plan</button>
+    <button id="tWork"><b>🚜</b>Trabajar</button>
     <button id="tInfo"><b>ⓘ</b>Datos</button>
   </div>
   <!-- panel grabación -->
@@ -158,7 +183,7 @@ h3{margin:4px 0 8px;font-size:15px}
 /* =========================================================
    LIMPFINC · F1 — Fincas, linde, exclusiones, área
    ========================================================= */
-const VERSION = 'F2 · 0.2.0';
+const VERSION = 'F5 · 0.5.0';
 
 /* ---------- Ajustes por defecto ---------- */
 const DEF = {
@@ -169,13 +194,13 @@ const DEF = {
   anchoTractor:1.70, longTractorApero:5.0,
   umbralPrecision:8, holguraLinde:0.5,
   mallaX:3.5, mallaY:3.5, holguraTronco:0.30,
-  velocidadGiro:3.0, velocidadTraslado:5.0, tCambioSentido:4, tManiobra:20, tEsquina:15, margenObstaculo:0.30
+  consumoAuto:true, velocidadGiro:3.0, velocidadTraslado:5.0, tCambioSentido:4, tManiobra:20, tEsquina:15, margenObstaculo:0.30
 };
 const SET_FIELDS = [
   ['Tractor',[['tractor','Modelo','text'],['potencia','Potencia (CV)'],['anchoTractor','Ancho tractor (m)'],
     ['longTractorApero','Longitud tractor + apero (m)'],['radioGiro','Radio de giro mínimo (m)'],['marchaAtras','Maniobras marcha atrás','bool']]],
   ['Apero',[['aperoNombre','Apero','text'],['aperoAncho','Ancho de trabajo (m)'],['offsetApero','iPhone → centro apero (m)']]],
-  ['Trabajo',[['velocidad','Velocidad por defecto (km/h)'],['consumo','Consumo (L/h)'],['solape','Solape entre pasadas (m)'],['umbralDesv','Umbral desviación (m)']]],
+  ['Trabajo',[['velocidad','Velocidad por defecto (km/h)'],['consumo','Consumo (L/h)'],['consumoAuto','Usar consumo calibrado en repostajes','bool'],['solape','Solape entre pasadas (m)'],['umbralDesv','Umbral desviación (m)']]],
   ['Planificación',[['velocidadGiro','Velocidad en giros (km/h)'],['velocidadTraslado','Velocidad en traslados (km/h)'],['tCambioSentido','Tiempo cambio de sentido (s)'],
     ['tManiobra','Maniobra al iniciar traslado (s)'],['tEsquina','Maniobra en esquina (s)'],['margenObstaculo','Margen a exclusiones (m)']]],
   ['Medición GPS',[['umbralPrecision','Descartar puntos con precisión peor que (m)'],['holguraLinde','Holgura lateral tractor–linde (m)']]],
@@ -186,11 +211,12 @@ const SET_FIELDS = [
 const DB = (() => {
   let db;
   const open = () => new Promise((res, rej) => {
-    const r = indexedDB.open('limpfinc', 1);
+    const r = indexedDB.open('limpfinc', 2);
     r.onupgradeneeded = e => {
       const d = e.target.result;
       if (!d.objectStoreNames.contains('fincas')) d.createObjectStore('fincas', { keyPath: 'id' });
       if (!d.objectStoreNames.contains('kv')) d.createObjectStore('kv');
+      if (!d.objectStoreNames.contains('trabajos')) d.createObjectStore('trabajos', { keyPath: 'id' });
     };
     r.onsuccess = () => { db = r.result; res(); };
     r.onerror = () => rej(r.error);
@@ -206,7 +232,11 @@ const DB = (() => {
     put: f => tx('fincas', 'readwrite', s => s.put(f)),
     del: id => tx('fincas', 'readwrite', s => s.delete(id)),
     kvGet: k => tx('kv', 'readonly', s => s.get(k)),
-    kvPut: (k, v) => tx('kv', 'readwrite', s => s.put(v, k))
+    kvPut: (k, v) => tx('kv', 'readwrite', s => s.put(v, k)),
+    tAll: () => tx('trabajos', 'readonly', s => s.getAll()),
+    tByFinca: async fid => (await tx('trabajos', 'readonly', s => s.getAll())).filter(t => t.fincaId === fid).sort((a, b) => b.inicio - a.inicio),
+    tPut: t => tx('trabajos', 'readwrite', s => s.put(t)),
+    tDel: id => tx('trabajos', 'readwrite', s => s.delete(id))
   };
 })();
 
@@ -376,30 +406,66 @@ function setHeader(left, title, right, onL, onR) {
   $('hLeft').onclick = onL || null; $('hRight').onclick = onR || null;
 }
 
-$('bNueva').onclick = () => fincaForm(null);
+$('bNueva').onclick = nuevaFinca;
 
+const normName = n => n.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+async function findByName(nombre, exceptId) { const k = normName(nombre); return (await DB.all()).find(f => normName(f.nombre) === k && f.id !== exceptId); }
+
+/* Alta: 1) nombre → 2) si no existe, tipo y modo de medición del linde */
+function nuevaFinca() {
+  sheet(`<h3>Nueva finca</h3>
+    <label class="f">Nombre de la finca</label><input class="inp" id="nNom" placeholder="p. ej. Leira do Souto" autocomplete="off">
+    <button class="btn" id="nOk" style="margin-top:14px">Continuar</button>`,
+    () => {
+      const go = async () => {
+        const nombre = $('nNom').value.trim(); if (!nombre) return toast('Indica un nombre');
+        const ex = await findByName(nombre);
+        if (ex) { closeSheet(); toast(`«${ex.nombre}» ya existe: se abre`); openFinca(ex.id); return; }
+        nuevaFincaMedir(nombre);
+      };
+      $('nOk').onclick = go; $('nNom').onkeydown = e => { if (e.key === 'Enter') go(); };
+      setTimeout(() => $('nNom').focus(), 50);
+    });
+}
+function nuevaFincaMedir(nombre) {
+  let tipo = 'abierta';
+  sheet(`<h3>${esc(nombre)}</h3><div class="note" style="margin-bottom:6px">No está registrada. Indica el tipo y cómo medir su superficie.</div>
+    <label class="f">Tipo</label>
+    <div class="seg" id="nTipo"><button data-v="abierta">🌾 Abierta</button><button data-v="monte">🌲 Monte / plantación</button></div>
+    <label class="f">Medición del linde</label>
+    <button class="opt" id="nPie">🚶 A pie<small>Recorre el linde con el iPhone. Máxima precisión.</small></button>
+    <button class="opt" id="nTrac">🚜 Con tractor<small>Recorre el interior junto al linde; se corrige hacia fuera.</small></button>
+    <button class="opt" id="nLuego" style="color:var(--sub)">Más tarde<small>Crear la finca sin medir.</small></button>`,
+    () => {
+      const seg = $('nTipo'), paint = () => seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === tipo));
+      seg.querySelectorAll('button').forEach(b => b.onclick = () => { tipo = b.dataset.v; paint(); }); paint();
+      const crear = async modo => {
+        const now = Date.now(), nf = { id: uid(), nombre, tipo, notas: '', creada: now, mod: now, linde: null, exclusiones: [] };
+        await DB.put(nf); closeSheet(); await openFinca(nf.id);
+        if (modo === 'pie') startRec('linde', 'pie'); else if (modo === 'tractor') tractorSetup();
+      };
+      $('nPie').onclick = () => crear('pie'); $('nTrac').onclick = () => crear('tractor'); $('nLuego').onclick = () => crear(null);
+    });
+}
 function fincaForm(f) {
-  const isNew = !f; f = f || { tipo: 'abierta', nombre: '' };
-  sheet(`<h3>${isNew ? 'Nueva finca' : 'Editar finca'}</h3>
-    <label class="f">Nombre</label><input class="inp" id="fNom" value="${esc(f.nombre)}" placeholder="p. ej. Leira do Souto">
+  sheet(`<h3>Editar finca</h3>
+    <label class="f">Nombre</label><input class="inp" id="fNom" value="${esc(f.nombre)}">
     <label class="f">Tipo</label>
     <div class="seg" id="fTipo"><button data-v="abierta">🌾 Abierta</button><button data-v="monte">🌲 Monte / plantación</button></div>
-    <label class="f">Referencia catastral (opcional)</label><input class="inp" id="fRef" value="${esc(f.refCat || '')}" placeholder="15001A00100001">
     <label class="f">Notas</label><input class="inp" id="fNot" value="${esc(f.notas || '')}">
-    <div class="row" style="margin-top:14px">${isNew ? '' : '<button class="btn err" id="fDel">Eliminar</button>'}<button class="btn" id="fOk">${isNew ? 'Crear' : 'Guardar'}</button></div>`,
+    <div class="row" style="margin-top:14px"><button class="btn err" id="fDel">Eliminar</button><button class="btn" id="fOk">Guardar</button></div>`,
     () => {
       let tipo = f.tipo;
       const seg = $('fTipo'); const paint = () => seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === tipo));
       seg.querySelectorAll('button').forEach(b => b.onclick = () => { tipo = b.dataset.v; paint(); }); paint();
       $('fOk').onclick = async () => {
         const nombre = $('fNom').value.trim(); if (!nombre) { toast('Indica un nombre'); return; }
-        const now = Date.now();
-        const nf = isNew ? { id: uid(), creada: now, linde: null, exclusiones: [] } : f;
-        Object.assign(nf, { nombre, tipo, refCat: $('fRef').value.trim(), notas: $('fNot').value.trim(), mod: now });
-        await DB.put(nf); closeSheet();
-        if (isNew) openFinca(nf.id); else { cur = nf; setHeader('‹ Fincas', nf.nombre, '⋯', showList, () => fincaForm(cur)); }
+        if (await findByName(nombre, f.id)) return toast('Ya existe otra finca con ese nombre');
+        Object.assign(f, { nombre, tipo, notas: $('fNot').value.trim(), mod: Date.now() });
+        delete f.refCat;
+        await DB.put(f); closeSheet(); cur = f; setHeader('‹ Fincas', f.nombre, '⋯', () => { if (busy()) return toast('Termina o cancela la operación en curso'); stopGPS(); showList(); }, fincaMenu);
       };
-      if (!isNew) $('fDel').onclick = () => confirmSheet(`¿Eliminar «${esc(f.nombre)}» y todos sus datos?`, 'Eliminar', async () => { await DB.del(f.id); cur = null; showList(); }, true);
+      $('fDel').onclick = () => confirmSheet(`¿Eliminar «${esc(f.nombre)}» y todos sus datos?`, 'Eliminar', async () => { for (const t of await DB.tByFinca(f.id)) await DB.tDel(t.id); await DB.del(f.id); cur = null; stopGPS(); showList(); }, true);
     });
 }
 
@@ -426,6 +492,7 @@ function showSettings() {
     h += '</div>';
   }
   h += `<div class="sgrp">Datos</div><div class="card">
+    <button class="btn sec" id="bFuel" style="margin-bottom:8px">⛽ Registrar repostaje (calibrar consumo)</button>
     <button class="btn sec" id="bExp" style="margin-bottom:8px">Exportar copia de seguridad (JSON)</button>
     <button class="btn sec" id="bImp" style="margin-bottom:8px">Importar copia de seguridad</button>
     <input type="file" id="fImp" accept=".json,application/json" class="hidden">
@@ -441,12 +508,13 @@ function showSettings() {
   });
   $('bDef').onclick = () => confirmSheet('¿Restaurar todos los ajustes por defecto?', 'Restaurar', async () => { S = { ...DEF }; await DB.kvPut('settings', S); showSettings(); });
   $('bExp').onclick = exportBackup;
+  $('bFuel').onclick = repostajeSheet;
   $('bImp').onclick = () => $('fImp').click();
   $('fImp').onchange = importBackup;
 }
 
 async function exportBackup() {
-  const data = { app: 'LIMPFINC', version: VERSION, fecha: new Date().toISOString(), settings: S, fincas: await DB.all() };
+  const data = { app: 'LIMPFINC', version: VERSION, fecha: new Date().toISOString(), settings: S, fincas: await DB.all(), trabajos: await DB.tAll(), repostajes: await DB.kvGet('repostajes'), filtros: await DB.kvGet('filtros') };
   const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = 'LIMPFINC_' + new Date().toISOString().slice(0, 10) + '.json'; a.click();
@@ -459,6 +527,9 @@ async function importBackup(e) {
     if (d.app !== 'LIMPFINC' || !Array.isArray(d.fincas)) throw 0;
     confirmSheet(`Importar ${d.fincas.length} finca(s)? Las que tengan el mismo identificador se sobrescriben.`, 'Importar', async () => {
       for (const f of d.fincas) await DB.put(f);
+      for (const t of d.trabajos || []) await DB.tPut(t);
+      if (d.repostajes) await DB.kvPut('repostajes', d.repostajes);
+      if (d.filtros) await DB.kvPut('filtros', d.filtros);
       if (d.settings) { S = { ...DEF, ...d.settings }; await DB.kvPut('settings', S); }
       toast('Importado'); showSettings();
     });
@@ -472,7 +543,7 @@ async function importBackup(e) {
 let map, lyr = {}, posMarker, posCircle, followPos = false;
 function initMap() {
   if (map) return;
-  map = L.map('map', { zoomControl: false, attributionControl: true, maxZoom: 21 }).setView([43.22, -8.29], 15);
+  map = L.map('map', { zoomControl: false, attributionControl: true, maxZoom: 21, preferCanvas: true }).setView([43.22, -8.29], 15);
   const pnoa = L.tileLayer('https://www.ign.es/wmts/pnoa-ma?request=GetTile&service=WMTS&VERSION=1.0.0&Layer=OI.OrthoimageCoverage&Style=default&Format=image/jpeg&TileMatrixSet=GoogleMapsCompatible&TileMatrix={z}&TileRow={y}&TileCol={x}',
     { maxNativeZoom: 19, maxZoom: 21, attribution: 'PNOA © IGN' });
   const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 21, attribution: '© OpenStreetMap' });
@@ -481,6 +552,8 @@ function initMap() {
   L.control.scale({ imperial: false, position: 'topleft' }).addTo(map);
   lyr.finca = L.layerGroup().addTo(map);
   lyr.plan = L.layerGroup().addTo(map);
+  lyr.real = L.layerGroup().addTo(map);
+  lyr.desv = L.layerGroup().addTo(map);
   lyr.tmp = L.layerGroup().addTo(map);
   lyr.edit = L.layerGroup().addTo(map);
   map.on('dragstart', () => { followPos = false; });
@@ -489,8 +562,9 @@ function initMap() {
 
 async function openFinca(id) {
   cur = await DB.get(id); if (!cur) return showList();
+  viewTrab = null; trabCache = null;
   view = 'map';
-  setHeader('‹ Fincas', cur.nombre, '⋯', () => { if (busy()) return toast('Termina o cancela la operación en curso'); stopGPS(); showList(); }, () => fincaForm(cur));
+  setHeader('‹ Fincas', cur.nombre, '⋯', () => { if (busy()) return toast('Termina o cancela la operación en curso'); stopGPS(); showList(); }, fincaMenu);
   $('vList').classList.add('hidden'); $('bNueva').classList.add('hidden'); $('vSet').classList.add('hidden');
   $('mapWrap').classList.remove('hidden');
   initMap(); setTimeout(() => map.invalidateSize(), 50);
@@ -502,14 +576,17 @@ async function openFinca(id) {
 function drawFinca(fit) {
   lyr.finca.clearLayers(); lyr.plan.clearLayers();
   if (!cur) return;
-  if (cur.plan && planVisible && !planStale(cur)) drawPlan(cur.plan, lyr.plan);
+  if (cur.plan && CFG.plan && !planStale(cur)) drawPlan(cur.plan, lyr.plan);
+  else if (cur.plan && CFG.noAlc && !planStale(cur)) drawPlan({ ...cur.plan, parts: [], arrows: [] }, lyr.plan);
   if (cur.linde) {
-    L.polygon(cur.linde.coords, { color: '#1b5e20', weight: 2.5, fillColor: '#a5d6a7', fillOpacity: .35 }).addTo(lyr.finca);
+    L.polygon(cur.linde.coords, { color: '#1b5e20', weight: 2.5, fill: CFG.area, fillColor: '#a5d6a7', fillOpacity: .35, interactive: false }).addTo(lyr.finca);
   }
-  (cur.exclusiones || []).forEach(e => {
+  if (CFG.arboles) drawArboles(cur, lyr.finca);
+  if (CFG.excl) (cur.exclusiones || []).forEach(e => {
     L.polygon(e.coords, { color: '#b71c1c', weight: 2, dashArray: '6 4', fillColor: '#757575', fillOpacity: .55 })
       .bindTooltip(esc(e.nombre), { sticky: true }).addTo(lyr.finca);
   });
+  drawTrabView();
   if (fit) {
     const all = [...(cur.linde ? cur.linde.coords : []), ...(cur.exclusiones || []).flatMap(e => e.coords)];
     if (all.length) map.fitBounds(L.latLngBounds(all), { padding: [30, 30], maxZoom: 19 });
@@ -517,7 +594,7 @@ function drawFinca(fit) {
 }
 
 function showMain() { $('tbMain').classList.remove('hidden'); $('pRec').classList.add('hidden'); $('pTool').classList.add('hidden'); }
-function busy() { return !!(rec || draw || edit || review || planRev); }
+function busy() { return !!(rec || draw || edit || review || planRev || work || mallaW); }
 
 /* ---------- GPS ---------- */
 let watchId = null, lastPos = null, wakeLock = null;
@@ -539,6 +616,7 @@ function onPos(p) {
   } else { posMarker.setLatLng(ll); posCircle.setLatLng(ll).setRadius(c.accuracy); }
   if (followPos) map.panTo(ll, { animate: false });
   if (rec) recPoint(lastPos);
+  if (work) workPoint(lastPos);
 }
 $('bLoc').onclick = () => {
   startGPS();
@@ -689,7 +767,11 @@ function checkExclInside(coords) {
   const out = coords.filter(c => !Geo.inPoly(P.fwd(c[0], c[1]), L0)).length;
   if (out) toast(`Aviso: ${out} vértice(s) de la exclusión quedan fuera del linde.`, 4000);
 }
-async function saveCur() { cur.mod = Date.now(); await DB.put(cur); }
+async function saveCur() {
+  cur.mod = Date.now();
+  if (cur.malla && cur.linde) { const r = genArboles(cur); if (!r.error) { cur.malla.arboles = r.arboles; cur.malla.sepFila = r.sepFila; cur.malla.sepFilas = r.sepFilas; } }
+  await DB.put(cur);
+}
 
 /* =========================================================
    DIBUJO MANUAL
@@ -828,7 +910,6 @@ function infoSheet() {
   sheet(`<h3>${esc(cur.nombre)}</h3>
     <div class="card">
       <div class="kv"><span>Tipo</span><span>${cur.tipo === 'monte' ? 'Monte / plantación' : 'Abierta'}</span></div>
-      ${cur.refCat ? `<div class="kv"><span>Ref. catastral</span><span>${esc(cur.refCat)}</span></div>` : ''}
       <div class="kv"><span>Linde</span><span>${cur.linde ? met[cur.linde.metodo] || cur.linde.metodo : '—'}</span></div>
       ${cur.linde && cur.linde.accMed ? `<div class="kv"><span>Precisión media medición</span><span>±${fmt(cur.linde.accMed, 1)} m</span></div>` : ''}
       ${cur.linde && cur.linde.offset ? `<div class="kv"><span>Corrección tractor</span><span>${fmt(cur.linde.offset, 2)} m</span></div>` : ''}
@@ -951,17 +1032,32 @@ const Planner = (() => {
     const nHauto = 1 + Math.ceil(Math.max(0, need - w) / we);
     const nH = opt.nH > 0 ? Math.round(opt.nH) : nHauto;
     const warn = [];
+    const monte = f.tipo === 'monte' && f.malla && f.malla.arboles && f.malla.arboles.length >= 2;
+    let nHm = nH, treeRows = null;
+    if (monte) {
+      const hT = S.holguraTronco, vivos = f.malla.arboles.filter(a => !a[4]).map(a => P.fwd(a[0], a[1]));
+      let dmin = Infinity;
+      for (const t of vivos) for (let i = 0; i < fieldXY.length; i++) {
+        const a = fieldXY[i], b = fieldXY[(i + 1) % fieldXY.length], dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1e-12;
+        let u = ((t[0] - a[0]) * dx + (t[1] - a[1]) * dy) / L2; u = Math.max(0, Math.min(1, u));
+        dmin = Math.min(dmin, Math.hypot(t[0] - a[0] - u * dx, t[1] - a[1] - u * dy));
+      }
+      const kMax = dmin >= hT + w ? Math.floor((dmin - hT - w) / we) + 1 : 0;
+      nHm = Math.min(nH, kMax);
+      if (nHm < nHauto) warn.push(`Cabecera libre entre árboles y linde: ${fmt(Math.max(0, dmin - hT), 1)} m → ${nHm} de ${nHauto} vueltas necesarias. Los giros requerirán maniobras o salir de la finca.`);
+    }
 
     // anillos de cabecera
     const hl = [];
-    for (let k = 0; k < nH; k++) {
+    for (let k = 0; k < (monte ? nHm : nH); k++) {
       const ps = off(field, -(w / 2 + k * we)).filter(p => areaP(p) > 4);
       if (!ps.length) break;
       hl.push(ps.map(p => Geo.ccw(frC(p))));
     }
-    if (!hl.length) return { error: 'La finca es demasiado pequeña para el apero.' };
-    if (hl.length < nH) warn.push('La finca se cubre solo con vueltas perimetrales.');
-    const inner = off(field, -(w + (hl.length - 1) * we));
+    if (!hl.length && !monte) return { error: 'La finca es demasiado pequeña para el apero.' };
+    if (hl.length < nH && !monte) warn.push('La finca se cubre solo con vueltas perimetrales.');
+    const inner = hl.length ? off(field, -(w + (hl.length - 1) * we)) : off(field, -w / 2);
+    if (!inner.length) return { error: 'La finca es demasiado pequeña para el apero.' };
     const marg = S.margenObstaculo;
     const obsInf = obs.length ? off(obs, w / 2 + marg, true) : [];
     const region = obsInf.length ? boolOp('diff', inner, obsInf) : inner;
@@ -971,19 +1067,48 @@ const Planner = (() => {
       if (areaC(boolOp('int', obsInf, hlZone)) > 0.5) warn.push('Hay exclusiones dentro de la zona de cabecera: revisa ahí los giros.');
     }
     // anillo de traslado (centro de la cabecera)
-    const trRingXY = hl[Math.floor((hl.length - 1) / 2)].reduce((a, b) => Geo.area(a) >= Geo.area(b) ? a : b);
+    const trRingXY = (hl.length ? hl[Math.floor((hl.length - 1) / 2)] : inner.map(p => Geo.ccw(frC(p)))).reduce((a, b) => Geo.area(a) >= Geo.area(b) ? a : b);
     const trRing = mkRing(trRingXY);
 
     /* pasadas para un azimut */
     const regionPts = region.flatMap(frC);
+    function extent(u, n) {
+      let tmin = Infinity, tmax = -Infinity, smin = Infinity, smax = -Infinity;
+      for (const p of regionPts) { const t = p[0] * n[0] + p[1] * n[1], q = p[0] * u[0] + p[1] * u[1]; if (t < tmin) tmin = t; if (t > tmax) tmax = t; if (q < smin) smin = q; if (q > smax) smax = q; }
+      return { tmin, tmax, smin, smax };
+    }
     function swaths(az) {
       const u = [Math.sin(az * D2R), Math.cos(az * D2R)], n = [u[1], -u[0]];
       if (!regionPts.length) return { segs: [], u, n, lines: 0, az };
-      let tmin = Infinity, tmax = -Infinity, smin = Infinity, smax = -Infinity;
-      for (const p of regionPts) { const t = p[0] * n[0] + p[1] * n[1], q = p[0] * u[0] + p[1] * u[1]; if (t < tmin) tmin = t; if (t > tmax) tmax = t; if (q < smin) smin = q; if (q > smax) smax = q; }
+      const { tmin, tmax } = extent(u, n);
       const ts = [], t1 = tmin + w / 2 - s, tN = tmax - w / 2 + s;
       if (tN <= t1) ts.push((tmin + tmax) / 2);
       else { for (let t = t1; t < tN - 1e-6; t += we) ts.push(t); if (tN - ts[ts.length - 1] > 0.25 * we) ts.push(tN); }
+      return makeSegs(u, n, ts, az);
+    }
+    /* monte: pasadas por calles entre filas de árboles */
+    function rowSwaths() {
+      const { A, ab, ac } = mallaVec(f, P);
+      const u = Geo.nrm(ab); let n = [u[1], -u[0]];
+      if (ac[0] * n[0] + ac[1] * n[1] < 0) n = [-n[0], -n[1]];
+      const sp = ac[0] * n[0] + ac[1] * n[1], tA = A[0] * n[0] + A[1] * n[1], az = ((Math.atan2(u[0], u[1]) / D2R) + 360) % 180;
+      if (!regionPts.length) return { segs: [], u, n, lines: 0, az };
+      const js = f.malla.arboles.map(a => a[3]), j0 = Math.min(...js), j1 = Math.max(...js);
+      const hT = S.holguraTronco, c1 = hT + w / 2, c2 = sp - hT - w / 2, cs = [];
+      if (c2 <= c1 + 0.05) { cs.push(sp / 2); warn.push('Calle más estrecha que apero + holguras: una pasada centrada por calle.'); }
+      else { const np = Math.ceil((c2 - c1) / we) + 1; for (let k = 0; k < np; k++) cs.push(c1 + k * (c2 - c1) / (np - 1)); }
+      const { tmin, tmax } = extent(u, n), ts = [];
+      for (let j = j0; j < j1; j++) cs.forEach(c => ts.push(tA + j * sp + c));
+      for (let t = tA + j0 * sp - c1; t > tmin - w / 2 + s; t -= we) ts.push(t);
+      for (let t = tA + j1 * sp + c1; t < tmax + w / 2 - s; t += we) ts.push(t);
+      // franjas de árboles (no accesibles)
+      const rows = new Map();
+      f.malla.arboles.forEach(a => { const q = P.fwd(a[0], a[1]), sv = q[0] * u[0] + q[1] * u[1]; const r = rows.get(a[3]) || [Infinity, -Infinity]; rows.set(a[3], [Math.min(r[0], sv), Math.max(r[1], sv)]); });
+      treeRows = [...rows.entries()].map(([j, [s0, s1]]) => { const t = tA + j * sp; return [[u[0] * (s0 - hT) + n[0] * t, u[1] * (s0 - hT) + n[1] * t], [u[0] * (s1 + hT) + n[0] * t, u[1] * (s1 + hT) + n[1] * t]]; });
+      return makeSegs(u, n, ts.sort((a, b) => a - b), az);
+    }
+    function makeSegs(u, n, ts, az) {
+      const { smin, smax } = extent(u, n);
       const lines = ts.map(t => [[u[0] * (smin - 5) + n[0] * t, u[1] * (smin - 5) + n[1] * t], [u[0] * (smax + 5) + n[0] * t, u[1] * (smax + 5) + n[1] * t]]);
       const segs = [];
       for (const pl of clipLines(lines, region)) {
@@ -1000,7 +1125,8 @@ const Planner = (() => {
 
     // candidatos de dirección
     let cands;
-    if (opt.az != null && isFinite(opt.az)) cands = [((opt.az % 180) + 180) % 180];
+    if (monte) cands = ['rows'];
+    else if (opt.az != null && isFinite(opt.az)) cands = [((opt.az % 180) + 180) % 180];
     else {
       const sc = []; for (let a = 0; a < 180; a++) sc.push([a, quick(swaths(a))]);
       sc.sort((x, y) => x[1] - y[1]); cands = [];
@@ -1105,8 +1231,8 @@ const Planner = (() => {
     /* fase 3: pasadas, se evalúan los candidatos */
     let best = null;
     for (const az of cands) {
-      const sw = swaths(az), so = solve(sw, cur);
-      if (!best || so.cost < best.so.cost) best = { sw, so, az };
+      const sw = az === 'rows' ? rowSwaths() : swaths(az), so = solve(sw, cur);
+      if (!best || so.cost < best.so.cost) best = { sw, so, az: Math.round(sw.az) };
     }
     const { sw, so } = best, parts = pre.slice();
     const cnt = { U: 0, K: 0, O: 0, rodeo: 0, tras: 0 };
@@ -1173,6 +1299,12 @@ const Planner = (() => {
     const aWork = areaC(work), aCov = areaC(boolOp('int', work, covered));
     const missed = boolOp('diff', work, covered).filter(p => areaP(p) > 0.5 && C.Clipper.Orientation(p));
     const aMiss = Math.max(0, aWork - aCov);
+    let aTree = 0;
+    if (monte && treeRows && treeRows.length) {
+      const co2 = new C.ClipperOffset(2, 0.05 * SC); treeRows.forEach(l => co2.AddPath(toC(l), C.JoinType.jtSquare, C.EndType.etOpenButt));
+      const strips = new C.Paths(); co2.Execute(strips, S.holguraTronco * SC);
+      aTree = areaC(boolOp('int', work, strips));
+    }
 
     const toLL = xy => Geo.toLL(xy, P).map(q => [+q[0].toFixed(7), +q[1].toFixed(7)]);
     return {
@@ -1187,7 +1319,8 @@ const Planner = (() => {
         L: { trabajo: L.trabajo, giro: L.giro, reversa: L.reversa, traslado: L.tras, total: L.trabajo + L.giro + L.reversa + L.tras },
         t: { trabajo: tTrab, giros: tGiro, traslado: tTras, esquinas: tEsq, total: tTot },
         litros: tTot / 3600 * S.consumo,
-        area: { objetivo: aWork, cubierta: aCov, noAlcanzada: aMiss, cobertura: aWork ? aCov / aWork : 0 },
+        area: { objetivo: aWork, cubierta: aCov, noAlcanzada: aMiss, cobertura: aWork ? aCov / aWork : 0, franjaArboles: aTree, coberturaAlcanzable: aWork - aTree > 0 ? Math.min(1, aCov / (aWork - aTree)) : 0 },
+        monte,
         haH: aWork / 10000 / (tTot / 3600)
       }
     };
@@ -1204,7 +1337,7 @@ function geomKey(f) {
 /* =========================================================
    PLAN — interfaz
    ========================================================= */
-let planRev = null, showMissed = false, planVisible = true;
+let planRev = null;
 const PLAN_STYLE = {
   trabajo: { color: '#1565c0', weight: 3.5, opacity: .95 },
   giro: { color: '#1e88e5', weight: 2, opacity: .85 },
@@ -1214,7 +1347,7 @@ const PLAN_STYLE = {
 function drawPlan(pl, layer) {
   layer.clearLayers();
   if (!pl) return;
-  if (showMissed) pl.missed.forEach(m => L.polygon(m, { color: '#ef6c00', weight: 1, fillColor: '#ff9800', fillOpacity: .55, interactive: false }).addTo(layer));
+  if (CFG.noAlc) pl.missed.forEach(m => L.polygon(m, { color: '#ef6c00', weight: 1, fillColor: '#ff9800', fillOpacity: .55, interactive: false }).addTo(layer));
   pl.parts.forEach(p => L.polyline(p.ll, { ...PLAN_STYLE[p.type], interactive: false }).addTo(layer));
   pl.arrows.forEach(a => L.marker(a.ll, { interactive: false, icon: L.divIcon({ className: '', html: `<div class="arr" style="transform:rotate(${a.az}deg)"></div>`, iconSize: [12, 12], iconAnchor: [6, 6] }) }).addTo(layer));
   const all = pl.parts; if (!all.length) return;
@@ -1227,7 +1360,7 @@ const planStale = f => f.plan && f.plan.geomKey !== geomKey(f);
 function planMenu() {
   if (busy()) return;
   if (!cur.linde) return toast('Primero define el linde de la finca');
-  if (cur.tipo === 'monte') return toast('La planificación de monte llega en la fase F4');
+  if (cur.tipo === 'monte' && !(cur.malla && cur.malla.arboles && cur.malla.arboles.length)) { toast('Define primero la malla de árboles'); return mallaMenu(); }
   if (!window.ClipperLib) return toast('No se ha cargado la librería de geometría. Revisa la conexión.');
   if (!cur.plan) return planOptions();
   const st = cur.plan.stats;
@@ -1240,14 +1373,16 @@ function planMenu() {
     </div>
     <button class="opt" id="pDet">📋 Ver detalle</button>
     <button class="opt" id="pRe">🔄 Recalcular / cambiar opciones</button>
-    <button class="opt" id="pVis">${planVisible ? '🙈 Ocultar plan' : '👁 Mostrar plan'}</button>
-    <button class="opt" id="pMis">${showMissed ? '⬜ Ocultar zonas no alcanzadas' : '🟧 Mostrar zonas no alcanzadas'}</button>
+    ${cur.tipo === 'monte' ? '<button class="opt" id="pMal">🌲 Malla de árboles</button>' : ''}
+    <button class="opt" id="pVis">${CFG.plan ? '🙈 Ocultar plan' : '👁 Mostrar plan'}</button>
+    <button class="opt" id="pMis">${CFG.noAlc ? '⬜ Ocultar zonas no alcanzadas' : '🟧 Mostrar zonas no alcanzadas'}</button>
     <button class="opt" id="pDel" style="color:var(--err)">🗑 Borrar plan</button>`,
     () => {
       $('pDet').onclick = () => planDetail(cur.plan);
       $('pRe').onclick = planOptions;
-      $('pVis').onclick = () => { planVisible = !planVisible; closeSheet(); drawFinca(); };
-      $('pMis').onclick = () => { showMissed = !showMissed; planVisible = true; closeSheet(); drawFinca(); };
+      $('pVis').onclick = () => { CFG.plan = !CFG.plan; saveCfg(); closeSheet(); drawFinca(); };
+      $('pMis').onclick = () => { CFG.noAlc = !CFG.noAlc; saveCfg(); closeSheet(); drawFinca(); };
+      if ($('pMal')) $('pMal').onclick = () => { closeSheet(); mallaMenu(); };
       $('pDel').onclick = () => confirmSheet('¿Borrar el plan?', 'Borrar', async () => { cur.plan = null; await saveCur(); drawFinca(); }, true);
     });
 }
@@ -1257,8 +1392,9 @@ function planOptions() {
   const need = Planner.headlandNeed(S), we = S.aperoAncho - Math.min(S.solape, S.aperoAncho / 2);
   const nHauto = 1 + Math.ceil(Math.max(0, need - S.aperoAncho) / we);
   sheet(`<h3>Calcular plan</h3>
-    <label class="f">Dirección de las pasadas</label>
-    <div class="seg" id="oDir"><button data-v="auto">Automática (óptima)</button><button data-v="man">Manual</button></div>
+    ${cur.tipo === 'monte' ? '<div class="note">Monte: pasadas paralelas a las filas de árboles (A→B), ' + 'dos por calle con superposición.</div>' : ''}
+    <label class="f" ${cur.tipo === 'monte' ? 'style="display:none"' : ''}>Dirección de las pasadas</label>
+    <div class="seg" id="oDir" ${cur.tipo === 'monte' ? 'style="display:none"' : ''}><button data-v="auto">Automática (óptima)</button><button data-v="man">Manual</button></div>
     <div class="srow ${o.dirMode === 'man' ? '' : 'hidden'}" id="oAzR"><span>Azimut (° desde el norte, 0–179)</span><input class="inp" id="oAz" inputmode="decimal" value="${o.az}" style="width:90px;text-align:right"></div>
     <label class="f">Vueltas perimetrales (cabecera)</label>
     <div class="seg" id="oNH"><button data-v="auto">Auto (${nHauto})</button><button data-v="man">Manual</button></div>
@@ -1313,11 +1449,11 @@ function planReview(pl) {
   const st = pl.stats;
   showTool('Plan calculado',
     `<b>${fmtH(st.t.total / 3600)}</b> · <b>${fmt(st.litros, 1)} L</b> · ${fmt(st.haH, 2)} ha/h · cobertura ${fmt(st.area.cobertura * 100, 1)} %<br>
-     Rumbo ${pl.az}° · ${st.nVueltas} vueltas perimetrales · ${st.nPasadas} pasadas · giros U ${st.giros.U} / K ${st.giros.K} / Ω ${st.giros.O}` +
+     ${st.monte ? 'Franja de árboles no accesible ' + fmtArea(st.area.franjaArboles) + ' · cobertura alcanzable ' + fmt(st.area.coberturaAlcanzable * 100, 1) + ' %<br>' : ''}Rumbo ${pl.az}° · ${st.nVueltas} vueltas perimetrales · ${st.nPasadas} pasadas · giros U ${st.giros.U} / K ${st.giros.K} / Ω ${st.giros.O}` +
     (pl.warn.length ? '<br>⚠️ ' + pl.warn.join('<br>⚠️ ') : ''),
     [['Descartar', 'sec', () => { planRev = null; lyr.tmp.clearLayers(); drawFinca(); showMain(); }],
      ['Detalle', 'sec', () => planDetail(pl)],
-     ['Guardar', '', async () => { cur.plan = pl; planVisible = true; await saveCur(); planRev = null; lyr.tmp.clearLayers(); drawFinca(); showMain(); toast('Plan guardado'); }]]);
+     ['Guardar', '', async () => { cur.plan = pl; CFG.plan = true; saveCfg(); await saveCur(); planRev = null; lyr.tmp.clearLayers(); drawFinca(); showMain(); toast('Plan guardado'); }]]);
 }
 function planDetail(pl) {
   const st = pl.stats, m = v => fmt(v, 0) + ' m', h = s => fmtH(s / 3600);
@@ -1354,8 +1490,709 @@ function planDetail(pl) {
       <div class="kv"><span>Cubierta por el plan</span><span>${fmtArea(st.area.cubierta)}</span></div>
       <div class="kv"><span>No alcanzada (esquinas, bordes)</span><span>${fmtArea(st.area.noAlcanzada)}</span></div>
       <div class="kv"><span>Cobertura teórica</span><span>${fmt(st.area.cobertura * 100, 1)} %</span></div>
+      ${st.monte ? `<div class="kv"><span>Franja de árboles (holgura ${fmt(S.holguraTronco, 2)} m)</span><span>${fmtArea(st.area.franjaArboles)}</span></div>
+      <div class="kv"><span>Cobertura alcanzable</span><span>${fmt(st.area.coberturaAlcanzable * 100, 1)} %</span></div>` : ''}
     </div>
     <div class="note">Azul continuo: trabajo · azul fino: giros · discontinuo: marcha atrás · punteado: traslado. Calculado en ${pl.ms} ms.</div>`);
+}
+
+/* =========================================================
+   F5 — FILTROS DE CAPAS, HISTÓRICO, EXPORTACIÓN
+   ========================================================= */
+const CFG_DEF = { area: true, excl: true, arboles: true, plan: true, noAlc: false, real: true, desv: true, limpia: true, solape: true, pendiente: false };
+let CFG = { ...CFG_DEF }, viewTrab = null;
+const CAPAS = [
+  ['area', 'Área finca (linde)', '#a5d6a7'], ['excl', 'Exclusiones', '#757575'], ['arboles', 'Árboles', '#33691e'],
+  ['plan', 'Trayectoria ideal', '#1565c0'], ['noAlc', 'Zonas no alcanzadas (plan)', '#ff9800'],
+  ['real', 'Trayectoria real', '#7b1fa2'], ['desv', 'Desviaciones', '#d50000'],
+  ['limpia', 'Área real limpia', '#1b5e20'], ['solape', 'Solape (≥ 2 pasadas)', '#fdd835'], ['pendiente', 'Área pendiente', '#9e9e9e']
+];
+const PRESETS_DEF = [
+  { nombre: 'Todo', cfg: { ...CFG_DEF, noAlc: true, pendiente: true } },
+  { nombre: 'Plan', cfg: { area: true, excl: true, arboles: true, plan: true, noAlc: true, real: false, desv: false, limpia: false, solape: false, pendiente: false } },
+  { nombre: 'Ideal vs real', cfg: { area: true, excl: true, arboles: false, plan: true, noAlc: false, real: true, desv: true, limpia: false, solape: false, pendiente: false } },
+  { nombre: 'Cobertura', cfg: { area: false, excl: true, arboles: false, plan: false, noAlc: false, real: false, desv: false, limpia: true, solape: true, pendiente: true } }
+];
+async function saveCfg() { try { await DB.kvPut('capas', CFG); } catch { } }
+
+/* Dibujo del trabajo seleccionado (fuera del modo trabajo) */
+async function drawTrabView() {
+  lyr.real.clearLayers(); lyr.desv.clearLayers(); if (lyr.cov) { map.removeLayer(lyr.cov); lyr.cov = null; }
+  if (work) { drawRuns(work.outs, CFG, lyr.real, lyr.desv); drawCov(work.g); return; }
+  if (!cur || !cur.linde) return;
+  const trs = await DB.tByFinca(cur.id);
+  const t = trs.find(x => x.id === viewTrab) || (viewTrab === 'none' ? null : trs[0]);
+  if (!t || !(CFG.real || CFG.desv || CFG.limpia || CFG.solape || CFG.pendiente)) return;
+  const key = t.id + ':' + t.sesiones.reduce((s, x) => s + x.pts.length, 0) + ':' + geomKey(cur) + ':' + (cur.plan ? cur.plan.fecha : 0);
+  if (!trabCache || trabCache.key !== key) trabCache = { key, ...rebuildTrab(cur, t) };
+  drawRuns(trabCache.outs, CFG, lyr.real, lyr.desv);
+  drawCov(trabCache.g);
+}
+
+async function capasSheet() {
+  const trs = cur ? await DB.tByFinca(cur.id) : [];
+  const pres = (await DB.kvGet('filtros')) || [];
+  const sel = viewTrab && trs.some(t => t.id === viewTrab) ? viewTrab : viewTrab === 'none' ? 'none' : (trs[0] ? trs[0].id : 'none');
+  sheet(`<h3>Capas y filtros</h3>
+    <div class="sgrp">Filtros</div>
+    <div class="chips">${[...PRESETS_DEF, ...pres].map((p, i) => `<button class="chip" data-p="${i}">${esc(p.nombre)}${i >= PRESETS_DEF.length ? ' <span data-del="' + (i - PRESETS_DEF.length) + '">✕</span>' : ''}</button>`).join('')}</div>
+    <div class="sgrp">Capas</div>
+    <div class="card">${CAPAS.map(([k, n, c]) => `<label class="srow" style="cursor:pointer"><span><i class="sw" style="background:${c}"></i>${n}</span><input type="checkbox" data-k="${k}" ${CFG[k] ? 'checked' : ''} style="width:auto"></label>`).join('')}</div>
+    <div class="sgrp">Trabajo mostrado</div>
+    <select class="inp" id="cTrab">${trs.map(t => `<option value="${t.id}" ${t.id === sel ? 'selected' : ''}>${new Date(t.inicio).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })} · ${t.estado}${t.resumen ? ' · ' + fmt(t.resumen.cobertura * 100, 0) + ' %' : ''}</option>`).join('')}<option value="none" ${sel === 'none' ? 'selected' : ''}>Ninguno</option></select>
+    <button class="btn sec" id="cSave" style="margin-top:12px">💾 Guardar combinación actual como filtro</button>`,
+    sh => {
+      sh.querySelectorAll('[data-k]').forEach(i => i.onchange = () => { CFG[i.dataset.k] = i.checked; saveCfg(); drawFinca(); });
+      $('cTrab').onchange = e => { viewTrab = e.target.value; trabCache = null; drawFinca(); };
+      sh.querySelectorAll('.chip').forEach(b => b.onclick = async ev => {
+        const d = ev.target.dataset.del;
+        if (d != null) { pres.splice(+d, 1); await DB.kvPut('filtros', pres); return capasSheet(); }
+        CFG = { ...CFG_DEF, ...[...PRESETS_DEF, ...pres][+b.dataset.p].cfg }; saveCfg(); drawFinca(); capasSheet();
+      });
+      $('cSave').onclick = () => sheet(`<h3>Nuevo filtro</h3><label class="f">Nombre</label><input class="inp" id="fpN" placeholder="p. ej. Revisión desvíos"><button class="btn" id="fpOk" style="margin-top:12px">Guardar</button>`,
+        () => { $('fpOk').onclick = async () => { const n = $('fpN').value.trim(); if (!n) return toast('Indica un nombre'); pres.push({ nombre: n, cfg: { ...CFG } }); await DB.kvPut('filtros', pres); capasSheet(); }; });
+    });
+}
+
+/* Histórico y comparación */
+async function historicoSheet() {
+  const trs = await DB.tByFinca(cur.id);
+  if (!trs.length) return toast('Aún no hay trabajos registrados en esta finca');
+  for (const t of trs) if (!t.resumen) { t.resumen = resumenTrab(t, rebuildTrab(cur, t)); }
+  const pc = v => v == null ? '–' : fmt(v * 100, 0) + ' %';
+  sheet(`<h3>Histórico · ${esc(cur.nombre)}</h3>
+    ${trs.map(t => `<button class="opt" data-id="${t.id}">${new Date(t.inicio).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })} ${t.estado === 'abierto' ? '<b style="color:var(--warn)">· abierto</b>' : ''}
+      <small>${fmtH(t.resumen.horas)} · ${fmtArea(t.resumen.limpia)} · cobertura ${pc(t.resumen.cobertura)} · η ${pc(t.resumen.eta)} · ${fmt(t.resumen.litros, 1)} L</small></button>`).join('')}
+    ${trs.length > 1 ? '<button class="btn sec" id="hCmp" style="margin-top:6px">📊 Comparar trabajos</button>' : ''}`,
+    sh => {
+      sh.querySelectorAll('[data-id]').forEach(b => b.onclick = () => trabOpts(trs.find(t => t.id === b.dataset.id)));
+      if ($('hCmp')) $('hCmp').onclick = () => compararSheet(trs);
+    });
+}
+function trabOpts(t) {
+  sheet(`<h3>Trabajo del ${new Date(t.inicio).toLocaleDateString('es-ES')}</h3>
+    <button class="opt" id="tVer">🗺 Ver en el mapa</button>
+    <button class="opt" id="tRes">📋 Resumen</button>
+    ${t.estado === 'abierto' ? '<button class="opt" id="tCont">▶️ Continuar</button><button class="opt" id="tCer">✅ Marcar como finalizado</button>' : ''}
+    <button class="opt" id="tDel" style="color:var(--err)">🗑 Eliminar</button>`,
+    () => {
+      $('tVer').onclick = () => { viewTrab = t.id; trabCache = null; closeSheet(); drawFinca(); };
+      $('tRes').onclick = () => resumenSheet(t);
+      if ($('tCont')) $('tCont').onclick = () => { closeSheet(); startWork(t); };
+      if ($('tCer')) $('tCer').onclick = async () => { t.estado = 'cerrado'; t.resumen = resumenTrab(t, rebuildTrab(cur, t)); await DB.tPut(t); closeSheet(); toast('Trabajo finalizado'); };
+      $('tDel').onclick = () => confirmSheet('¿Eliminar este trabajo y su recorrido?', 'Eliminar', async () => { await DB.tDel(t.id); trabCache = null; if (viewTrab === t.id) viewTrab = null; drawFinca(); }, true);
+    });
+}
+function compararSheet(trs) {
+  const rows = [
+    ['Fecha', t => new Date(t.inicio).toLocaleDateString('es-ES')],
+    ['Estado', t => t.estado], ['Tiempo', t => fmtH(t.resumen.horas)],
+    ['Limpia', t => fmtArea(t.resumen.limpia)], ['Cobertura', t => fmt(t.resumen.cobertura * 100, 1) + ' %'],
+    ['Solape', t => fmt(t.resumen.solapePct * 100, 1) + ' %'], ['L real', t => fmt(t.resumen.L, 0) + ' m'],
+    ['η', t => t.resumen.eta == null ? '–' : fmt(t.resumen.eta * 100, 1) + ' %'],
+    ['Desv. media', t => t.resumen.devMed == null ? '–' : fmt(t.resumen.devMed, 2) + ' m'],
+    ['v media', t => t.resumen.vMedia == null ? '–' : fmt(t.resumen.vMedia, 2) + ' km/h'],
+    ['Litros', t => fmt(t.resumen.litros, 1)], ['ha/h', t => t.resumen.haH == null ? '–' : fmt(t.resumen.haH, 2)],
+    ['L/ha', t => t.resumen.LHa == null ? '–' : fmt(t.resumen.LHa, 1)]
+  ];
+  sheet(`<h3>Comparación de trabajos</h3><div style="overflow-x:auto"><table class="cmp">
+    ${rows.map(([n, f]) => `<tr><th>${n}</th>${trs.map(t => `<td>${f(t)}</td>`).join('')}</tr>`).join('')}</table></div>`);
+}
+
+/* ---------- Exportación ---------- */
+function utm(lat, lon, zone) {
+  const a = 6378137, f = 1 / 298.257223563, e2 = f * (2 - f), ep2 = e2 / (1 - e2), k0 = 0.9996;
+  zone = zone || Math.floor((lon + 180) / 6) + 1;
+  const l0 = ((zone - 1) * 6 - 180 + 3) * D2R, phi = lat * D2R, lam = lon * D2R;
+  const N = a / Math.sqrt(1 - e2 * Math.sin(phi) ** 2), T = Math.tan(phi) ** 2, C = ep2 * Math.cos(phi) ** 2, A = Math.cos(phi) * (lam - l0);
+  const M = a * ((1 - e2 / 4 - 3 * e2 ** 2 / 64 - 5 * e2 ** 3 / 256) * phi - (3 * e2 / 8 + 3 * e2 ** 2 / 32 + 45 * e2 ** 3 / 1024) * Math.sin(2 * phi) + (15 * e2 ** 2 / 256 + 45 * e2 ** 3 / 1024) * Math.sin(4 * phi) - (35 * e2 ** 3 / 3072) * Math.sin(6 * phi));
+  const x = k0 * N * (A + (1 - T + C) * A ** 3 / 6 + (5 - 18 * T + T * T + 72 * C - 58 * ep2) * A ** 5 / 120) + 500000;
+  let y = k0 * (M + N * Math.tan(phi) * (A * A / 2 + (5 - T + 9 * C + 4 * C * C) * A ** 4 / 24 + (61 - 58 * T + T * T + 600 * C - 330 * ep2) * A ** 6 / 720));
+  if (lat < 0) y += 1e7;
+  return [x, y, zone];
+}
+function download(name, text, type) {
+  const blob = new Blob([text], { type }), a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+const safeName = s => s.replace(/[^\w\-áéíóúñÁÉÍÓÚÑ]+/g, '_');
+async function exportData() {
+  const trs = await DB.tByFinca(cur.id), t = trs.find(x => x.id === viewTrab) || trs[0] || null;
+  let R = null; if (t) R = rebuildTrab(cur, t);
+  const real = [];
+  if (R) { let run = []; R.outs.forEach(o => { if (!o) { if (run.length > 1) real.push(run); run = []; } else run.push({ ll: o[0], on: o[1], flag: o[2] }); }); if (run.length > 1) real.push(run); }
+  return { f: cur, t, R, real };
+}
+async function exportSheet() {
+  const trs = await DB.tByFinca(cur.id);
+  const t = trs.find(x => x.id === viewTrab) || trs[0];
+  sheet(`<h3>Exportar · ${esc(cur.nombre)}</h3>
+    <div class="note" style="margin-bottom:8px">Incluye linde, exclusiones, árboles, plan${t ? ' y el trabajo del ' + new Date(t.inicio).toLocaleDateString('es-ES') : ''}.</div>
+    <button class="opt" id="xDxf">📐 DXF (AutoCAD)<small>ETRS89 / UTM, capas separadas.</small></button>
+    <button class="opt" id="xKml">🌍 KML (Google Earth)</button>
+    <button class="opt" id="xGpx">🛰 GPX</button>
+    <button class="opt" id="xGeo">🧩 GeoJSON</button>
+    ${t ? '<button class="opt" id="xCsv">📄 CSV de puntos GPS del trabajo</button>' : ''}`,
+    () => {
+      $('xDxf').onclick = async () => download(safeName(cur.nombre) + '.dxf', buildDXF(await exportData()), 'application/dxf');
+      $('xKml').onclick = async () => download(safeName(cur.nombre) + '.kml', buildKML(await exportData()), 'application/vnd.google-earth.kml+xml');
+      $('xGpx').onclick = async () => download(safeName(cur.nombre) + '.gpx', buildGPX(await exportData()), 'application/gpx+xml');
+      $('xGeo').onclick = exportGeoJSON;
+      if ($('xCsv')) $('xCsv').onclick = () => {
+        let s = 'sesion;fecha_hora;lat;lon;precision_m;apero\n';
+        t.sesiones.forEach((x, i) => x.pts.forEach(p => { s += `${i + 1};${new Date(p[3]).toISOString()};${p[0]};${p[1]};${String(p[2]).replace('.', ',')};${p[4] ? 'trabajo' : 'levantado'}\n`; }));
+        download(safeName(cur.nombre) + '_trabajo.csv', s, 'text/csv');
+      };
+    });
+}
+function buildDXF({ f, real }) {
+  const zone = Math.floor((f.linde.coords[0][1] + 180) / 6) + 1;
+  const U = ll => utm(ll[0], ll[1], zone);
+  const out = ['0', 'SECTION', '2', 'HEADER', '9', '$INSUNITS', '70', '6', '0', 'ENDSEC', '0', 'SECTION', '2', 'TABLES', '0', 'TABLE', '2', 'LAYER', '70', '10'];
+  const layers = [['LINDE', 3], ['EXCLUSIONES', 8], ['ARBOLES', 94], ['PLAN_TRABAJO', 5], ['PLAN_GIROS', 4], ['PLAN_MARCHA_ATRAS', 4], ['PLAN_TRASLADOS', 151], ['REAL_TRABAJO', 6], ['REAL_LEVANTADO', 216], ['DESVIOS', 1], ['TEXTOS', 7]];
+  layers.forEach(([n, c]) => out.push('0', 'LAYER', '2', n, '70', '0', '62', String(c), '6', 'CONTINUOUS'));
+  out.push('0', 'ENDTAB', '0', 'ENDSEC', '0', 'SECTION', '2', 'ENTITIES');
+  const pl = (ll, layer, closed) => { out.push('0', 'POLYLINE', '8', layer, '66', '1', '70', closed ? '1' : '0'); ll.forEach(p => { const [x, y] = U(p); out.push('0', 'VERTEX', '8', layer, '10', x.toFixed(3), '20', y.toFixed(3), '30', '0'); }); out.push('0', 'SEQEND', '8', layer); };
+  pl(f.linde.coords, 'LINDE', true);
+  (f.exclusiones || []).forEach(e => pl(e.coords, 'EXCLUSIONES', true));
+  if (f.malla && f.malla.arboles) f.malla.arboles.forEach(a => { if (a[4]) return; const [x, y] = U(a); out.push('0', 'CIRCLE', '8', 'ARBOLES', '10', x.toFixed(3), '20', y.toFixed(3), '30', '0', '40', '0.3'); });
+  if (f.plan) f.plan.parts.forEach(p => pl(p.ll, { trabajo: 'PLAN_TRABAJO', giro: 'PLAN_GIROS', reversa: 'PLAN_MARCHA_ATRAS', tras: 'PLAN_TRASLADOS' }[p.type], false));
+  real.forEach(run => {
+    let cur_ = [], st = null;
+    const flush = () => { if (cur_.length > 1) pl(cur_, st ? 'REAL_TRABAJO' : 'REAL_LEVANTADO', false); };
+    run.forEach(q => { if (st !== q.on && cur_.length) { flush(); cur_ = [cur_[cur_.length - 1]]; } st = q.on; cur_.push(q.ll); }); flush();
+    let d = [];
+    run.forEach(q => { if (q.flag) d.push(q.ll); else { if (d.length > 1) pl(d, 'DESVIOS', false); d = []; } }); if (d.length > 1) pl(d, 'DESVIOS', false);
+  });
+  const c = U(f.linde.coords[0]);
+  out.push('0', 'TEXT', '8', 'TEXTOS', '10', c[0].toFixed(3), '20', (c[1] + 3).toFixed(3), '30', '0', '40', '2', '1', `${f.nombre} - ETRS89 UTM ${zone}N - ${fmtArea(Geo.areaLL(f.linde.coords))}`);
+  out.push('0', 'ENDSEC', '0', 'EOF');
+  return out.join('\r\n');
+}
+function buildKML({ f, t, real }) {
+  const c = ll => ll.map(p => `${p[1]},${p[0]},0`).join(' ');
+  const ring = ll => c([...ll, ll[0]]);
+  const sty = (id, line, w, fill) => `<Style id="${id}"><LineStyle><color>${line}</color><width>${w}</width></LineStyle><PolyStyle><color>${fill || '00000000'}</color></PolyStyle></Style>`;
+  const pm = (name, st, geom) => `<Placemark><name>${esc(name)}</name><styleUrl>#${st}</styleUrl>${geom}</Placemark>`;
+  const ls = ll => `<LineString><tessellate>1</tessellate><coordinates>${c(ll)}</coordinates></LineString>`;
+  let k = `<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${esc(f.nombre)}</name>` +
+    sty('linde', 'ff205e1b', 3, '66a7d6a5') + sty('excl', 'ff1c1cb7', 2, '99757575') + sty('plan', 'ffc06515', 2) + sty('giro', 'ffe5881e', 1) + sty('tras', 'fff6b564', 1) + sty('real', 'ffa21f7b', 3) + sty('lev', '99a21f7b', 1) + sty('desv', 'ff0000d5', 4);
+  k += `<Folder><name>Finca</name>` + pm('Linde', 'linde', `<Polygon><outerBoundaryIs><LinearRing><coordinates>${ring(f.linde.coords)}</coordinates></LinearRing></outerBoundaryIs></Polygon>`);
+  (f.exclusiones || []).forEach(e => k += pm(e.nombre, 'excl', `<Polygon><outerBoundaryIs><LinearRing><coordinates>${ring(e.coords)}</coordinates></LinearRing></outerBoundaryIs></Polygon>`));
+  if (f.malla && f.malla.arboles) k += pm('Árboles', 'linde', `<MultiGeometry>${f.malla.arboles.filter(a => !a[4]).map(a => `<Point><coordinates>${a[1]},${a[0]},0</coordinates></Point>`).join('')}</MultiGeometry>`);
+  k += '</Folder>';
+  if (f.plan) k += `<Folder><name>Plan (ideal)</name>${f.plan.parts.map((p, i) => pm(`${i + 1} ${p.type}`, p.type === 'trabajo' ? 'plan' : p.type === 'tras' ? 'tras' : 'giro', ls(p.ll))).join('')}</Folder>`;
+  if (real.length) {
+    k += `<Folder><name>Real ${t ? new Date(t.inicio).toLocaleDateString('es-ES') : ''}</name>`;
+    real.forEach((run, i) => { k += pm('Sesión ' + (i + 1), 'real', ls(run.map(q => q.ll))); let d = []; run.forEach(q => { if (q.flag) d.push(q.ll); else { if (d.length > 1) k += pm('Desvío', 'desv', ls(d)); d = []; } }); if (d.length > 1) k += pm('Desvío', 'desv', ls(d)); });
+    k += '</Folder>';
+  }
+  return k + '</Document></kml>';
+}
+function buildGPX({ f, t }) {
+  const pt = (p, tag, extra = '') => `<${tag} lat="${p[0]}" lon="${p[1]}">${extra}</${tag}>`;
+  let g = `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="LIMPFINC" xmlns="http://www.topografix.com/GPX/1/1"><metadata><name>${esc(f.nombre)}</name></metadata>`;
+  g += `<trk><name>Linde</name><trkseg>${[...f.linde.coords, f.linde.coords[0]].map(p => pt(p, 'trkpt')).join('')}</trkseg></trk>`;
+  (f.exclusiones || []).forEach(e => g += `<trk><name>${esc(e.nombre)}</name><trkseg>${[...e.coords, e.coords[0]].map(p => pt(p, 'trkpt')).join('')}</trkseg></trk>`);
+  if (f.plan) g += `<trk><name>Plan ideal</name>${f.plan.parts.map(p => `<trkseg>${p.ll.map(q => pt(q, 'trkpt')).join('')}</trkseg>`).join('')}</trk>`;
+  if (t) g += `<trk><name>Trabajo ${new Date(t.inicio).toLocaleDateString('es-ES')}</name>${t.sesiones.map(s => `<trkseg>${s.pts.map(q => pt(q, 'trkpt', `<time>${new Date(q[3]).toISOString()}</time><hdop>${(q[2] / 5).toFixed(1)}</hdop>`)).join('')}</trkseg>`).join('')}</trk>`;
+  return g + '</gpx>';
+}
+
+/* Menú de la finca (⋯) */
+function fincaMenu() {
+  if (busy()) return toast('Termina o cancela la operación en curso');
+  sheet(`<h3>${esc(cur.nombre)}</h3>
+    <button class="opt" id="fmCap">🗂 Capas y filtros</button>
+    <button class="opt" id="fmHis">🕘 Histórico de trabajos</button>
+    ${cur.tipo === 'monte' ? '<button class="opt" id="fmMal">🌲 Malla de árboles</button>' : ''}
+    <button class="opt" id="fmExp">📤 Exportar (DXF, KML, GPX, GeoJSON, CSV)</button>
+    <button class="opt" id="fmFuel">⛽ Registrar repostaje</button>
+    <button class="opt" id="fmEd">✎ Editar finca</button>`,
+    () => {
+      $('fmCap').onclick = capasSheet; $('fmHis').onclick = historicoSheet; $('fmExp').onclick = exportSheet;
+      $('fmFuel').onclick = repostajeSheet; $('fmEd').onclick = () => fincaForm(cur);
+      if ($('fmMal')) $('fmMal').onclick = () => { closeSheet(); mallaMenu(); };
+    });
+}
+
+/* =========================================================
+   F3 — TRABAJO EN TIEMPO REAL
+   Registro, posición de corte, cobertura, desviaciones, indicadores
+   ========================================================= */
+
+/* ---- Rejilla de cobertura (celdas de 0,25 m) ---- */
+function Grid(f) {
+  const P = Geo.projFor(f.linde.coords);
+  const lin = Geo.toXY(f.linde.coords, P), exs = (f.exclusiones || []).map(e => Geo.toXY(e.coords, P));
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  lin.forEach(p => { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); });
+  x0 -= 4; y0 -= 4; x1 += 4; y1 += 4;
+  let cs = 0.25; while (((x1 - x0) / cs) * ((y1 - y0) / cs) > 4e6) cs *= 2;
+  const cols = Math.ceil((x1 - x0) / cs), rows = Math.ceil((y1 - y0) / cs), N = cols * rows;
+  const mask = new Uint8Array(N), cnt = new Uint8Array(N), lastT = new Float32Array(N).fill(-1e9);
+  const fill = (poly, val) => {
+    for (let r = 0; r < rows; r++) {
+      const y = y0 + (r + .5) * cs, xs = [];
+      for (let i = 0, n = poly.length; i < n; i++) { const a = poly[i], b = poly[(i + 1) % n]; if ((a[1] > y) !== (b[1] > y)) xs.push(a[0] + (y - a[1]) * (b[0] - a[0]) / (b[1] - a[1])); }
+      xs.sort((a, b) => a - b);
+      for (let k = 0; k + 1 < xs.length; k += 2) {
+        const c0 = Math.max(0, Math.ceil((xs[k] - x0) / cs - .5)), c1 = Math.min(cols - 1, Math.floor((xs[k + 1] - x0) / cs - .5));
+        for (let c = c0; c <= c1; c++) mask[r * cols + c] = val;
+      }
+    }
+  };
+  fill(lin, 1); exs.forEach(e => fill(e, 0));
+  let nMask = 0; for (let i = 0; i < N; i++) nMask += mask[i];
+  const g = { P, x0, y0, cs, cols, rows, mask, cnt, nMask, nClean: 0, nOver: 0 };
+  g.stamp = (a, b, w, t) => {
+    const r = w / 2, r2 = r * r;
+    const c0 = Math.max(0, Math.floor((Math.min(a[0], b[0]) - r - x0) / cs)), c1 = Math.min(cols - 1, Math.floor((Math.max(a[0], b[0]) + r - x0) / cs));
+    const r0 = Math.max(0, Math.floor((Math.min(a[1], b[1]) - r - y0) / cs)), r1 = Math.min(rows - 1, Math.floor((Math.max(a[1], b[1]) + r - y0) / cs));
+    const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1e-12;
+    for (let rr = r0; rr <= r1; rr++) {
+      const y = y0 + (rr + .5) * cs;
+      for (let c = c0; c <= c1; c++) {
+        const x = x0 + (c + .5) * cs;
+        let tt = ((x - a[0]) * dx + (y - a[1]) * dy) / L2; tt = tt < 0 ? 0 : tt > 1 ? 1 : tt;
+        const ex = x - a[0] - tt * dx, ey = y - a[1] - tt * dy;
+        if (ex * ex + ey * ey > r2) continue;
+        const k = rr * cols + c;
+        if (t - lastT[k] > 15) { const v = cnt[k]; if (v < 255) { cnt[k] = v + 1; if (mask[k]) { if (v === 0) g.nClean++; else if (v === 1) g.nOver++; } } }
+        lastT[k] = t;
+      }
+    }
+  };
+  g.areas = () => ({ objetivo: g.nMask * cs * cs, limpia: g.nClean * cs * cs, solape: g.nOver * cs * cs });
+  let cv = null;
+  g.render = cfg => {
+    if (!cv) { cv = document.createElement('canvas'); cv.width = cols; cv.height = rows; }
+    const ctx = cv.getContext('2d'), im = ctx.createImageData(cols, rows), d = im.data;
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const k = r * cols + c, v = cnt[k], o = ((rows - 1 - r) * cols + c) * 4;
+      let col = null;
+      if (v >= 2 && cfg.solape) col = [253, 216, 53, 185];
+      else if (v >= 1 && cfg.limpia) col = [27, 94, 32, 150];
+      else if (v === 0 && mask[k] && cfg.pendiente) col = [110, 110, 110, 120];
+      if (col) { d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = col[3]; }
+    }
+    ctx.putImageData(im, 0, 0); return cv.toDataURL();
+  };
+  g.bounds = () => { const a = P.inv(x0, y0), b = P.inv(x0 + cols * cs, y0 + rows * cs); return [[a[0], a[1]], [b[0], b[1]]]; };
+  return g;
+}
+
+/* ---- Seguimiento: posición de corte, desviación, longitudes ---- */
+function Tracker(g, plan, S, t0) {
+  const P = g.P, segs = [], cum = [];
+  let acc0 = 0;
+  if (plan) plan.parts.forEach(p => { const xy = Geo.toXY(p.ll, P); for (let i = 1; i < xy.length; i++) { segs.push([xy[i - 1][0], xy[i - 1][1], xy[i][0], xy[i][1]]); cum.push(acc0); acc0 += Geo.dist(xy[i - 1], xy[i]); } });
+  let lastIdx = -1;
+  const st = { buf: [], h: null, lastCut: null, lastP: null, L: 0, Lon: 0, Ldev: 0, devSum: 0, devMax: 0, Lplan: 0, tOn: 0, hasPlan: segs.length > 0 };
+  // se compara con el tramo del plan que toca (ventana a lo largo del plan); si se pierde, búsqueda global
+  function search(p, i0, i1) {
+    let bd = Infinity, side = 0, bi = -1;
+    for (let i = i0; i <= i1; i++) {
+      const s = segs[i], dx = s[2] - s[0], dy = s[3] - s[1], L2 = dx * dx + dy * dy || 1e-12;
+      let t = ((p[0] - s[0]) * dx + (p[1] - s[1]) * dy) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const ex = p[0] - s[0] - t * dx, ey = p[1] - s[1] - t * dy, d = Math.hypot(ex, ey);
+      if (d < bd) { bd = d; side = Math.sign(dx * ey - dy * ex); bi = i; }
+    }
+    return { d: bd, side, i: bi };
+  }
+  function nearest(p) {
+    let r = null;
+    if (lastIdx >= 0) {
+      let i0 = lastIdx, i1 = lastIdx;
+      while (i0 > 0 && cum[lastIdx] - cum[i0 - 1] < 15) i0--;
+      while (i1 < segs.length - 1 && cum[i1 + 1] - cum[lastIdx] < 60) i1++;
+      r = search(p, i0, i1);
+      if (r.d > 6) r = null;
+    }
+    if (!r) r = search(p, 0, segs.length - 1);
+    lastIdx = r.i; return r;
+  }
+  st.add = pt => {
+    const [lat, lon, acc, tms, on] = pt;
+    if (acc > S.umbralPrecision) return { valid: false };
+    const p = P.fwd(lat, lon), t = (tms - t0) / 1000;
+    let moving = false, ds = 0, dt = 0;
+    if (st.lastP) { ds = Geo.dist(st.lastP.p, p); dt = t - st.lastP.t; if (dt > 0 && ds / dt > 8) return { valid: false }; moving = dt > 0 && ds / dt > 0.15; }
+    st.lastP = { p, t };
+    st.buf.push(p); if (st.buf.length > 40) st.buf.shift();
+    for (let i = st.buf.length - 2; i >= 0; i--) { const d = Geo.dist(st.buf[i], p); if (d >= 3) { st.h = [(p[0] - st.buf[i][0]) / d, (p[1] - st.buf[i][1]) / d]; break; } }
+    const speed = dt > 0 ? ds / dt * 3.6 : 0;
+    if (!st.h) return { valid: true, moving, speed, cut: null };
+    const cut = [p[0] - S.offsetApero * st.h[0], p[1] - S.offsetApero * st.h[1]];
+    const dev = segs.length ? nearest(cut) : null;
+    const flag = !!(dev && on && dev.d > Math.max(S.umbralDesv, acc));
+    if (st.lastCut && moving) {
+      const L = Geo.dist(st.lastCut, cut);
+      st.L += L;
+      if (on) { st.Lon += L; g.stamp(st.lastCut, cut, S.aperoAncho, t); st.tOn += dt; }
+      if (dev && on) { st.Lplan += L; st.devSum += dev.d * L; if (flag) st.Ldev += L; if (dev.d > st.devMax) st.devMax = dev.d; }
+    }
+    if (moving || !st.lastCut) st.lastCut = cut;
+    return { valid: true, moving, speed, cut, cutLL: P.inv(cut[0], cut[1]), dev, flag, on };
+  };
+  st.reset = () => { st.buf = []; st.lastCut = null; st.lastP = null; st.h = null; };
+  return st;
+}
+
+/* ---- Reconstrucción de un trabajo (rejilla + recorrido) ---- */
+function sesHoras(trab) { return trab.sesiones.reduce((s, x) => s + Math.max(0, (x.fin || x.inicio) - x.inicio), 0) / 3.6e6; }
+function rebuildTrab(f, trab) {
+  const g = Grid(f), plan = trab.planFecha && f.plan && f.plan.fecha === trab.planFecha ? f.plan : null;
+  const tr = Tracker(g, plan, S, trab.inicio), outs = [];
+  trab.sesiones.forEach(ses => { tr.reset(); outs.push(null); ses.pts.forEach(pt => { const r = tr.add(pt); if (r.cut) outs.push([r.cutLL, r.on, r.flag]); }); });
+  return { g, tr, outs, plan };
+}
+function resumenTrab(trab, R) {
+  const a = R.g.areas(), horas = sesHoras(trab), tr = R.tr;
+  const planL = R.plan ? R.plan.stats.L.total : null;
+  return {
+    horas, horasOn: tr.tOn / 3600, L: tr.L, Lon: tr.Lon,
+    objetivo: a.objetivo, limpia: a.limpia, solape: a.solape, pendiente: Math.max(0, a.objetivo - a.limpia),
+    cobertura: a.objetivo ? a.limpia / a.objetivo : 0, solapePct: a.limpia ? a.solape / a.limpia : 0,
+    planL, eta: planL && tr.L > 0 ? planL / tr.L : null,
+    planArea: R.plan ? R.plan.stats.area.objetivo : null,
+    devMed: tr.Lplan ? tr.devSum / tr.Lplan : null, devMax: tr.hasPlan ? tr.devMax : null, devPct: tr.Lplan ? tr.Ldev / tr.Lplan : null,
+    vMedia: tr.tOn > 0 ? tr.Lon / tr.tOn * 3.6 : null,
+    litros: horas * S.consumo, consumo: S.consumo,
+    haH: horas > 0 ? a.limpia / 1e4 / horas : null, LHa: a.limpia > 0 ? horas * S.consumo / (a.limpia / 1e4) : null,
+    planT: R.plan ? R.plan.stats.t.total / 3600 : null, planLitros: R.plan ? R.plan.stats.litros : null
+  };
+}
+
+/* ---- Dibujo del recorrido real ---- */
+function drawRuns(outs, cfg, layReal, layDev) {
+  layReal.clearLayers(); layDev.clearLayers();
+  let run = null, dev = null, prev = null;
+  const flushRun = () => { if (run && run.ll.length > 1) L.polyline(run.ll, run.on ? { color: '#7b1fa2', weight: 3, opacity: .9, interactive: false } : { color: '#7b1fa2', weight: 2, opacity: .7, dashArray: '3 5', interactive: false }).addTo(layReal); };
+  const flushDev = () => { if (dev && dev.length > 1) L.polyline(dev, { color: '#d50000', weight: 5, opacity: .9, interactive: false }).addTo(layDev); };
+  for (const o of outs) {
+    if (!o) { flushRun(); flushDev(); run = null; dev = null; prev = null; continue; }
+    const [ll, on, flag] = o;
+    if (cfg.real) { if (!run || run.on !== !!on) { flushRun(); run = { on: !!on, ll: prev ? [prev] : [] }; } run.ll.push(ll); }
+    if (cfg.desv) { if (flag) { if (!dev) dev = prev ? [prev] : []; dev.push(ll); } else if (dev) { dev.push(ll); flushDev(); dev = null; } }
+    prev = ll;
+  }
+  flushRun(); flushDev();
+}
+
+/* ---- Interfaz de trabajo ---- */
+let work = null, trabCache = null;
+async function workMenu() {
+  if (busy()) return;
+  if (!cur.linde) return toast('Primero define el linde de la finca');
+  const trs = await DB.tByFinca(cur.id), abierto = trs.find(t => t.estado === 'abierto');
+  const hasPlan = cur.plan && !planStale(cur);
+  sheet(`<h3>Trabajar</h3>
+    ${hasPlan ? `<div class="note" style="margin-bottom:8px">Plan: ${fmtH(cur.plan.stats.t.total / 3600)} · ${fmt(cur.plan.stats.L.total, 0)} m de trayectoria ideal.</div>`
+      : `<div class="card" style="background:#fff3e0;color:#e65100">Sin plan ${cur.plan ? 'actualizado' : ''}: se registrará cobertura y tiempo, pero no desviaciones ni eficiencia.</div>`}
+    ${abierto ? `<button class="opt" id="wCont">▶️ Continuar trabajo del ${new Date(abierto.inicio).toLocaleDateString('es-ES')}<small>${abierto.sesiones.length} sesión(es) · ${fmtH(sesHoras(abierto))}${abierto.resumen ? ' · ' + fmt(abierto.resumen.cobertura * 100, 0) + ' % limpio' : ''}</small></button>` : ''}
+    <button class="opt" id="wNew">🆕 Nuevo trabajo<small>${abierto ? 'El trabajo abierto quedará cerrado.' : 'Empieza con el apero en trabajo.'}</small></button>`,
+    () => {
+      if (abierto) $('wCont').onclick = () => { closeSheet(); startWork(abierto); };
+      $('wNew').onclick = async () => {
+        closeSheet();
+        if (abierto) { const R = rebuildTrab(cur, abierto); abierto.estado = 'cerrado'; abierto.resumen = resumenTrab(abierto, R); await DB.tPut(abierto); }
+        startWork(null);
+      };
+    });
+}
+async function startWork(trab) {
+  const hasPlan = cur.plan && !planStale(cur);
+  if (!trab) trab = { id: uid(), fincaId: cur.id, inicio: Date.now(), estado: 'abierto', planFecha: hasPlan ? cur.plan.fecha : null, sesiones: [] };
+  const R = rebuildTrab(cur, trab);
+  const ses = { inicio: Date.now(), fin: Date.now(), pts: [] };
+  trab.sesiones.push(ses); R.tr.reset(); R.outs.push(null);
+  work = { trab, ...R, ses, on: true, paused: false, last: null, spd: 0 };
+  viewTrab = trab.id; trabCache = null;
+  await DB.tPut(trab);
+  startGPS(); keepAwake(true); followPos = true;
+  $('tbMain').classList.add('hidden'); $('pTool').classList.add('hidden'); $('pWork').classList.remove('hidden');
+  $('bLoc').classList.add('hidden');
+  paintApero(); renderWork(); updWorkUI();
+  work.tRender = setInterval(renderWork, 3000);
+  work.tSave = setInterval(saveWork, 20000);
+  if (lastPos) map.setView([lastPos.lat, lastPos.lon], Math.max(map.getZoom(), 19));
+}
+function workPoint(p) {
+  if (!work || work.paused) return;
+  const pt = [+p.lat.toFixed(7), +p.lon.toFixed(7), +p.acc.toFixed(1), p.t, work.on ? 1 : 0];
+  const last = work.ses.pts[work.ses.pts.length - 1];
+  if (last && p.t - last[3] < 900) return;
+  work.ses.pts.push(pt); work.ses.fin = p.t;
+  const r = work.tr.add(pt);
+  if (r.cut) work.outs.push([r.cutLL, r.on, r.flag]);
+  work.last = r; if (r.valid) work.spd = work.spd * .6 + (r.speed || 0) * .4;
+  updWorkUI(p);
+}
+function renderWork() {
+  if (!work) return;
+  drawRuns(work.outs, CFG, lyr.real, lyr.desv);
+  drawCov(work.g);
+  updWorkUI();
+}
+function drawCov(g) {
+  if (lyr.cov) { map.removeLayer(lyr.cov); lyr.cov = null; }
+  if (!(CFG.limpia || CFG.solape || CFG.pendiente)) return;
+  lyr.cov = L.imageOverlay(g.render(CFG), g.bounds(), { interactive: false, className: 'covimg' }).addTo(map);
+  lyr.cov.bringToBack();
+}
+function updWorkUI(p) {
+  if (!work) return;
+  p = p || lastPos; const r = work.last || {};
+  const a = work.g.areas(), cov = a.objetivo ? a.limpia / a.objetivo : 0;
+  const horas = sesHoras(work.trab) + (work.paused ? 0 : 0);
+  $('wSpd').textContent = fmt(work.spd, 1);
+  if (r.dev && work.tr.hasPlan) {
+    const d = r.dev.d, bad = d > Math.max(S.umbralDesv, p ? p.acc : 0);
+    $('wDev').textContent = (r.dev.side > 0 ? '◀ ' : r.dev.side < 0 ? '▶ ' : '') + fmt(d, 1);
+    $('wDev').className = bad ? 'acc-bad' : d > S.umbralDesv * .6 ? 'acc-mid' : 'acc-ok';
+    $('wDevL').textContent = r.dev.side > 0 ? 'Desvío (izq.) m' : r.dev.side < 0 ? 'Desvío (dcha.) m' : 'Desvío m';
+  } else { $('wDev').textContent = '–'; $('wDev').className = ''; $('wDevL').textContent = 'Desvío m'; }
+  $('wCov').textContent = fmt(cov * 100, 1) + ' %';
+  $('wTime').textContent = fmtH(horas);
+  $('wLit').textContent = fmt(horas * S.consumo, 1);
+  const planL = work.plan ? work.plan.stats.L.total : 0;
+  $('wEta').textContent = planL && work.tr.L > 20 ? fmt(Math.min(1.5, planL * cov / work.tr.L) * 100, 0) + ' %' : '–';
+  if (p) { const el = $('wAcc'); el.textContent = '±' + fmt(p.acc, p.acc < 10 ? 1 : 0) + ' m'; el.className = p.acc <= 5 ? 'acc-ok' : p.acc <= S.umbralPrecision ? 'acc-mid' : 'acc-bad'; }
+}
+function paintApero() {
+  const b = $('wApero');
+  b.textContent = work.on ? '🟢 APERO EN TRABAJO' : '⚪ APERO LEVANTADO';
+  b.style.background = work.on ? 'var(--pri)' : '#9e9e9e';
+}
+$('wApero').onclick = () => { if (!work) return; work.on = !work.on; paintApero(); };
+$('wPause').onclick = async () => {
+  if (!work) return;
+  if (!work.paused) { work.paused = true; work.ses.fin = Date.now(); await saveWork(); $('wPause').textContent = 'Reanudar'; keepAwake(false); }
+  else { work.paused = false; work.ses = { inicio: Date.now(), fin: Date.now(), pts: [] }; work.trab.sesiones.push(work.ses); work.tr.reset(); work.outs.push(null); $('wPause').textContent = 'Pausa'; keepAwake(true); }
+};
+$('wEnd').onclick = () => {
+  sheet(`<h3>Terminar</h3>
+    <button class="opt" id="eFin">✅ Finalizar trabajo<small>La finca queda limpia (o se da por terminada).</small></button>
+    <button class="opt" id="eOpen">⏸ Dejar abierto<small>Se continúa otro día desde donde se dejó.</small></button>
+    <button class="opt" id="eFuel">⛽ Registrar repostaje<small>Calibra el consumo real (L/h).</small></button>`,
+    () => {
+      $('eFin').onclick = () => endWork('cerrado');
+      $('eOpen').onclick = () => endWork('abierto');
+      $('eFuel').onclick = () => repostajeSheet();
+    });
+};
+async function saveWork() { if (!work) return; if (!work.paused) work.ses.fin = Date.now(); try { await DB.tPut(work.trab); } catch (e) { toast('Error guardando: ' + e.message); } }
+async function endWork(estado) {
+  closeSheet();
+  const w = work; if (!w) return;
+  if (!w.paused) w.ses.fin = Date.now();
+  w.trab.sesiones = w.trab.sesiones.filter(s => s.pts.length > 0);
+  w.trab.sesiones.forEach(x => { const lp = x.pts[x.pts.length - 1]; if (lp) x.fin = Math.max(x.fin || 0, lp[3]); });
+  w.trab.estado = estado; w.trab.fin = Date.now();
+  w.trab.resumen = resumenTrab(w.trab, w);
+  clearInterval(w.tRender); clearInterval(w.tSave);
+  if (w.trab.sesiones.length) await DB.tPut(w.trab); else await DB.tDel(w.trab.id);
+  work = null; keepAwake(false); followPos = false;
+  $('pWork').classList.add('hidden'); $('bLoc').classList.remove('hidden'); showMain();
+  trabCache = null; drawFinca();
+  if (w.trab.sesiones.length) resumenSheet(w.trab);
+}
+function resumenSheet(trab) {
+  const r = trab.resumen; if (!r) return;
+  const m = v => v == null ? '–' : fmt(v, 0) + ' m', pc = v => v == null ? '–' : fmt(v * 100, 1) + ' %';
+  sheet(`<h3>Trabajo del ${new Date(trab.inicio).toLocaleDateString('es-ES')} ${trab.estado === 'abierto' ? '(abierto)' : ''}</h3>
+    <div class="card"><h3>Superficie</h3>
+      <div class="kv"><span>Objetivo (finca − exclusiones)</span><span>${fmtArea(r.objetivo)}</span></div>
+      <div class="kv"><span>Limpia real</span><span style="color:var(--pri)">${fmtArea(r.limpia)}</span></div>
+      <div class="kv"><span>Pendiente (desviación de área)</span><span>${fmtArea(r.pendiente)} · ${pc(1 - r.cobertura)}</span></div>
+      <div class="kv"><span>Cobertura</span><span>${pc(r.cobertura)}</span></div>
+      <div class="kv"><span>Solape (≥ 2 pasadas)</span><span>${fmtArea(r.solape)} · ${pc(r.solapePct)}</span></div>
+    </div>
+    <div class="card"><h3>Trayectoria</h3>
+      <div class="kv"><span>Ideal (plan)</span><span>${m(r.planL)}</span></div>
+      <div class="kv"><span>Real</span><span>${m(r.L)}</span></div>
+      <div class="kv"><span>Eficiencia η = ideal / real</span><span>${r.eta == null ? '–' : fmt(r.eta * 100, 1) + ' %'}</span></div>
+      <div class="kv"><span>Desviación media / máx.</span><span>${r.devMed == null ? '–' : fmt(r.devMed, 2) + ' / ' + fmt(r.devMax, 1) + ' m'}</span></div>
+      <div class="kv"><span>Recorrido desviado</span><span>${pc(r.devPct)}</span></div>
+    </div>
+    <div class="card"><h3>Tiempo y combustible</h3>
+      <div class="kv"><span>Tiempo total</span><span>${fmtH(r.horas)}${r.planT ? ' (plan ' + fmtH(r.planT) + ')' : ''}</span></div>
+      <div class="kv"><span>Con apero en trabajo</span><span>${fmtH(r.horasOn)}</span></div>
+      <div class="kv"><span>Velocidad media de trabajo</span><span>${r.vMedia == null ? '–' : fmt(r.vMedia, 2) + ' km/h'}</span></div>
+      <div class="kv"><span>Combustible (${fmt(r.consumo, 1)} L/h)</span><span>${fmt(r.litros, 1)} L${r.planLitros ? ' (plan ' + fmt(r.planLitros, 1) + ')' : ''}</span></div>
+      <div class="kv"><span>Rendimiento</span><span>${r.haH == null ? '–' : fmt(r.haH, 2) + ' ha/h'} · ${r.LHa == null ? '–' : fmt(r.LHa, 1) + ' L/ha'}</span></div>
+    </div>`);
+}
+
+/* ---- Repostajes y calibración del consumo ---- */
+async function horasDesde(ts) {
+  let h = 0;
+  for (const t of await DB.tAll()) for (const s of t.sesiones) if (s.inicio >= ts) h += Math.max(0, (s.fin || s.inicio) - s.inicio) / 3.6e6;
+  return h;
+}
+async function repostajeSheet() {
+  const R = (await DB.kvGet('repostajes')) || { base: null, hist: [] };
+  const h = R.base ? await horasDesde(R.base) : 0;
+  sheet(`<h3>Repostaje</h3>
+    ${R.base ? `<div class="note">Desde el último lleno (${new Date(R.base).toLocaleString('es-ES')}): <b>${fmtH(h)}</b> de motor registradas.</div>`
+      : `<div class="note">Primer registro: llena el depósito y pulsa «Guardar» (sin litros). Desde ese momento se contarán las horas de trabajo.</div>`}
+    <label class="f">Litros repostados hasta llenar</label><input class="inp" id="rL" inputmode="decimal" placeholder="${R.base ? 'p. ej. 18,5' : 'vacío en el primer lleno'}">
+    <button class="btn" id="rOk" style="margin-top:12px">Guardar</button>
+    ${R.hist.length ? '<div class="sgrp">Historial</div><div class="card">' + R.hist.slice(-8).reverse().map(x => `<div class="kv"><span>${new Date(x.fecha).toLocaleDateString('es-ES')} · ${fmt(x.litros, 1)} L · ${fmtH(x.horas)}</span><span>${fmt(x.lh, 2)} L/h</span></div>`).join('') + '</div>' : ''}`,
+    () => {
+      $('rOk').onclick = async () => {
+        const l = parseFloat($('rL').value.replace(',', '.'));
+        const now = Date.now();
+        if (R.base && isFinite(l) && l > 0) {
+          if (h < 0.25) return toast('Muy pocas horas registradas para calibrar (mín. 15 min)');
+          R.hist.push({ fecha: now, litros: l, horas: h, lh: l / h });
+          if (S.consumoAuto) { const last = R.hist.slice(-5); S.consumo = +(last.reduce((s, x) => s + x.litros, 0) / last.reduce((s, x) => s + x.horas, 0)).toFixed(2); await DB.kvPut('settings', S); }
+          toast(`Consumo medido: ${fmt(l / h, 2)} L/h` + (S.consumoAuto ? ` · aplicado ${fmt(S.consumo, 2)} L/h` : ''), 4000);
+        } else toast('Depósito lleno registrado');
+        R.base = now; await DB.kvPut('repostajes', R); closeSheet();
+      };
+    });
+}
+
+/* =========================================================
+   F4 — MONTE / PLANTACIÓN: malla de árboles
+   ========================================================= */
+function mallaVec(f, P) {
+  const M = f.malla, A = P.fwd(M.A[0], M.A[1]), B = P.fwd(M.B[0], M.B[1]), C = P.fwd(M.C[0], M.C[1]);
+  let ab = [(B[0] - A[0]) / (M.nAB - 1), (B[1] - A[1]) / (M.nAB - 1)], ac = [(C[0] - A[0]) / (M.nAC - 1), (C[1] - A[1]) / (M.nAC - 1)];
+  if (M.nominal) { const a = Geo.nrm(ab), c = Geo.nrm(ac); ab = [a[0] * S.mallaY, a[1] * S.mallaY]; ac = [c[0] * S.mallaX, c[1] * S.mallaX]; }
+  return { A, ab, ac };
+}
+function genArboles(f) {
+  const P = Geo.projFor(f.linde.coords), { A, ab, ac } = mallaVec(f, P);
+  const det = ab[0] * ac[1] - ab[1] * ac[0];
+  if (Math.abs(det) < 1e-6) return { error: 'Los árboles B y C están alineados con A: elige C en la otra dirección.' };
+  const lin = Geo.toXY(f.linde.coords, P), exs = (f.exclusiones || []).map(e => Geo.toXY(e.coords, P));
+  const ij = v => { const x = v[0] - A[0], y = v[1] - A[1]; return [(x * ac[1] - y * ac[0]) / det, (ab[0] * y - ab[1] * x) / det]; };
+  let i0 = Infinity, i1 = -Infinity, j0 = Infinity, j1 = -Infinity;
+  lin.forEach(v => { const [i, j] = ij(v); i0 = Math.min(i0, i); i1 = Math.max(i1, i); j0 = Math.min(j0, j); j1 = Math.max(j1, j); });
+  if ((i1 - i0) * (j1 - j0) > 200000) return { error: 'Malla demasiado grande: revisa los árboles marcados y los recuentos.' };
+  const faltas = new Set(f.malla.faltas || []), out = [];
+  // la plantación es el paralelogramo A–B–C definido por los árboles de esquina
+  i0 = Math.max(i0, 0); i1 = Math.min(i1, f.malla.nAB - 1); j0 = Math.max(j0, 0); j1 = Math.min(j1, f.malla.nAC - 1);
+  for (let i = Math.ceil(i0 - 1e-6); i <= Math.floor(i1 + 1e-6); i++) for (let j = Math.ceil(j0 - 1e-6); j <= Math.floor(j1 + 1e-6); j++) {
+    const p = [A[0] + i * ab[0] + j * ac[0], A[1] + i * ab[1] + j * ac[1]];
+    if (!Geo.inPoly(p, lin) || exs.some(e => Geo.inPoly(p, e))) continue;
+    const ll = P.inv(p[0], p[1]);
+    out.push([+ll[0].toFixed(7), +ll[1].toFixed(7), i, j, faltas.has(i + ',' + j) ? 1 : 0]);
+  }
+  return { arboles: out, sepFila: Math.hypot(...ab), sepFilas: Math.abs((ab[0] * ac[1] - ab[1] * ac[0]) / Math.hypot(...ab)) };
+}
+function drawArboles(f, layer) {
+  if (!f.malla || !f.malla.arboles) return;
+  const ren = L.canvas({ padding: .3 });
+  f.malla.arboles.forEach(a => L.circle([a[0], a[1]], a[4]
+    ? { renderer: ren, radius: 0.5, color: '#9e9e9e', weight: 1.5, fill: false, interactive: false }
+    : { renderer: ren, radius: 0.55, color: '#fff', weight: 0.8, fillColor: '#33691e', fillOpacity: 1, interactive: false }).addTo(layer));
+}
+
+let mallaW = null;
+function mallaMenu() {
+  if (busy()) return;
+  if (!cur.linde) return toast('Primero define el linde de la finca');
+  const M = cur.malla;
+  if (!M) return mallaWizard();
+  const n = M.arboles.length, nf = M.arboles.filter(a => a[4]).length;
+  sheet(`<h3>Malla de árboles</h3>
+    <div class="card">
+      <div class="kv"><span>Árboles</span><span>${n - nf}${nf ? ' (+' + nf + ' faltas)' : ''}</span></div>
+      <div class="kv"><span>Separación en fila (medida)</span><span>${fmt(M.sepFila, 2)} m</span></div>
+      <div class="kv"><span>Separación entre filas (medida)</span><span>${fmt(M.sepFilas, 2)} m</span></div>
+      <div class="kv"><span>Ajuste</span><span>${M.nominal ? 'Nominal ' + fmt(S.mallaX, 1) + ' × ' + fmt(S.mallaY, 1) : 'Medido'}</span></div>
+    </div>
+    <button class="opt" id="mFal">✖️ Marcar / desmarcar faltas<small>Árboles que no existen. No cambian las calles.</small></button>
+    <button class="opt" id="mRe">🔄 Redefinir malla</button>
+    <button class="opt" id="mDel" style="color:var(--err)">🗑 Borrar malla</button>`,
+    () => {
+      $('mFal').onclick = () => { closeSheet(); faltasMode(); };
+      $('mRe').onclick = () => { closeSheet(); mallaWizard(); };
+      $('mDel').onclick = () => confirmSheet('¿Borrar la malla de árboles?', 'Borrar', async () => { cur.malla = null; await saveCur(); drawFinca(); }, true);
+    });
+}
+function mallaWizard() {
+  mallaW = { pts: [], step: 0, avg: null };
+  map.on('click', mallaClick); mallaStep();
+}
+const MALLA_TXT = [
+  ['Árbol A', 'Árbol de una ESQUINA de la plantación.'],
+  ['Árbol B', 'Último árbol de la MISMA FILA que A (dirección de trabajo).'],
+  ['Árbol C', 'Último árbol en la OTRA dirección, en la misma columna que A.']
+];
+function mallaStep() {
+  const k = mallaW.step;
+  lyr.tmp.clearLayers();
+  mallaW.pts.forEach((p, i) => L.marker(p, { icon: L.divIcon({ className: '', html: `<div class="pin" style="background:#33691e">${'ABC'[i]}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] }) }).addTo(lyr.tmp));
+  if (mallaW.pts.length > 1) L.polyline([mallaW.pts[0], mallaW.pts[1]], { color: '#33691e', dashArray: '4 4' }).addTo(lyr.tmp);
+  if (mallaW.pts.length > 2) L.polyline([mallaW.pts[0], mallaW.pts[2]], { color: '#33691e', dashArray: '4 4' }).addTo(lyr.tmp);
+  showTool(MALLA_TXT[k][0] + ' (' + (k + 1) + '/3)', MALLA_TXT[k][1] + '<br>Toca el árbol en la ortofoto o colócate junto al tronco y pulsa «GPS».',
+    [['Cancelar', 'sec', mallaCancel], ['Atrás', 'sec', () => { if (mallaW.avg) return; mallaW.pts.pop(); mallaW.step = Math.max(0, mallaW.step - 1); mallaStep(); }, k === 0], ['GPS (15 s)', '', mallaGPS]]);
+}
+function mallaCancel() { if (mallaW && mallaW.avg) clearInterval(mallaW.avg); map.off('click', mallaClick); mallaW = null; lyr.tmp.clearLayers(); showMain(); }
+function mallaClick(e) { if (!mallaW || mallaW.avg) return; mallaSet([e.latlng.lat, e.latlng.lng]); }
+function mallaGPS() {
+  startGPS(); const S0 = []; let n = 15;
+  $('toolHint').innerHTML = 'Promediando GPS… 15 s. No te muevas.';
+  mallaW.avg = setInterval(() => {
+    if (lastPos && lastPos.acc <= S.umbralPrecision) S0.push(lastPos);
+    n--; $('toolHint').innerHTML = `Promediando GPS… ${n} s · ${S0.length} lecturas`;
+    if (n <= 0) {
+      clearInterval(mallaW.avg); mallaW.avg = null;
+      if (S0.length < 3) { toast('Precisión GPS insuficiente; toca el árbol en el mapa'); return mallaStep(); }
+      let sw = 0, la = 0, lo = 0; S0.forEach(p => { const w = 1 / (p.acc * p.acc); sw += w; la += p.lat * w; lo += p.lon * w; });
+      toast(`Posición promediada (±${fmt(Math.sqrt(1 / sw), 1)} m)`);
+      mallaSet([la / sw, lo / sw]);
+    }
+  }, 1000);
+}
+function mallaSet(ll) {
+  mallaW.pts.push(ll); mallaW.step++;
+  if (mallaW.step < 3) return mallaStep();
+  map.off('click', mallaClick);
+  const [A, B, C] = mallaW.pts, dAB = Geo.lenLL([A, B]), dAC = Geo.lenLL([A, C]);
+  const old = cur.malla;
+  const nAB0 = Math.max(2, Math.round(dAB / S.mallaY) + 1), nAC0 = Math.max(2, Math.round(dAC / S.mallaX) + 1);
+  sheet(`<h3>Recuento de árboles</h3>
+    <div class="note">A–B mide ${fmt(dAB, 1)} m · A–C mide ${fmt(dAC, 1)} m.</div>
+    <div class="srow"><span>Árboles en la fila A–B (contando A y B)</span><input class="inp" id="mAB" inputmode="numeric" value="${nAB0}" style="width:80px;text-align:right"></div>
+    <div class="srow"><span>Árboles en la columna A–C (contando A y C)</span><input class="inp" id="mAC" inputmode="numeric" value="${nAC0}" style="width:80px;text-align:right"></div>
+    <div class="note" id="mSep"></div>
+    <div class="srow"><span>Usar separación nominal (${fmt(S.mallaX, 1)} × ${fmt(S.mallaY, 1)} m) con la orientación medida</span><input type="checkbox" id="mNom" ${old && old.nominal ? 'checked' : ''} style="width:auto"></div>
+    <div class="row" style="margin-top:12px"><button class="btn sec" id="mCan">Cancelar</button><button class="btn" id="mOk">Generar malla</button></div>`,
+    () => {
+      const upd = () => { const a = parseInt($('mAB').value), c = parseInt($('mAC').value); if (a > 1 && c > 1) { const sa = dAB / (a - 1), sc = dAC / (c - 1); const bad = Math.abs(sa - S.mallaY) / S.mallaY > .15 || Math.abs(sc - S.mallaX) / S.mallaX > .15; $('mSep').innerHTML = `Separación medida: ${fmt(sa, 2)} m en fila · ${fmt(sc, 2)} m entre filas${bad ? '<br><span style="color:var(--warn)">⚠️ Difiere más de un 15 % de la nominal: revisa los recuentos.</span>' : ''}`; } };
+      $('mAB').oninput = $('mAC').oninput = upd; upd();
+      $('mCan').onclick = () => { closeSheet(); mallaCancel(); };
+      $('mOk').onclick = async () => {
+        const nAB = parseInt($('mAB').value), nAC = parseInt($('mAC').value);
+        if (!(nAB > 1 && nAC > 1)) return toast('Recuentos no válidos (mínimo 2)');
+        const tmp = { ...cur, malla: { A, B, C, nAB, nAC, nominal: $('mNom').checked, faltas: [] } };
+        const r = genArboles(tmp); if (r.error) return toast(r.error, 4000);
+        cur.malla = { ...tmp.malla, arboles: r.arboles, sepFila: r.sepFila, sepFilas: r.sepFilas };
+        await saveCur(); closeSheet(); mallaW = null; lyr.tmp.clearLayers(); showMain(); drawFinca();
+        toast(`${r.arboles.length} árboles en la malla`);
+      };
+    });
+}
+function faltasMode() {
+  const set = new Set(cur.malla.faltas || []);
+  const onC = e => {
+    const P = Geo.projFor(cur.linde.coords), q = P.fwd(e.latlng.lat, e.latlng.lng);
+    let bi = -1, bd = Infinity; cur.malla.arboles.forEach((a, i) => { const d = Geo.dist(q, P.fwd(a[0], a[1])); if (d < bd) { bd = d; bi = i; } });
+    if (bi < 0 || bd > 1.6) return;
+    const a = cur.malla.arboles[bi], k = a[2] + ',' + a[3];
+    if (set.has(k)) { set.delete(k); a[4] = 0; } else { set.add(k); a[4] = 1; }
+    lyr.finca.clearLayers(); drawArboles(cur, lyr.finca);
+  };
+  map.on('click', onC);
+  const fin = async save => { map.off('click', onC); if (save) { cur.malla.faltas = [...set]; await saveCur(); } else { const r = genArboles(cur); cur.malla.arboles = r.arboles; } showMain(); drawFinca(); };
+  showTool('Faltas de árboles', 'Toca un árbol para marcarlo como falta (gris) o volver a activarlo.', [['Cancelar', 'sec', () => fin(false)], ['Guardar', '', () => fin(true)]]);
 }
 
 /* ---------- Panel de herramienta genérico ---------- */
@@ -1370,6 +2207,8 @@ $('tLinde').onclick = lindeMenu;
 $('tExcl').onclick = exclMenu;
 $('tEdit').onclick = editMenu;
 $('tPlan').onclick = planMenu;
+$('tWork').onclick = workMenu;
+$('bLay').onclick = () => { if (!busy() || work) capasSheet(); };
 $('tInfo').onclick = () => { if (!busy()) infoSheet(); };
 
 /* =========================================================
@@ -1379,6 +2218,7 @@ $('tInfo').onclick = () => { if (!busy()) infoSheet(); };
   try {
     await DB.open();
     const s = await DB.kvGet('settings'); if (s) S = { ...DEF, ...s };
+    const c = await DB.kvGet('capas'); if (c) CFG = { ...CFG_DEF, ...c };
   } catch (e) { toast('Error de almacenamiento: ' + e.message, 5000); }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
