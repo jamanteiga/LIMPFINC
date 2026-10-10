@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/clipper-lib@6.4.2/clipper.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.js"></script>
 <style>
 :root{
   --bg:#f2f3f5;--card:#fff;--txt:#1c1c1e;--sub:#6b7280;--line:#e3e5e8;
@@ -32,6 +33,8 @@ header{position:fixed;top:0;left:0;right:0;z-index:1000;background:#fff;border-b
 header h1{font-size:17px;margin:0;flex:1;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hbtn{background:none;color:var(--pri);font-size:16px;padding:6px 8px;min-width:64px;text-align:left}
 .hbtn.r{text-align:right}
+.syncSt{background:none;font-size:13px;padding:4px;min-width:0;color:var(--sub)}
+#hTitle.sw::after{content:' ▾';font-size:12px;color:var(--sub)}
 main{position:fixed;top:calc(var(--safe-t) + 52px);left:0;right:0;bottom:0;overflow:auto}
 .view{padding:14px 14px calc(var(--safe-b) + 90px)}
 .card{background:var(--card);border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
@@ -39,6 +42,8 @@ main{position:fixed;top:calc(var(--safe-t) + 52px);left:0;right:0;bottom:0;overf
 .finca .ic{width:44px;height:44px;border-radius:10px;background:var(--pri2);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none}
 .finca .t{font-weight:600}.finca .s{color:var(--sub);font-size:13px}
 .empty{color:var(--sub);text-align:center;padding:40px 10px}
+.fmore{background:#f1f3f5;border-radius:18px;width:38px;height:38px;font-size:20px;color:#555;flex:none}
+.warnc{background:#fff3e0;color:#e65100;font-size:14px}
 .fab{position:fixed;right:18px;bottom:calc(var(--safe-b) + 18px);z-index:900;background:var(--pri);color:#fff;
   border-radius:28px;padding:14px 20px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.2)}
 label.f{display:block;margin:10px 0 4px;color:var(--sub);font-size:13px}
@@ -144,6 +149,7 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
 <header>
   <button class="hbtn" id="hLeft"></button>
   <h1 id="hTitle">LIMPFINC</h1>
+  <button class="syncSt" id="syncSt"></button>
   <button class="hbtn r" id="hRight"></button>
 </header>
 
@@ -155,6 +161,17 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
 
 <!-- AJUSTES -->
 <main id="vSet" class="hidden"><div class="view" id="setBody"></div></main>
+<main id="vLogin" class="hidden"><div class="view">
+  <div class="card" style="margin-top:20px">
+    <h3>Iniciar sesión</h3>
+    <div class="note" style="margin-bottom:8px">Tus fincas, trabajos, tractores y aperos se guardan en tu Supabase y se sincronizan entre dispositivos.</div>
+    <label class="f">Email</label><input class="inp" id="lMail" type="email" autocomplete="username" autocapitalize="off">
+    <label class="f">Contraseña</label><input class="inp" id="lPass" type="password" autocomplete="current-password">
+    <button class="btn" id="lGo" style="margin-top:14px">Entrar</button>
+    <div class="note" id="lErr" style="color:var(--err);margin-top:8px"></div>
+  </div>
+  <button class="lnk" id="lOff">Usar sin cuenta (solo en este dispositivo)</button>
+</div></main>
 
 <!-- MAPA -->
 <div id="mapWrap" class="hidden">
@@ -218,7 +235,7 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
 /* =========================================================
    LIMPFINC · F1 — Fincas, linde, exclusiones, área
    ========================================================= */
-const VERSION = '0.9.0';
+const VERSION = '1.0.1';
 
 /* ---------- Ajustes por defecto ---------- */
 const DEF = {
@@ -226,7 +243,7 @@ const DEF = {
   tractor:'New Holland TN95F', potencia:95,
   radioGiro:4.0, marchaAtras:true,
   aperoNombre:'Desbrozadora de cadenas', aperoAncho:1.70, offsetApero:2.0,
-  velocidad:2.5, consumo:5.0, solape:0.10, umbralDesv:1.0,
+  velocidad:3.0, consumo:5.0, tractorDef:null, aperoDef:null, offline:false, solape:0.10, umbralDesv:1.0,
   anchoTractor:1.70, longTractorApero:5.0,
   umbralPrecision:8, holguraLinde:0.5,
   mallaX:3.5, mallaY:3.5, holguraTronco:0.30,
@@ -234,10 +251,7 @@ const DEF = {
   consumoAuto:true, velocidadGiro:3.0, velocidadTraslado:5.0, tCambioSentido:4, tManiobra:20, tEsquina:15, margenObstaculo:0.30
 };
 const SET_FIELDS = [
-  ['Tractor',[['tractor','Modelo','text'],['potencia','Potencia (CV)'],['anchoTractor','Ancho tractor (m)'],
-    ['longTractorApero','Longitud tractor + apero (m)'],['radioGiro','Radio de giro mínimo (m)'],['marchaAtras','Maniobras marcha atrás','bool']]],
-  ['Apero',[['aperoNombre','Apero','text'],['aperoAncho','Ancho de trabajo (m)'],['offsetApero','iPhone → centro apero (m)']]],
-  ['Trabajo',[['velocidad','Velocidad por defecto (km/h)'],['consumo','Consumo (L/h)'],['consumoAuto','Usar consumo calibrado en repostajes','bool'],['solape','Solape entre pasadas (m)'],['umbralDesv','Umbral desviación mínimo (m)'],['umbralAuto','Umbral automático según precisión GPS','bool'],['voz','Avisos por voz en el modo trabajo','bool'],['altoContraste','Alto contraste en el modo trabajo','bool']]],
+  ['Trabajo',[['velocidad','Velocidad por defecto en fincas nuevas (km/h)'],['consumoAuto','Usar consumo calibrado en repostajes','bool'],['umbralDesv','Umbral desviación mínimo (m)'],['umbralAuto','Umbral automático según precisión GPS','bool'],['voz','Avisos por voz en el modo trabajo','bool'],['altoContraste','Alto contraste en el modo trabajo','bool']]],
   ['Planificación',[['velocidadGiro','Velocidad en giros (km/h)'],['velocidadTraslado','Velocidad en traslados (km/h)'],['tCambioSentido','Tiempo cambio de sentido (s)'],
     ['tManiobra','Maniobra al iniciar traslado (s)'],['tEsquina','Maniobra en esquina (s)'],['margenObstaculo','Margen a exclusiones (m)']]],
   ['Medición GPS',[['umbralPrecision','Descartar puntos con precisión peor que (m)'],['holguraLinde','Holgura lateral tractor–linde (m)']]],
@@ -248,12 +262,14 @@ const SET_FIELDS = [
 const DB = (() => {
   let db;
   const open = () => new Promise((res, rej) => {
-    const r = indexedDB.open('limpfinc', 2);
+    const r = indexedDB.open('limpfinc', 3);
     r.onupgradeneeded = e => {
       const d = e.target.result;
       if (!d.objectStoreNames.contains('fincas')) d.createObjectStore('fincas', { keyPath: 'id' });
       if (!d.objectStoreNames.contains('kv')) d.createObjectStore('kv');
       if (!d.objectStoreNames.contains('trabajos')) d.createObjectStore('trabajos', { keyPath: 'id' });
+      for (const st of ['tractores', 'aperos', 'velocidades']) if (!d.objectStoreNames.contains(st)) d.createObjectStore(st, { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('outbox')) d.createObjectStore('outbox', { keyPath: 'key' });
     };
     r.onsuccess = () => { db = r.result; res(); };
     r.onerror = () => rej(r.error);
@@ -273,9 +289,23 @@ const DB = (() => {
     tAll: () => tx('trabajos', 'readonly', s => s.getAll()),
     tByFinca: async fid => (await tx('trabajos', 'readonly', s => s.getAll())).filter(t => t.fincaId === fid).sort((a, b) => b.inicio - a.inicio),
     tPut: t => tx('trabajos', 'readwrite', s => s.put(t)),
-    tDel: id => tx('trabajos', 'readwrite', s => s.delete(id))
+    tDel: id => tx('trabajos', 'readwrite', s => s.delete(id)),
+    tGet: id => tx('trabajos', 'readonly', s => s.get(id)),
+    gAll: st => tx(st, 'readonly', s => s.getAll()),
+    gGet: (st, id) => tx(st, 'readonly', s => s.get(id)),
+    gPut: (st, o) => tx(st, 'readwrite', s => s.put(o)),
+    gDel: (st, id) => tx(st, 'readwrite', s => s.delete(id))
   };
 })();
+// toda escritura local se anota para subirla a Supabase (DB.raw = sin anotar, para lo que llega de la nube)
+DB.raw = { put: DB.put, del: DB.del, tPut: DB.tPut, tDel: DB.tDel, kvPut: DB.kvPut };
+DB.put = async f => { f.mod = Date.now(); await DB.raw.put(f); Sync.mark('fincas', f.id, 'up'); };
+DB.del = async id => { await DB.raw.del(id); Sync.mark('fincas', id, 'del'); };
+DB.tPut = async t => { t.mod = Date.now(); await DB.raw.tPut(t); Sync.mark('trabajos', t.id, 'up'); };
+DB.tDel = async id => { await DB.raw.tDel(id); Sync.mark('trabajos', id, 'del'); };
+DB.kvPut = async (k, v) => { await DB.raw.kvPut(k, v); if (['settings', 'repostajes', 'filtros', 'capas'].includes(k)) { await DB.raw.kvPut('ajustesMod', Date.now()); Sync.mark('ajustes', 'me', 'up'); } };
+DB.cPut = async (st, o) => { o.mod = Date.now(); await DB.gPut(st, o); Sync.mark(st, o.id, 'up'); };
+DB.cDel = async (st, id) => { await DB.gDel(st, id); Sync.mark(st, id, 'del'); };
 
 /* ---------- Geometría (plano local métrico, WGS84) ---------- */
 const D2R = Math.PI / 180;
@@ -511,7 +541,7 @@ function confirmSheet(msg, okTxt, cb, danger) {
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /* ---------- Estado ---------- */
-let S = { ...DEF };
+let SB = { ...DEF }, S = { ...DEF };   // SB: ajustes generales guardados · S: efectivos (con tractor, apero y velocidad de la finca)
 let cur = null;           // finca abierta
 let view = 'list';
 
@@ -519,26 +549,72 @@ let view = 'list';
    LISTA DE FINCAS
    ========================================================= */
 async function showList() {
-  view = 'list';
+  view = 'list'; cur = null; applyS();
+  $('vLogin').classList.add('hidden');
   setHeader('📡 GPS', 'LIMPFINC', '⚙︎', gpsSheet, showSettings);
   $('vList').classList.remove('hidden'); $('bNueva').classList.remove('hidden');
   $('vSet').classList.add('hidden'); $('mapWrap').classList.add('hidden');
   const fs = (await DB.all()).sort((a, b) => b.mod - a.mod);
   const el = $('fincaList');
-  const ver = `<div class="note" style="text-align:center;margin-top:14px">LIMPFINC v${VERSION}</div>`;
-  if (!fs.length) { el.innerHTML = ver + `<div class="empty">No hay fincas.<br>Pulsa «Nueva finca» para empezar.</div>`; return; }
-  el.innerHTML = fs.map(f => {
-    const a = fincaAreas(f);
-    return `<div class="card finca" data-id="${f.id}">
+  const pend = Sync.user ? (await DB.gAll('outbox')).length : 0;
+  const nube = !window.supabase ? `<div class="card warnc">⚠️ No se pudo cargar Supabase (¿sin conexión?). Los datos se guardan en el móvil. <button class="lnk" id="lRe" style="display:inline;margin:0">Reintentar</button></div>`
+    : !Sync.user ? `<div class="card warnc">📱 Sin sesión: las fincas solo están en este móvil. <button class="lnk" id="lIn" style="display:inline;margin:0">Iniciar sesión</button></div>`
+    : Sync.state === 'err' ? `<div class="card warnc">⚠️ Error al guardar en Supabase: ${esc(Sync.err)} <button class="lnk" id="lDg" style="display:inline;margin:0">Diagnóstico</button></div>`
+    : pend ? `<div class="card warnc" style="background:#e3f2fd;color:#0d47a1">☁️ ${pend} cambio(s) pendiente(s) de subir…</div>` : '';
+  const ver = `<div class="note" style="text-align:center;margin-top:14px">LIMPFINC v${VERSION} · ${Sync.user ? '☁️ ' + esc(Sync.user.email) + (Sync.last ? ' · sincronizado ' + new Date(Sync.last).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '') : '📱 solo este dispositivo'}</div>`;
+  if (!fs.length) { el.innerHTML = nube + `<div class="empty">No hay fincas.<br>Pulsa «Nueva finca» para empezar.</div>` + ver; bindNube(); return; }
+  el.innerHTML = nube + (fs.length > 4 ? `<input class="inp" id="fBus" placeholder="🔍 Buscar finca…" style="margin-bottom:10px">` : '') + fs.map(f => {
+    const a = fincaAreas(f), c = f.config || {};
+    return `<div class="card finca" data-id="${f.id}" data-n="${esc(normName(f.nombre))}">
       <div class="ic">${f.tipo === 'monte' ? '🌲' : '🌾'}</div>
       <div style="flex:1;min-width:0"><div class="t">${esc(f.nombre)}</div>
-      <div class="s">${f.tipo === 'monte' ? 'Monte / plantación' : 'Abierta'} · ${f.linde ? fmtArea(a.neta) : 'sin linde'}${f.plan ? ' · plan ' + fmtH(f.plan.stats.t.total / 3600) + ' / ' + fmt(f.plan.stats.litros, 1) + ' L' : ''}</div></div>
-      <div style="color:#c7c7cc;font-size:20px">›</div></div>`;
+      <div class="s">${f.tipo === 'monte' ? 'Monte' : 'Abierta'} · ${f.linde ? fmtArea(a.neta) : 'sin linde'} · ${fmt(+c.velocidad || SB.velocidad || 3, 1)} km/h${f.plan ? '<br>Plan ' + fmtH(f.plan.stats.t.total / 3600) + ' · ' + fmt(f.plan.stats.litros, 1) + ' L' : ''}${Sync.user && !f._sync ? ' · <span style="color:var(--warn)">sin subir</span>' : ''}</div></div>
+      <button class="fmore" data-m="${f.id}" aria-label="Opciones">⋯</button></div>`;
   }).join('') + ver;
-  el.querySelectorAll('.finca').forEach(c => c.onclick = () => openFinca(c.dataset.id));
+  el.querySelectorAll('.finca').forEach(c => c.onclick = e => { if (e.target.closest('.fmore')) return; openFinca(c.dataset.id); });
+  el.querySelectorAll('.fmore').forEach(b => b.onclick = () => fincaAcciones(fs.find(f => f.id === b.dataset.m)));
+  if ($('fBus')) $('fBus').oninput = e => { const q = normName(e.target.value); el.querySelectorAll('.finca').forEach(c => c.classList.toggle('hidden', !!q && !c.dataset.n.includes(q))); };
+  bindNube();
+}
+function bindNube() {
+  if ($('lRe')) $('lRe').onclick = () => location.reload();
+  if ($('lIn')) $('lIn').onclick = () => loginView();
+  if ($('lDg')) $('lDg').onclick = diagnostico;
+}
+// acciones sobre una finca desde la lista
+function fincaAcciones(f) {
+  sheet(`<h3>${f.tipo === 'monte' ? '🌲' : '🌾'} ${esc(f.nombre)}</h3>
+    <button class="opt" id="aOpen">🗺 Abrir en el mapa</button>
+    <button class="opt" id="aEdit">✎ Editar (nombre, tipo, tractor, apero, velocidad)</button>
+    ${f.linde ? '<button class="opt" id="aRec">🔄 Recalcular plan (velocidad y parámetros)</button>' : ''}
+    <button class="opt" id="aCopy">⧉ Copiar finca<small>Duplica linde, exclusiones, árboles, plan y configuración (sin trabajos).</small></button>
+    <button class="opt" id="aDel" style="color:var(--err)">🗑 Eliminar</button>`,
+    () => {
+      $('aOpen').onclick = () => { closeSheet(); openFinca(f.id); };
+      $('aEdit').onclick = () => { cur = f; applyS(); fincaForm(f, true); };
+      if ($('aRec')) $('aRec').onclick = () => { cur = f; applyS(); recalcSheet(true); };
+      $('aCopy').onclick = () => copiarFinca(f);
+      $('aDel').onclick = () => confirmSheet(`¿Eliminar «${esc(f.nombre)}» y todos sus trabajos?`, 'Eliminar', async () => { for (const t of await DB.tByFinca(f.id)) await DB.tDel(t.id); await DB.del(f.id); toast('Finca eliminada'); showList(); }, true);
+    });
+}
+async function copiarFinca(f) {
+  let nombre = f.nombre + ' (copia)', n = 2;
+  while (await findByName(nombre)) nombre = `${f.nombre} (copia ${n++})`;
+  sheet(`<h3>Copiar finca</h3><label class="f">Nombre de la copia</label><input class="inp" id="cpN" value="${esc(nombre)}">
+    <button class="btn" id="cpOk" style="margin-top:12px">Crear copia</button>`, () => {
+    $('cpOk').onclick = async () => {
+      const nm = $('cpN').value.trim(); if (!nm) return toast('Indica un nombre');
+      if (await findByName(nm)) return toast('Ya existe una finca con ese nombre');
+      const c = JSON.parse(JSON.stringify(f)); delete c._sync;
+      Object.assign(c, { id: uid(), nombre: nm, creada: Date.now() });
+      await DB.put(c); closeSheet(); toast('Copia creada: ' + nm); if (view === 'list') showList(); else openFinca(c.id);
+    };
+  });
 }
 
 function setHeader(left, title, right, onL, onR) {
+  const enFinca = left === '‹ Fincas';
+  $('hTitle').classList.toggle('sw', enFinca); $('hTitle').onclick = enFinca ? () => { if (!busy()) fincaSwitcher(); } : null;
   $('hLeft').textContent = left; $('hTitle').textContent = title; $('hRight').textContent = right;
   $('hLeft').onclick = onL || null; $('hRight').onclick = onR || null;
 }
@@ -564,45 +640,65 @@ function nuevaFinca() {
       setTimeout(() => $('nNom').focus(), 50);
     });
 }
+// campos de configuración comunes a alta y edición
+function cfgHTML(cfg, tipo) {
+  return `<label class="f">Tipo</label>
+    <div class="seg" id="xTipo"><button data-v="abierta">🌾 Abierta</button><button data-v="monte">🌲 Monte / plantación</button></div>
+    <label class="f">Tractor</label><select class="inp" id="xTr">${CAT.tractores.map(t => `<option value="${t.id}" ${t.id === cfg.tractorId ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</select>
+    <label class="f">Apero</label><select class="inp" id="xAp">${CAT.aperos.map(a => `<option value="${a.id}" ${a.id === cfg.aperoId ? 'selected' : ''}>${esc(a.nombre)} · ${labNom(a.labor)}</option>`).join('')}</select>
+    <div class="row"><div><label class="f">Vegetación</label><select class="inp" id="xVeg">${VEGET.map(([v, n]) => `<option value="${v}" ${v === (cfg.vegetacion || 'media') ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+      <div><label class="f">Velocidad de trabajo (km/h)</label><input class="inp" id="xVel" inputmode="decimal" value="${String(cfg.velocidad || 3).replace('.', ',')}"></div></div>
+    <div class="note" id="xStd"></div>`;
+}
+function cfgBind(cfg, tipo, onTipo) {
+  const seg = $('xTipo'), paint = () => seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === tipo));
+  seg.querySelectorAll('button').forEach(b => b.onclick = () => { tipo = b.dataset.v; paint(); onTipo && onTipo(tipo); }); paint();
+  const std = () => { const ap = getAp($('xAp').value), v = ap && velStd(ap.labor, $('xVeg').value); $('xStd').innerHTML = v ? `Estándar ${labNom(ap.labor).toLowerCase()} · vegetación ${vegNom($('xVeg').value).toLowerCase()}: <b>${fmt(v, 1)} km/h</b> <button class="lnk" id="xUse" style="display:inline;margin:0 0 0 6px">usar</button>` : ''; if ($('xUse')) $('xUse').onclick = () => { $('xVel').value = String(v).replace('.', ','); }; };
+  $('xAp').onchange = $('xVeg').onchange = std; std();
+  return () => { const v = parseFloat($('xVel').value.replace(',', '.')); if (!(v > 0 && v < 30)) { toast('Velocidad no válida'); return null; } return { tipo, cfg: { tractorId: $('xTr').value, aperoId: $('xAp').value, vegetacion: $('xVeg').value, velocidad: v } }; };
+}
 function nuevaFincaMedir(nombre) {
-  let tipo = 'abierta';
-  sheet(`<h3>${esc(nombre)}</h3><div class="note" style="margin-bottom:6px">No está registrada. Indica el tipo y cómo medir su superficie.</div>
-    <label class="f">Tipo</label>
-    <div class="seg" id="nTipo"><button data-v="abierta">🌾 Abierta</button><button data-v="monte">🌲 Monte / plantación</button></div>
+  const cfg0 = { tractorId: SB.tractorDef || (CAT.tractores[0] || {}).id, aperoId: SB.aperoDef || (CAT.aperos[0] || {}).id, vegetacion: 'media', velocidad: SB.velocidad || 3 };
+  let leer;
+  sheet(`<h3>${esc(nombre)}</h3><div class="note" style="margin-bottom:6px">Finca nueva: configúrala y elige cómo medir su superficie.</div>
+    ${cfgHTML(cfg0, 'abierta')}
     <label class="f">Medición del linde</label>
     <button class="opt" id="nPie">🚶 A pie<small>Recorre el linde con el iPhone. Máxima precisión.</small></button>
     <button class="opt" id="nTrac">🚜 Con tractor<small>Recorre el interior junto al linde; se corrige hacia fuera.</small></button>
     <button class="opt" id="nLuego" style="color:var(--sub)">Más tarde<small>Crear la finca sin medir.</small></button>`,
     () => {
-      const seg = $('nTipo'), paint = () => seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === tipo));
-      seg.querySelectorAll('button').forEach(b => b.onclick = () => { tipo = b.dataset.v; paint(); }); paint();
+      leer = cfgBind(cfg0, 'abierta');
       const crear = async modo => {
-        const now = Date.now(), nf = { id: uid(), nombre, tipo, notas: '', creada: now, mod: now, linde: null, exclusiones: [] };
+        const v = leer(); if (!v) return;
+        const now = Date.now(), nf = { id: uid(), nombre, tipo: v.tipo, config: v.cfg, notas: '', creada: now, mod: now, linde: null, exclusiones: [] };
         await DB.put(nf); closeSheet(); await openFinca(nf.id);
         if (modo === 'pie') startRec('linde', 'pie'); else if (modo === 'tractor') tractorSetup();
       };
       $('nPie').onclick = () => crear('pie'); $('nTrac').onclick = () => crear('tractor'); $('nLuego').onclick = () => crear(null);
     });
 }
-function fincaForm(f) {
+function fincaForm(f, desdeLista) {
+  const cfg0 = { ...(f.config || {}) }; let leer;
   sheet(`<h3>Editar finca</h3>
     <label class="f">Nombre</label><input class="inp" id="fNom" value="${esc(f.nombre)}">
-    <label class="f">Tipo</label>
-    <div class="seg" id="fTipo"><button data-v="abierta">🌾 Abierta</button><button data-v="monte">🌲 Monte / plantación</button></div>
+    ${cfgHTML(cfg0, f.tipo)}
     <label class="f">Notas</label><input class="inp" id="fNot" value="${esc(f.notas || '')}">
     <div class="row" style="margin-top:14px"><button class="btn err" id="fDel">Eliminar</button><button class="btn" id="fOk">Guardar</button></div>`,
     () => {
-      let tipo = f.tipo;
-      const seg = $('fTipo'); const paint = () => seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === tipo));
-      seg.querySelectorAll('button').forEach(b => b.onclick = () => { tipo = b.dataset.v; paint(); }); paint();
+      leer = cfgBind(cfg0, f.tipo);
       $('fOk').onclick = async () => {
         const nombre = $('fNom').value.trim(); if (!nombre) { toast('Indica un nombre'); return; }
         if (await findByName(nombre, f.id)) return toast('Ya existe otra finca con ese nombre');
-        Object.assign(f, { nombre, tipo, notas: $('fNot').value.trim(), mod: Date.now() });
+        const v = leer(); if (!v) return;
+        const cambio = JSON.stringify(v.cfg) !== JSON.stringify({ tractorId: cfg0.tractorId, aperoId: cfg0.aperoId, vegetacion: cfg0.vegetacion || 'media', velocidad: cfg0.velocidad }) || v.tipo !== f.tipo;
+        Object.assign(f, { nombre, tipo: v.tipo, config: v.cfg, notas: $('fNot').value.trim() });
         delete f.refCat;
-        await DB.put(f); closeSheet(); cur = f; setHeader('‹ Fincas', f.nombre, '⋯', () => { if (busy()) return toast('Termina o cancela la operación en curso'); stopGPS(); showList(); }, fincaMenu);
+        await DB.put(f); closeSheet(); cur = f; applyS();
+        if (cambio && f.plan) await recalcPlan();
+        if (desdeLista) { showList(); return; } setHeader('‹ Fincas', f.nombre, '⋯', volverLista, fincaMenu);
       };
       $('fDel').onclick = () => confirmSheet(`¿Eliminar «${esc(f.nombre)}» y todos sus datos?`, 'Eliminar', async () => { for (const t of await DB.tByFinca(f.id)) await DB.tDel(t.id); await DB.del(f.id); cur = null; stopGPS(); showList(); }, true);
+      if (desdeLista) $('fOk').insertAdjacentHTML('beforebegin', '');
     });
 }
 
@@ -629,6 +725,8 @@ function showSettings() {
     h += '</div>';
   }
   h += `<div class="sgrp">Datos</div><div class="card">
+    <button class="btn" id="bCat" style="margin-bottom:8px">🚜 Tractores, aperos y velocidades</button>
+    <button class="btn sec" id="bCta" style="margin-bottom:8px">☁️ Cuenta y sincronización</button>
     <button class="btn sec" id="bGps" style="margin-bottom:8px">📡 Estado del GPS</button>
     <button class="btn sec" id="bFuel" style="margin-bottom:8px">⛽ Registrar repostaje (calibrar consumo)</button>
     <button class="btn sec" id="bExp" style="margin-bottom:8px">Exportar copia de seguridad (JSON)</button>
@@ -642,12 +740,12 @@ function showSettings() {
     if (inp.type === 'checkbox') S[k] = inp.checked;
     else if (typeof DEF[k] === 'string') S[k] = inp.value;
     else { const v = parseFloat(inp.value.replace(',', '.')); if (isFinite(v) && v >= 0) S[k] = v; else { toast('Valor no válido'); inp.value = String(S[k]).replace('.', ','); return; } }
-    await DB.kvPut('settings', S); toast('Guardado', 900);
+    await saveSB(); toast('Guardado', 900);
   });
-  $('bDef').onclick = () => confirmSheet('¿Restaurar todos los ajustes por defecto?', 'Restaurar', async () => { S = { ...DEF }; await DB.kvPut('settings', S); showSettings(); });
+  $('bDef').onclick = () => confirmSheet('¿Restaurar todos los ajustes por defecto?', 'Restaurar', async () => { SB = { ...DEF, tractorDef: SB.tractorDef, aperoDef: SB.aperoDef }; await DB.kvPut('settings', SB); applyS(); showSettings(); });
   $('bExp').onclick = exportBackup;
   $('bFuel').onclick = repostajeSheet;
-  $('bGps').onclick = gpsSheet;
+  $('bGps').onclick = gpsSheet; $('bCat').onclick = catSheet; $('bCta').onclick = cuentaSheet;
   $('bImp').onclick = () => $('fImp').click();
   $('fImp').onchange = importBackup;
 }
@@ -669,7 +767,7 @@ async function importBackup(e) {
       for (const t of d.trabajos || []) await DB.tPut(t);
       if (d.repostajes) await DB.kvPut('repostajes', d.repostajes);
       if (d.filtros) await DB.kvPut('filtros', d.filtros);
-      if (d.settings) { S = { ...DEF, ...d.settings }; await DB.kvPut('settings', S); }
+      if (d.settings) { SB = { ...DEF, ...d.settings }; await DB.kvPut('settings', SB); applyS(); }
       toast('Importado'); showSettings();
     });
   } catch { toast('Archivo no válido'); }
@@ -682,16 +780,14 @@ async function importBackup(e) {
 let map, lyr = {}, posMarker, posCircle, followPos = false;
 function initMap() {
   if (map) return;
-  map = L.map('map', { zoomControl: false, attributionControl: true, maxZoom: 21, preferCanvas: true }).setView([43.22, -8.29], 15);
-  const pnoa = L.tileLayer('https://www.ign.es/wmts/pnoa-ma?request=GetTile&service=WMTS&VERSION=1.0.0&Layer=OI.OrthoimageCoverage&Style=default&Format=image/jpeg&TileMatrixSet=GoogleMapsCompatible&TileMatrix={z}&TileRow={y}&TileCol={x}',
-    { maxNativeZoom: 19, maxZoom: 21, attribution: 'PNOA © IGN' });
+  map = L.map('map', { zoomControl: false, attributionControl: true, maxZoom: 21, preferCanvas: true, zoomSnap: 0.25, zoomDelta: 0.5 }).setView([43.22, -8.29], 15);
   const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 21, attribution: '© OpenStreetMap' });
-  // Solo fuentes libres: OSM (ODbL), OpenTopoMap (CC BY-SA), PNOA del IGN (CC BY 4.0)
+  // Solo fuentes libres: OSM (ODbL) y OpenTopoMap (CC BY-SA)
   const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { subdomains: 'abc', maxNativeZoom: 17, maxZoom: 21, attribution: '© OpenStreetMap · SRTM · © OpenTopoMap (CC BY-SA)' });
-  const bases = { 'OpenStreetMap': osm, 'OpenTopoMap': topo, 'Ortofoto PNOA': pnoa };
+  const bases = { 'OpenStreetMap': osm, 'OpenTopoMap': topo };
   L.control.layers(bases, null, { position: 'topright' }).addTo(map);
   (bases[S.mapaBase] || osm).addTo(map);
-  map.on('baselayerchange', async e => { S.mapaBase = e.name; try { await DB.kvPut('settings', S); } catch { } });
+  map.on('baselayerchange', async e => { S.mapaBase = e.name; try { await saveSB(); } catch { } });
   L.control.scale({ imperial: false, position: 'topleft' }).addTo(map); // queda debajo del indicador GPS
   lyr.finca = L.layerGroup().addTo(map);
   lyr.plan = L.layerGroup().addTo(map);
@@ -705,9 +801,11 @@ function initMap() {
 
 async function openFinca(id) {
   cur = await DB.get(id); if (!cur) return showList();
+  if (!cur.config) cur.config = { tractorId: SB.tractorDef, aperoId: SB.aperoDef, velocidad: SB.velocidad || 3, vegetacion: 'media' };
+  applyS();
   viewTrab = null; trabCache = null;
   view = 'map';
-  setHeader('‹ Fincas', cur.nombre, '⋯', () => { if (busy()) return toast('Termina o cancela la operación en curso'); stopGPS(); showList(); }, fincaMenu);
+  setHeader('‹ Fincas', cur.nombre, '⋯', volverLista, fincaMenu);
   $('vList').classList.add('hidden'); $('bNueva').classList.add('hidden'); $('vSet').classList.add('hidden');
   $('mapWrap').classList.remove('hidden');
   initMap(); setTimeout(() => map.invalidateSize(), 50);
@@ -730,10 +828,36 @@ function drawFinca(fit) {
       .bindTooltip(esc(e.nombre), { sticky: true }).addTo(lyr.finca);
   });
   drawTrabView();
-  if (fit) {
-    const all = [...(cur.linde ? cur.linde.coords : []), ...(cur.exclusiones || []).flatMap(e => e.coords)];
-    if (all.length) map.fitBounds(L.latLngBounds(all), { padding: [30, 30], maxZoom: 19 });
-  }
+  if (fit) fitFinca();
+}
+// encuadra la finca en la parte visible del mapa (entre la cabecera y el panel inferior), en cualquier pantalla
+function fitFinca() {
+  if (!cur || !map) return;
+  const all = [...(cur.linde ? cur.linde.coords : []), ...(cur.exclusiones || []).flatMap(e => e.coords)];
+  if (!all.length) { if (lastPos) map.setView([lastPos.lat, lastPos.lon], 17); return; }
+  const pan = ['pWork', 'pRec', 'pTool', 'tbMain'].map($).find(el => el && !el.classList.contains('hidden'));
+  const pb = (pan ? pan.offsetHeight : 0) + 24, w = map.getSize().x, pad = Math.max(16, Math.round(w * 0.05));
+  map.fitBounds(L.latLngBounds(all), { paddingTopLeft: [pad, 64], paddingBottomRight: [pad, pb], maxZoom: 20, animate: false });
+}
+let rszT = null, lastW = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(rszT);
+  rszT = setTimeout(() => { if (!map || view !== 'map') return; map.invalidateSize(); const w = window.innerWidth; if (w !== lastW && !followPos && !busy()) fitFinca(); lastW = w; }, 250);
+});
+// volver a la lista: si hay algo a medias, se pregunta en vez de bloquear
+function volverLista() {
+  if (work) return toast('Pulsa «■ Parar» para terminar el trabajo antes de salir', 3500);
+  if (!busy()) { stopGPS(); return showList(); }
+  confirmSheet('Hay una operación a medias (medición, dibujo o edición). ¿Descartarla y volver a la lista?', 'Descartar y salir', () => {
+    if (rec) endRec(); if (draw) endDraw(); if (edit) { lyr.edit.clearLayers(); edit = null; }
+    if (mallaW) mallaCancel(); review = null; planRev = null; lyr.tmp.clearLayers(); stopGPS(); showList();
+  }, true);
+}
+async function fincaSwitcher() {
+  const fs = (await DB.all()).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  sheet(`<h3>Mis fincas</h3>${fs.map(f => `<button class="opt" data-id="${f.id}">${f.tipo === 'monte' ? '🌲' : '🌾'} ${esc(f.nombre)}${cur && f.id === cur.id ? ' <b style="color:var(--pri)">· abierta</b>' : ''}<small>${f.linde ? fmtArea(fincaAreas(f).neta) : 'sin linde'}</small></button>`).join('')}
+    <button class="btn" id="swN">＋ Nueva finca</button>`,
+    sh => { sh.querySelectorAll('[data-id]').forEach(b => b.onclick = () => { closeSheet(); stopGPS(); openFinca(b.dataset.id); }); $('swN').onclick = () => { closeSheet(); stopGPS(); showList(); nuevaFinca(); }; });
 }
 
 function showMain() { $('tbMain').classList.remove('hidden'); $('pRec').classList.add('hidden'); $('pTool').classList.add('hidden'); }
@@ -872,7 +996,9 @@ function tractorSetup() {
       $('tGo').onclick = async () => {
         const a = parseFloat($('tAn').value.replace(',', '.')), h = parseFloat($('tHo').value.replace(',', '.'));
         if (!(a > 0) || !(h >= 0)) return toast('Valores no válidos');
-        S.anchoTractor = a; S.holguraLinde = h; await DB.kvPut('settings', S);
+        S.holguraLinde = h; await saveSB();
+        const tr = getTr(cur && cur.config && cur.config.tractorId); if (tr && +tr.ancho_m !== a) { tr.ancho_m = a; await DB.cPut('tractores', tr); await loadCat(); }
+        applyS();
         closeSheet(); startRec('linde', 'tractor');
       };
     });
@@ -1011,6 +1137,7 @@ function startReview(target, mode, pts, r) {
 const compactPts = pts => pts.map(p => p.corner ? [+p.lat.toFixed(8), +p.lon.toFixed(8), +p.acc.toFixed(2), p.t, 'E'] : [+p.lat.toFixed(7), +p.lon.toFixed(7), +p.acc.toFixed(1), p.t]);
 
 async function commitPolygon(target, coords, meta) {
+  setTimeout(fitFinca, 60);
   if (target === 'linde') {
     cur.linde = { coords, ...meta, fecha: Date.now() };
   } else {
@@ -1170,6 +1297,9 @@ function infoSheet() {
   sheet(`<h3>${esc(cur.nombre)}</h3>
     <div class="card">
       <div class="kv"><span>Tipo</span><span>${cur.tipo === 'monte' ? 'Monte / plantación' : 'Abierta'}</span></div>
+      <div class="kv"><span>Tractor</span><span>${esc(S.tractor)}</span></div>
+      <div class="kv"><span>Apero</span><span>${esc(S.aperoNombre)} (${fmt(S.aperoAncho, 2)} m)</span></div>
+      <div class="kv"><span>Velocidad · vegetación</span><span>${fmt(S.velocidad, 1)} km/h · ${vegNom((cur.config || {}).vegetacion || 'media')}</span></div>
       <div class="kv"><span>Linde</span><span>${cur.linde ? met[cur.linde.metodo] || cur.linde.metodo : '—'}</span></div>
       ${cur.linde && cur.linde.accMed ? `<div class="kv"><span>Precisión media medición</span><span>±${fmt(cur.linde.accMed, 1)} m</span></div>` : ''}
       ${cur.linde && cur.linde.offset ? `<div class="kv"><span>Corrección tractor</span><span>${fmt(cur.linde.offset, 2)} m</span></div>` : ''}
@@ -1632,14 +1762,15 @@ function planMenu() {
       <div class="kv"><span>Cobertura teórica</span><span>${fmt(st.area.cobertura * 100, 1)} %</span></div>
     </div>
     <button class="opt" id="pDet">📋 Ver detalle</button>
-    <button class="opt" id="pRe">🔄 Recalcular / cambiar opciones</button>
+    <button class="opt" id="pRe2">🔄 Recalcular con otra velocidad / parámetros</button>
+    <button class="opt" id="pRe">🧭 Cambiar dirección o punto de inicio</button>
     ${cur.tipo === 'monte' ? '<button class="opt" id="pMal">🌲 Malla de árboles</button>' : ''}
     <button class="opt" id="pVis">${CFG.plan ? '🙈 Ocultar plan' : '👁 Mostrar plan'}</button>
     <button class="opt" id="pMis">${CFG.noAlc ? '⬜ Ocultar zonas no alcanzadas' : '🟧 Mostrar zonas no alcanzadas'}</button>
     <button class="opt" id="pDel" style="color:var(--err)">🗑 Borrar plan</button>`,
     () => {
       $('pDet').onclick = () => planDetail(cur.plan);
-      $('pRe').onclick = planOptions;
+      $('pRe').onclick = planOptions; $('pRe2').onclick = () => recalcSheet();
       $('pVis').onclick = () => { CFG.plan = !CFG.plan; saveCfg(); closeSheet(); drawFinca(); };
       $('pMis').onclick = () => { CFG.noAlc = !CFG.noAlc; saveCfg(); closeSheet(); drawFinca(); };
       if ($('pMal')) $('pMal').onclick = () => { closeSheet(); mallaMenu(); };
@@ -1702,6 +1833,73 @@ function runPlan(o, start) {
     if (pl.error) { toast(pl.error, 4000); showMain(); return; }
     planReview(pl);
   }, 40);
+}
+// hoja de recálculo: cambia velocidad y otros parámetros, compara y guarda
+function recalcSheet(desdeLista) {
+  const f = cur, c = { ...(f.config || {}) }, S0 = effS(f), pl0 = f.plan, o = f.planOpt || { dirMode: 'auto', nHMode: 'auto' };
+  const num = v => String(v ?? '').replace('.', ',');
+  sheet(`<h3>Recalcular plan · ${esc(f.nombre)}</h3>
+    ${pl0 ? `<div class="card"><div class="kv"><span>Plan actual</span><span>${fmtH(pl0.stats.t.total / 3600)} · ${fmt(pl0.stats.litros, 1)} L · ${fmt(S0.velocidad, 1)} km/h</span></div></div>` : '<div class="note">La finca aún no tiene plan: se calculará uno nuevo.</div>'}
+    <div class="card">
+      <div class="srow"><span><b>Velocidad de trabajo (km/h)</b></span><input class="inp" id="rVel" inputmode="decimal" value="${num(S0.velocidad)}" style="width:90px;text-align:right"></div>
+      <div class="srow"><span>Tractor</span><select class="inp" id="rTr" style="width:170px">${CAT.tractores.map(t => `<option value="${t.id}" ${t.id === (c.tractorId || SB.tractorDef) ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</select></div>
+      <div class="srow"><span>Apero</span><select class="inp" id="rAp" style="width:170px">${CAT.aperos.map(a => `<option value="${a.id}" ${a.id === (c.aperoId || SB.aperoDef) ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}</select></div>
+      <div class="srow"><span>Solape entre pasadas (m)</span><input class="inp" id="rSol" inputmode="decimal" value="${num(S0.solape)}" style="width:90px;text-align:right"></div>
+      <div class="srow"><span>Velocidad en giros (km/h)</span><input class="inp" id="rVg" inputmode="decimal" value="${num(S0.velocidadGiro)}" style="width:90px;text-align:right"></div>
+      <div class="srow"><span>Consumo (L/h)</span><input class="inp" id="rCon" inputmode="decimal" value="${num(S0.consumo)}" style="width:90px;text-align:right"></div>
+      <div class="srow"><span>Vueltas de cabecera (vacío = auto)</span><input class="inp" id="rNH" inputmode="numeric" value="${o.nHMode === 'man' ? o.nH : ''}" style="width:90px;text-align:right"></div>
+      ${f.tipo !== 'monte' ? `<div class="srow"><span>Rumbo pasadas ° (vacío = óptimo)</span><input class="inp" id="rAz" inputmode="decimal" value="${o.dirMode === 'man' ? o.az : ''}" style="width:90px;text-align:right"></div>` : ''}
+    </div>
+    <div id="rRes"></div>
+    <div class="row"><button class="btn sec" id="rCalc">Calcular</button><button class="btn" id="rOk" disabled>Guardar</button></div>`,
+    () => {
+      let nuevo = null, cfgN = null, optN = null;
+      // al cambiar el apero se proponen sus valores
+      $('rAp').onchange = () => { const a = getAp($('rAp').value); if (a) { $('rSol').value = num(+a.solape_m || 0); $('rCon').value = num(+a.consumo_lh || SB.consumo); } };
+      $('rCalc').onclick = () => {
+        const n = id => { const t = ($(id) ? $(id).value : '').trim().replace(',', '.'); return t === '' ? null : parseFloat(t); };
+        const vel = n('rVel'); if (!(vel > 0 && vel < 30)) return toast('Velocidad no válida');
+        const ap = getAp($('rAp').value);
+        cfgN = { ...c, velocidad: vel, tractorId: $('rTr').value, aperoId: $('rAp').value };
+        const sol = n('rSol'), vg = n('rVg'), con = n('rCon');
+        cfgN.solape = sol != null && Math.abs(sol - (+ap.solape_m || 0)) > 1e-9 ? sol : null;
+        cfgN.consumo = con != null && Math.abs(con - (+ap.consumo_lh || 0)) > 1e-9 ? con : null;
+        cfgN.velGiro = vg != null && Math.abs(vg - SB.velocidadGiro) > 1e-9 ? vg : null;
+        const nh = n('rNH'), az = n('rAz');
+        optN = { ...o, nHMode: nh ? 'man' : 'auto', nH: nh || 0, dirMode: az != null ? 'man' : 'auto', az: az != null ? az : o.az };
+        const S1 = effS(f, cfgN);
+        const start = pl0 && pl0.parts[0] ? pl0.parts[0].ll[0] : null;
+        try { nuevo = Planner.plan(f, S1, { az: optN.dirMode === 'man' ? optN.az : null, nH: optN.nHMode === 'man' ? optN.nH : 0, start }); } catch (e) { nuevo = { error: e.message }; }
+        if (nuevo.error) { $('rRes').innerHTML = `<div class="card warnc">${esc(nuevo.error)}</div>`; $('rOk').disabled = true; return; }
+        const st = nuevo.stats, d = pl0 ? (st.t.total - pl0.stats.t.total) / 60 : null, dl = pl0 ? st.litros - pl0.stats.litros : null;
+        const sg = v => (v > 0 ? '+' : '') + fmt(v, 1);
+        $('rRes').innerHTML = `<div class="card" style="background:#e8f5e9">
+          <div class="kv"><span><b>Nuevo plan</b></span><span>${fmtH(st.t.total / 3600)} · ${fmt(st.litros, 1)} L</span></div>
+          ${pl0 ? `<div class="kv"><span>Diferencia</span><span>${sg(d)} min · ${sg(dl)} L</span></div>` : ''}
+          <div class="kv"><span>Rendimiento</span><span>${fmt(st.haH, 2)} ha/h · ${fmt(st.litros / (st.area.objetivo / 1e4 || 1), 1)} L/ha</span></div>
+          <div class="kv"><span>Pasadas · giros U/K/Ω</span><span>${st.nPasadas} · ${st.giros.U}/${st.giros.K}/${st.giros.O}</span></div>
+          <div class="kv"><span>Cobertura teórica</span><span>${fmt(st.area.cobertura * 100, 1)} %</span></div></div>`;
+        $('rOk').disabled = false;
+      };
+      $('rOk').onclick = async () => {
+        if (!nuevo || nuevo.error) return;
+        f.config = cfgN; f.planOpt = optN; f.plan = nuevo; cur = f; applyS();
+        await saveCur(); closeSheet(); toast(`Plan guardado: ${fmtH(nuevo.stats.t.total / 3600)} · ${fmt(nuevo.stats.litros, 1)} L`, 3500);
+        if (desdeLista || view === 'list') showList(); else drawFinca();
+      };
+      $('rCalc').click();
+    });
+}
+// recalcula el plan con la configuración actual (tractor, apero, velocidad) y lo guarda
+async function recalcPlan() {
+  if (!cur || !cur.linde) return toast('La finca no tiene linde');
+  if (cur.tipo === 'monte' && !(cur.malla && cur.malla.arboles && cur.malla.arboles.length)) return toast('Define primero la malla de árboles');
+  applyS();
+  const o = cur.planOpt || {}, start = cur.plan && cur.plan.parts[0] ? cur.plan.parts[0].ll[0] : null;
+  let pl; try { pl = Planner.plan(cur, S, { az: o.dirMode === 'man' ? o.az : null, nH: o.nHMode === 'man' ? o.nH : 0, start }); } catch (e) { pl = { error: e.message }; }
+  if (pl.error) return toast('No se pudo recalcular: ' + pl.error, 4000);
+  cur.plan = pl; await saveCur(); drawFinca();
+  toast(`Plan recalculado a ${fmt(S.velocidad, 1)} km/h: ${fmtH(pl.stats.t.total / 3600)} · ${fmt(pl.stats.litros, 1)} L`, 4500);
 }
 function planReview(pl) {
   planRev = { pl };
@@ -1969,10 +2167,16 @@ function fincaMenu() {
     ${cur.tipo === 'monte' ? '<button class="opt" id="fmMal">🌲 Malla de árboles</button>' : ''}
     <button class="opt" id="fmExp">📤 Exportar (DXF, KML, GPX, GeoJSON, CSV)</button>
     <button class="opt" id="fmFuel">⛽ Registrar repostaje</button>
-    <button class="opt" id="fmEd">✎ Editar finca</button>`,
+    <button class="opt" id="fmEd">✎ Editar finca (tractor, apero, velocidad)</button>
+    ${cur.linde ? '<button class="opt" id="fmRe">🔄 Recalcular plan (velocidad y parámetros)</button>' : ''}
+    <button class="opt" id="fmCp">⧉ Copiar finca</button>
+    <button class="opt" id="fmSw">📂 Cambiar de finca</button>
+    <button class="opt" id="fmNew">＋ Nueva finca</button>`,
     () => {
       $('fmCap').onclick = capasSheet; $('fmHis').onclick = historicoSheet; $('fmExp').onclick = exportSheet;
       $('fmFuel').onclick = repostajeSheet; $('fmEd').onclick = () => fincaForm(cur);
+      if ($('fmRe')) $('fmRe').onclick = () => recalcSheet();
+      $('fmSw').onclick = fincaSwitcher; $('fmCp').onclick = () => copiarFinca(cur); $('fmNew').onclick = () => { closeSheet(); stopGPS(); showList(); nuevaFinca(); };
       if ($('fmMal')) $('fmMal').onclick = () => { closeSheet(); mallaMenu(); };
     });
 }
@@ -2094,7 +2298,8 @@ function Tracker(g, plan, S, t0) {
     for (let i = st.buf.length - 2; i >= 0; i--) { const d = Geo.dist(st.buf[i], p); if (d >= 3) { st.h = [(p[0] - st.buf[i][0]) / d, (p[1] - st.buf[i][1]) / d]; break; } }
     const speed = kf.speed * 3.6;
     if (!st.h) return { valid: true, moving, speed, cut: null, thr, accF };
-    const cut = [p[0] - S.offsetApero * st.h[0], p[1] - S.offsetApero * st.h[1]];
+    const lat_ = S.desplazamiento || 0;   // desplazamiento lateral del apero (+ derecha)
+    const cut = [p[0] - S.offsetApero * st.h[0] + lat_ * st.h[1], p[1] - S.offsetApero * st.h[1] - lat_ * st.h[0]];
     const dev = segs.length ? nearest(cut) : null;
     // solo cuenta como desvío en tramo recto, alineado con el plan (no en esquinas, giros ni al entrar/salir de pasada)
     if (dev) dev.ok = !!(dev.dir && Math.abs(st.h[0] * dev.dir[0] + st.h[1] * dev.dir[1]) > 0.9 && dev.into > 6 && dev.rem > 2);
@@ -2116,9 +2321,10 @@ function Tracker(g, plan, S, t0) {
 function sesHoras(trab) { return trab.sesiones.reduce((s, x) => s + Math.max(0, (x.fin || x.inicio) - x.inicio), 0) / 3.6e6; }
 function rebuildTrab(f, trab) {
   const g = Grid(f), plan = trab.planFecha && f.plan && f.plan.fecha === trab.planFecha ? f.plan : null;
-  const tr = Tracker(g, plan, S, trab.inicio), outs = [];
+  const S2 = effS(f, trab.cfg || f.config);
+  const tr = Tracker(g, plan, S2, trab.inicio), outs = [];
   trab.sesiones.forEach(ses => { tr.reset(); outs.push(null); ses.pts.forEach(pt => { const r = tr.add(pt); if (r.cut) outs.push([r.cutLL, r.on, r.flag]); }); });
-  return { g, tr, outs, plan };
+  return { g, tr, outs, plan, S2 };
 }
 function resumenTrab(trab, R) {
   const a = R.g.areas(), horas = sesHoras(trab), tr = R.tr;
@@ -2131,8 +2337,8 @@ function resumenTrab(trab, R) {
     planArea: R.plan ? R.plan.stats.area.objetivo : null,
     devMed: tr.Lplan ? tr.devSum / tr.Lplan : null, devMax: tr.hasPlan ? tr.devMax : null, devPct: tr.Lplan ? tr.Ldev / tr.Lplan : null,
     vMedia: tr.tOn > 0 ? tr.Lon / tr.tOn * 3.6 : null,
-    litros: horas * S.consumo, consumo: S.consumo,
-    haH: horas > 0 ? a.limpia / 1e4 / horas : null, LHa: a.limpia > 0 ? horas * S.consumo / (a.limpia / 1e4) : null,
+    litros: horas * (R.S2 || S).consumo, consumo: (R.S2 || S).consumo,
+    haH: horas > 0 ? a.limpia / 1e4 / horas : null, LHa: a.limpia > 0 ? horas * (R.S2 || S).consumo / (a.limpia / 1e4) : null,
     planT: R.plan ? R.plan.stats.t.total / 3600 : null, planLitros: R.plan ? R.plan.stats.litros : null
   };
 }
@@ -2176,7 +2382,7 @@ async function workMenu() {
 }
 async function startWork(trab) {
   const hasPlan = cur.plan && !planStale(cur);
-  if (!trab) trab = { id: uid(), fincaId: cur.id, inicio: Date.now(), estado: 'abierto', planFecha: hasPlan ? cur.plan.fecha : null, sesiones: [] };
+  if (!trab) trab = { id: uid(), fincaId: cur.id, inicio: Date.now(), estado: 'abierto', planFecha: hasPlan ? cur.plan.fecha : null, cfg: { ...(cur.config || {}) }, sesiones: [] };
   const R = rebuildTrab(cur, trab);
   R.tr.reset(); R.outs.push(null);
   work = { trab, ...R, ses: null, on: true, paused: true, ready: true, last: null, spd: 0, guide: { info: R.plan ? planGuide(R.plan) : [], part: -1, warned: false, devSince: 0, devSay: 0 } };
@@ -2261,8 +2467,8 @@ function paintTools() {
   $('wVoz').classList.toggle('off', !S.voz); $('wVoz').textContent = S.voz ? '🔊 Voz' : '🔇 Voz';
   document.body.classList.toggle('hc', !!S.altoContraste);
 }
-$('wVoz').onclick = async () => { S.voz = !S.voz; paintTools(); if (S.voz) speak('Voz activada', true); else try { speechSynthesis.cancel(); } catch { } try { await DB.kvPut('settings', S); } catch { } };
-$('wHC').onclick = async () => { S.altoContraste = !S.altoContraste; paintTools(); try { await DB.kvPut('settings', S); } catch { } };
+$('wVoz').onclick = async () => { S.voz = !S.voz; paintTools(); if (S.voz) speak('Voz activada', true); else try { speechSynthesis.cancel(); } catch { } try { await saveSB(); } catch { } };
+$('wHC').onclick = async () => { S.altoContraste = !S.altoContraste; paintTools(); try { await saveSB(); } catch { } };
 let gpsWasOk = null;
 setInterval(() => {
   if (!work || work.paused) { gpsWasOk = null; return; }
@@ -2411,8 +2617,12 @@ async function repostajeSheet() {
         if (R.base && isFinite(l) && l > 0) {
           if (h < 0.25) return toast('Muy pocas horas registradas para calibrar (mín. 15 min)');
           R.hist.push({ fecha: now, litros: l, horas: h, lh: l / h });
-          if (S.consumoAuto) { const last = R.hist.slice(-5); S.consumo = +(last.reduce((s, x) => s + x.litros, 0) / last.reduce((s, x) => s + x.horas, 0)).toFixed(2); await DB.kvPut('settings', S); }
-          toast(`Consumo medido: ${fmt(l / h, 2)} L/h` + (S.consumoAuto ? ` · aplicado ${fmt(S.consumo, 2)} L/h` : ''), 4000);
+          if (S.consumoAuto) {
+            const last = R.hist.slice(-5), lh = +(last.reduce((s, x) => s + x.litros, 0) / last.reduce((s, x) => s + x.horas, 0)).toFixed(2);
+            const ap = getAp(cur && cur.config && cur.config.aperoId); if (ap) { ap.consumo_lh = lh; await DB.cPut('aperos', ap); await loadCat(); }
+            applyS();
+          }
+          toast(`Consumo medido: ${fmt(l / h, 2)} L/h` + (S.consumoAuto ? ` · aplicado al apero «${S.aperoNombre}»: ${fmt(S.consumo, 2)} L/h` : ''), 5000);
         } else toast('Depósito lleno registrado');
         R.base = now; await DB.kvPut('repostajes', R); closeSheet();
       };
@@ -2558,6 +2768,323 @@ function faltasMode() {
   showTool('Faltas de árboles', 'Toca un árbol para marcarlo como falta (gris) o volver a activarlo.', [['Cancelar', 'sec', () => fin(false)], ['Guardar', '', () => fin(true)]]);
 }
 
+/* =========================================================
+   CATÁLOGO: tractores, aperos y velocidades estándar
+   ========================================================= */
+let CAT = { tractores: [], aperos: [], velocidades: [] };
+const LABORES = [['desbroce', 'Desbroce'], ['trituracion', 'Trituración'], ['siega', 'Siega'], ['grada', 'Grada'], ['arado', 'Arado'], ['cultivador', 'Cultivador'], ['fresado', 'Fresado'], ['otro', 'Otra labor']];
+const VEGET = [['ligera', 'Ligera'], ['media', 'Media'], ['densa', 'Densa']];
+// velocidades orientativas (km/h) por labor y vegetación: ligera, media, densa — editables
+const VEL_STD = { desbroce: [3.5, 3.0, 2.0], trituracion: [2.5, 2.0, 1.5], siega: [6, 5, 4], grada: [8, 7, 6], arado: [5, 4.5, 4], cultivador: [7, 6, 5], fresado: [3, 2.5, 2], otro: [4, 3, 2.5] };
+const labNom = k => (LABORES.find(l => l[0] === k) || [k, k])[1];
+const vegNom = k => (VEGET.find(l => l[0] === k) || [k, k])[1];
+const TR_FIELDS = [['nombre', 'Modelo', 'text'], ['potencia_cv', 'Potencia (CV)'], ['ancho_m', 'Ancho (m)'], ['longitud_m', 'Longitud sin apero (m)'], ['radio_giro_m', 'Radio de giro mínimo (m)'], ['deposito_l', 'Depósito de gasoil (L)'], ['marcha_atras', 'Maniobras con marcha atrás', 'bool'], ['notas', 'Notas', 'text']];
+const AP_FIELDS = [['nombre', 'Nombre', 'text'], ['labor', 'Labor', 'labor'], ['ancho_m', 'Ancho de trabajo (m)'], ['longitud_m', 'Longitud del apero (m)'], ['enganche', 'Enganche', 'enganche'], ['distancia_gps_m', 'Distancia iPhone → centro del apero (m)'], ['desplazamiento_m', 'Desplazamiento lateral (m, + derecha)'], ['solape_m', 'Solape entre pasadas (m)'], ['velocidad_kmh', 'Velocidad de trabajo típica (km/h)'], ['consumo_lh', 'Consumo con este apero (L/h)'], ['potencia_cv', 'Potencia necesaria (CV)'], ['tdf_rpm', 'Toma de fuerza (rpm)'], ['notas', 'Notas', 'text']];
+
+async function loadCat() { for (const k of Object.keys(CAT)) CAT[k] = (await DB.gAll(k)).sort((a, b) => String(a.nombre || a.labor).localeCompare(String(b.nombre || b.labor))); }
+async function seedCat() {
+  let ch = false;
+  if (!CAT.tractores.length) {
+    const t = { id: uid(), nombre: SB.tractor || 'New Holland TN95F', potencia_cv: SB.potencia || 95, ancho_m: SB.anchoTractor || 1.7, longitud_m: 3.5, radio_giro_m: SB.radioGiro || 4, deposito_l: null, marcha_atras: SB.marchaAtras !== false, notas: '' };
+    await DB.cPut('tractores', t); SB.tractorDef = t.id; ch = true;
+  }
+  if (!CAT.aperos.length) {
+    const a = { id: uid(), nombre: (SB.aperoNombre || 'Desbrozadora de cadenas') + ' ' + fmt(SB.aperoAncho || 1.7, 2) + ' m', labor: 'desbroce', ancho_m: SB.aperoAncho || 1.7, longitud_m: Math.max(0.5, (SB.longTractorApero || 5) - 3.5), enganche: 'suspendido', distancia_gps_m: SB.offsetApero || 2, desplazamiento_m: 0, solape_m: SB.solape ?? 0.1, velocidad_kmh: 3.0, consumo_lh: SB.consumo || 5, potencia_cv: null, tdf_rpm: 540, notas: '' };
+    await DB.cPut('aperos', a); SB.aperoDef = a.id; ch = true;
+  }
+  if (!CAT.velocidades.length) {
+    for (const [lab] of LABORES) for (let i = 0; i < 3; i++) await DB.cPut('velocidades', { id: uid(), labor: lab, vegetacion: VEGET[i][0], velocidad_kmh: VEL_STD[lab][i], notas: 'orientativa' });
+    ch = true;
+  }
+  if (ch) { await loadCat(); await DB.kvPut('settings', SB); }
+}
+const velStd = (labor, veg) => { const v = CAT.velocidades.find(x => x.labor === labor && x.vegetacion === (veg || 'media')); return v ? +v.velocidad_kmh : null; };
+const getTr = id => CAT.tractores.find(x => x.id === id) || CAT.tractores.find(x => x.id === SB.tractorDef) || CAT.tractores[0];
+const getAp = id => CAT.aperos.find(x => x.id === id) || CAT.aperos.find(x => x.id === SB.aperoDef) || CAT.aperos[0];
+
+/* Ajustes efectivos: generales + tractor + apero + velocidad de la finca (o del trabajo) */
+const DERIVED = ['tractor', 'potencia', 'radioGiro', 'marchaAtras', 'aperoNombre', 'aperoAncho', 'offsetApero', 'desplazamiento', 'solape', 'consumo', 'anchoTractor', 'longTractorApero', 'labor'];
+function effS(f, cfg) {
+  const c = cfg || (f && f.config) || {}, tr = getTr(c.tractorId), ap = getAp(c.aperoId), o = { ...SB };
+  if (tr) Object.assign(o, { tractor: tr.nombre, potencia: +tr.potencia_cv || 0, anchoTractor: +tr.ancho_m || 1.7, radioGiro: +tr.radio_giro_m || 4, marchaAtras: tr.marcha_atras !== false });
+  if (ap) Object.assign(o, { aperoNombre: ap.nombre, aperoAncho: +ap.ancho_m || 1.7, offsetApero: +ap.distancia_gps_m || 0, desplazamiento: +ap.desplazamiento_m || 0, solape: +ap.solape_m || 0, consumo: +ap.consumo_lh || SB.consumo, labor: ap.labor });
+  o.longTractorApero = (tr ? +tr.longitud_m || 3.5 : 3.5) + (ap ? +ap.longitud_m || 1.5 : 1.5);
+  o.velocidad = +c.velocidad || SB.velocidad || 3;
+  // ajustes propios de la finca (opcionales): solape, consumo, velocidad en giros
+  if (c.solape != null && c.solape !== '') o.solape = +c.solape;
+  if (+c.consumo > 0) o.consumo = +c.consumo;
+  if (+c.velGiro > 0) o.velocidadGiro = +c.velGiro;
+  return o;
+}
+function applyS() { S = effS(cur); }
+async function saveSB() {
+  const c = (cur && cur.config) || {};
+  for (const k of Object.keys(S)) { if (DERIVED.includes(k) || (k === 'velocidad' && cur) || (k === 'velocidadGiro' && +c.velGiro > 0)) continue; SB[k] = S[k]; }
+  await DB.kvPut('settings', SB);
+}
+
+/* ---------- UI del catálogo ---------- */
+function catSheet() {
+  const card = (list, kind) => list.map(o => `<button class="opt" data-k="${kind}" data-id="${o.id}">${kind === 'tractores' ? '🚜' : '🔧'} ${esc(o.nombre)}${(kind === 'tractores' ? SB.tractorDef : SB.aperoDef) === o.id ? ' <b style="color:var(--pri)">· predeterminado</b>' : ''}
+    <small>${kind === 'tractores' ? `${fmt(+o.potencia_cv || 0, 0)} CV · ancho ${fmt(+o.ancho_m, 2)} m · radio ${fmt(+o.radio_giro_m, 1)} m` : `${labNom(o.labor)} · ${fmt(+o.ancho_m, 2)} m · ${fmt(+o.velocidad_kmh || 0, 1)} km/h · ${fmt(+o.consumo_lh || 0, 1)} L/h`}</small></button>`).join('');
+  sheet(`<h3>Tractores, aperos y velocidades</h3>
+    <div class="sgrp">Tractores</div>${card(CAT.tractores, 'tractores')}<button class="btn sec" id="cNT" style="margin-bottom:6px">＋ Nuevo tractor</button>
+    <div class="sgrp">Aperos</div>${card(CAT.aperos, 'aperos')}<button class="btn sec" id="cNA" style="margin-bottom:6px">＋ Nuevo apero</button>
+    <div class="sgrp">Velocidades estándar</div><button class="opt" id="cVel">📏 Velocidad por labor y vegetación<small>Valores orientativos editables; se proponen al crear o editar una finca.</small></button>
+    <div class="note">${Sync.user ? '☁️ Se guardan en Supabase.' : '📱 Solo en este dispositivo (sin sesión de Supabase).'}</div>`,
+    sh => {
+      sh.querySelectorAll('[data-k]').forEach(b => b.onclick = () => catForm(b.dataset.k, CAT[b.dataset.k].find(o => o.id === b.dataset.id)));
+      $('cNT').onclick = () => catForm('tractores', null); $('cNA').onclick = () => catForm('aperos', null); $('cVel').onclick = velSheet;
+    });
+}
+function catForm(kind, o) {
+  const isT = kind === 'tractores', F = isT ? TR_FIELDS : AP_FIELDS, nuevo = !o;
+  o = o || (isT ? { id: uid(), nombre: '', potencia_cv: 90, ancho_m: 1.8, longitud_m: 3.5, radio_giro_m: 4, deposito_l: null, marcha_atras: true, notas: '' }
+    : { id: uid(), nombre: '', labor: 'desbroce', ancho_m: 1.8, longitud_m: 1.5, enganche: 'suspendido', distancia_gps_m: 2, desplazamiento_m: 0, solape_m: 0.1, velocidad_kmh: 3, consumo_lh: 5, potencia_cv: null, tdf_rpm: 540, notas: '' });
+  const inp = ([k, lbl, t]) => {
+    const v = o[k];
+    if (t === 'bool') return `<div class="srow"><span>${lbl}</span><input type="checkbox" data-f="${k}" ${v !== false ? 'checked' : ''} style="width:auto"></div>`;
+    if (t === 'labor') return `<div class="srow"><span>${lbl}</span><select class="inp" data-f="${k}" style="width:150px">${LABORES.map(([a, b]) => `<option value="${a}" ${v === a ? 'selected' : ''}>${b}</option>`).join('')}</select></div>`;
+    if (t === 'enganche') return `<div class="srow"><span>${lbl}</span><select class="inp" data-f="${k}" style="width:150px">${[['suspendido', 'Suspendido (3 puntos)'], ['arrastrado', 'Arrastrado']].map(([a, b]) => `<option value="${a}" ${v === a ? 'selected' : ''}>${b}</option>`).join('')}</select></div>`;
+    if (t === 'text') return `<label class="f">${lbl}</label><input class="inp" data-f="${k}" value="${esc(v || '')}">`;
+    return `<div class="srow"><span>${lbl}</span><input class="inp" data-f="${k}" inputmode="decimal" value="${v == null ? '' : String(v).replace('.', ',')}" style="width:100px;text-align:right"></div>`;
+  };
+  const defKey = isT ? 'tractorDef' : 'aperoDef';
+  sheet(`<h3>${nuevo ? (isT ? 'Nuevo tractor' : 'Nuevo apero') : esc(o.nombre)}</h3>
+    <div class="card">${F.map(inp).join('')}
+      <div class="srow"><span>Predeterminado para fincas nuevas</span><input type="checkbox" id="cDef" ${SB[defKey] === o.id ? 'checked' : ''} style="width:auto"></div></div>
+    <div class="row">${nuevo ? '' : '<button class="btn err" id="cDel">Eliminar</button>'}<button class="btn" id="cOk">Guardar</button></div>`,
+    sh => {
+      if (!isT) sh.querySelector('[data-f="labor"]').onchange = e => { const v = velStd(e.target.value, 'media'); if (v) sh.querySelector('[data-f="velocidad_kmh"]').value = String(v).replace('.', ','); };
+      $('cOk').onclick = async () => {
+        for (const [k, , t] of F) {
+          const el = sh.querySelector(`[data-f="${k}"]`);
+          if (t === 'bool') o[k] = el.checked; else if (['text', 'labor', 'enganche'].includes(t)) o[k] = el.value.trim();
+          else { const s = el.value.trim().replace(',', '.'); o[k] = s === '' ? null : parseFloat(s); if (s !== '' && !isFinite(o[k])) return toast('Valor no válido: ' + k); }
+        }
+        if (!o.nombre) return toast('Indica un nombre');
+        if (!(o.ancho_m > 0)) return toast('El ancho debe ser mayor que 0');
+        await DB.cPut(kind, o);
+        if ($('cDef').checked) SB[defKey] = o.id; else if (SB[defKey] === o.id) SB[defKey] = null;
+        await DB.kvPut('settings', SB); await loadCat(); applyS(); toast('Guardado'); catSheet();
+      };
+      if (!nuevo) $('cDel').onclick = async () => {
+        const usos = (await DB.all()).filter(f => f.config && f.config[isT ? 'tractorId' : 'aperoId'] === o.id).length;
+        if (CAT[kind].length <= 1) return toast('Debe quedar al menos uno');
+        confirmSheet(`¿Eliminar «${esc(o.nombre)}»?${usos ? ` Lo usan ${usos} finca(s), que pasarán a usar el predeterminado.` : ''}`, 'Eliminar', async () => {
+          await DB.cDel(kind, o.id); if (SB[defKey] === o.id) SB[defKey] = null; await DB.kvPut('settings', SB); await loadCat(); applyS(); catSheet();
+        }, true);
+      };
+    });
+}
+function velSheet() {
+  sheet(`<h3>Velocidades estándar (km/h)</h3><div class="note" style="margin-bottom:8px">Orientativas: ajústalas a tu experiencia. Se proponen al crear o editar fincas.</div>
+    <div class="card" style="padding:8px"><table class="cmp" style="width:100%"><tr><th>Labor</th>${VEGET.map(v => `<th style="text-align:center">${v[1]}</th>`).join('')}</tr>
+    ${LABORES.map(([l, n]) => `<tr><th>${n}</th>${VEGET.map(([v]) => { const r = CAT.velocidades.find(x => x.labor === l && x.vegetacion === v); return `<td><input class="inp" data-l="${l}" data-v="${v}" inputmode="decimal" value="${r ? String(r.velocidad_kmh).replace('.', ',') : ''}" style="width:60px;padding:6px;text-align:center"></td>`; }).join('')}</tr>`).join('')}</table></div>
+    <button class="btn" id="vOk">Guardar</button>`,
+    sh => {
+      $('vOk').onclick = async () => {
+        for (const el of sh.querySelectorAll('[data-l]')) {
+          const val = parseFloat(el.value.replace(',', '.')); if (!(val > 0)) continue;
+          let r = CAT.velocidades.find(x => x.labor === el.dataset.l && x.vegetacion === el.dataset.v);
+          if (r && +r.velocidad_kmh === val) continue;
+          r = r || { id: uid(), labor: el.dataset.l, vegetacion: el.dataset.v, notas: '' }; r.velocidad_kmh = val;
+          await DB.cPut('velocidades', r);
+        }
+        await loadCat(); toast('Velocidades guardadas'); catSheet();
+      };
+    });
+}
+
+/* =========================================================
+   SUPABASE: sesión y sincronización (local primero, nube después)
+   ========================================================= */
+const SUPA_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
+const SUPA_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
+const CAT_COLS = {
+  tractores: ['nombre', 'potencia_cv', 'ancho_m', 'longitud_m', 'radio_giro_m', 'deposito_l', 'marcha_atras', 'notas'],
+  aperos: ['nombre', 'labor', 'ancho_m', 'longitud_m', 'enganche', 'distancia_gps_m', 'desplazamiento_m', 'solape_m', 'velocidad_kmh', 'consumo_lh', 'potencia_cv', 'tdf_rpm', 'notas'],
+  velocidades: ['labor', 'vegetacion', 'velocidad_kmh', 'notas']
+};
+const ORDER = ['fincas', 'tractores', 'aperos', 'velocidades', 'ajustes', 'trabajos'];
+const iso = ms => new Date(ms || Date.now()).toISOString();
+const strip = o => { const c = { ...o }; delete c._sync; return c; };
+const Remote = {
+  c: null,
+  init() { if (!this.c && window.supabase) this.c = window.supabase.createClient(SUPA_URL, SUPA_KEY, { auth: { persistSession: true, autoRefreshToken: true, storageKey: 'limpfinc-auth' } }); return !!this.c; },
+  async session() { if (!this.init()) return null; const { data } = await this.c.auth.getSession(); return data.session; },
+  async login(email, pass) { this.init(); const { data, error } = await this.c.auth.signInWithPassword({ email, password: pass }); if (error) throw error; return data.session; },
+  async logout() { if (this.c) await this.c.auth.signOut(); },
+  async list(t, cols = '*') { const { data, error } = await this.c.from(t).select(cols); if (error) throw error; return data; },
+  async getIn(t, ids) { const out = []; for (let i = 0; i < ids.length; i += 50) { const { data, error } = await this.c.from(t).select('*').in('id', ids.slice(i, i + 50)); if (error) throw error; out.push(...data); } return out; },
+  async upsert(t, row, conflict) { const { error } = await this.c.from(t).upsert(row, conflict ? { onConflict: conflict } : undefined); if (error) throw error; },
+  async del(t, id) { const { error } = await this.c.from(t).delete().eq('id', id); if (error) throw error; }
+};
+const Sync = {
+  user: null, busy: false, state: 'off', err: '', pend: 0, last: 0, due: 0, tm: null,
+  async mark(table, id, op) {
+    if (!this.user) return;
+    await DB.gPut('outbox', { key: table + ':' + id, table, id, op, t: Date.now() });
+    this.count();
+    this.schedule(table === 'trabajos' && work ? 90000 : 2500);
+  },
+  schedule(ms) {
+    if (!this.user) return;
+    const due = Date.now() + ms;
+    if (this.tm && this.due <= due) return;        // ya hay una sincronización antes
+    clearTimeout(this.tm); this.due = due; this.tm = setTimeout(() => { this.tm = null; this.flush(); }, ms);
+  },
+  async count() { try { this.pend = (await DB.gAll('outbox')).length; } catch { } this.paint(); },
+  paint() {
+    const el = $('syncSt'); if (!el) return;
+    if (!this.user) { el.textContent = ''; el.title = ''; return; }
+    el.textContent = this.busy ? '☁️⟳' : !navigator.onLine ? '☁️✕' : this.state === 'err' ? '☁️⚠️' : this.pend ? '☁️' + this.pend : '☁️✓';
+  },
+  async flush(force) {
+    if (!this.user || this.busy || !navigator.onLine) return;
+    this.busy = true; this.paint();
+    try {
+      const items = (await DB.gAll('outbox')).sort((a, b) => ORDER.indexOf(a.table) - ORDER.indexOf(b.table) || a.t - b.t);
+      for (const it of items) {
+        try { await this.push(it); }
+        catch (e) { if (e && (e.code === '23503' || e.code === '42501')) console.warn('descartado', it, e); else throw e; }
+        const cur_ = await DB.gGet('outbox', it.key); if (cur_ && cur_.t === it.t) await DB.gDel('outbox', it.key);
+      }
+      this.state = 'ok'; this.err = ''; this.last = Date.now();
+    } catch (e) { this.state = 'err'; this.err = (e && e.message) || String(e); }
+    finally { this.busy = false; this.count(); if (view === 'list' && !document.querySelector('.sheet')) showList(); }
+  },
+  async push(it) {
+    const T = it.table;
+    if (it.op === 'del') { if (T !== 'ajustes') await Remote.del(T, it.id); return; }
+    if (T === 'fincas') { const f = await DB.get(it.id); if (!f) return; await Remote.upsert('fincas', { id: f.id, nombre: f.nombre, tipo: f.tipo, data: strip(f), updated_at: iso(f.mod) }); f._sync = f.mod; await DB.raw.put(f); return; }
+    if (T === 'trabajos') { const t = await DB.tGet(it.id); if (!t) return; await Remote.upsert('trabajos', { id: t.id, finca_id: t.fincaId, data: strip(t), updated_at: iso(t.mod) }); t._sync = t.mod; await DB.raw.tPut(t); return; }
+    if (T === 'ajustes') {
+      const mod = (await DB.kvGet('ajustesMod')) || Date.now();
+      await Remote.upsert('ajustes', { user_id: this.user.id, data: { settings: SB, repostajes: await DB.kvGet('repostajes'), filtros: await DB.kvGet('filtros'), capas: await DB.kvGet('capas') }, updated_at: iso(mod) }, 'user_id');
+      return;
+    }
+    const o = await DB.gGet(T, it.id); if (!o) return;
+    const row = { id: o.id, updated_at: iso(o.mod) }; CAT_COLS[T].forEach(k => row[k] = o[k] ?? null);
+    await Remote.upsert(T, row); o._sync = o.mod; await DB.gPut(T, o);
+  },
+  async pull() {
+    if (!this.user || !navigator.onLine) return;
+    this.busy = true; this.paint();
+    try {
+      const pend = new Set((await DB.gAll('outbox')).map(x => x.key));
+      // tablas con contenido JSON (fincas, trabajos): primero solo id+fecha, luego lo que cambió
+      for (const [T, getAll, put, del, toLocal] of [
+        ['fincas', () => DB.all(), o => DB.raw.put(o), id => DB.raw.del(id), r => ({ ...r.data, id: r.id, nombre: r.nombre, tipo: r.tipo })],
+        ['trabajos', () => DB.tAll(), o => DB.raw.tPut(o), id => DB.raw.tDel(id), r => ({ ...r.data, id: r.id, fincaId: r.finca_id })]
+      ]) {
+        const rem = await Remote.list(T, 'id,updated_at'), loc = await getAll(), lmap = new Map(loc.map(o => [o.id, o])), need = [];
+        for (const r of rem) { const l = lmap.get(r.id), rm = Date.parse(r.updated_at); if (pend.has(T + ':' + r.id)) continue; if (!l || rm > (l.mod || 0)) need.push(r.id); }
+        for (const r of await Remote.getIn(T, need)) { const rm = Date.parse(r.updated_at); await put({ ...toLocal(r), mod: rm, _sync: rm }); }
+        const rset = new Set(rem.map(r => r.id));
+        for (const l of loc) if (!rset.has(l.id) && !pend.has(T + ':' + l.id)) { if (l._sync) await del(l.id); else await this.mark(T, l.id, 'up'); }
+      }
+      for (const T of ['tractores', 'aperos', 'velocidades']) {
+        const rem = await Remote.list(T), loc = await DB.gAll(T), lmap = new Map(loc.map(o => [o.id, o]));
+        for (const r of rem) { if (pend.has(T + ':' + r.id)) continue; const l = lmap.get(r.id), rm = Date.parse(r.updated_at); if (!l || rm > (l.mod || 0)) { const o = { id: r.id, mod: rm, _sync: rm }; CAT_COLS[T].forEach(k => o[k] = r[k]); await DB.gPut(T, o); } }
+        const rset = new Set(rem.map(r => r.id));
+        for (const l of loc) if (!rset.has(l.id) && !pend.has(T + ':' + l.id)) { if (l._sync) await DB.gDel(T, l.id); else await this.mark(T, l.id, 'up'); }
+      }
+      const aj = await Remote.list('ajustes');
+      if (aj[0]) {
+        const rm = Date.parse(aj[0].updated_at), lm = (await DB.kvGet('ajustesMod')) || 0;
+        if (rm > lm && !pend.has('ajustes:me')) {
+          const d = aj[0].data || {};
+          if (d.settings) { SB = { ...DEF, ...d.settings }; await DB.raw.kvPut('settings', SB); }
+          for (const k of ['repostajes', 'filtros', 'capas']) if (d[k] != null) await DB.raw.kvPut(k, d[k]);
+          if (d.capas) CFG = { ...CFG_DEF, ...d.capas };
+          await DB.raw.kvPut('ajustesMod', rm);
+        }
+      } else await this.mark('ajustes', 'me', 'up');
+      this.state = 'ok'; this.err = ''; this.last = Date.now();
+    } catch (e) { this.state = 'err'; this.err = (e && e.message) || String(e); }
+    finally { this.busy = false; this.count(); }
+    await loadCat(); await seedCat(); applyS();
+    await this.flush();
+  }
+};
+window.addEventListener('online', () => { Sync.paint(); Sync.flush(); });
+window.addEventListener('offline', () => Sync.paint());
+let lastPull = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && Sync.user && !work && Date.now() - lastPull > 60000) { lastPull = Date.now(); Sync.pull().then(() => { if (view === 'list') showList(); }); }
+  if (document.visibilityState === 'hidden' && Sync.user) Sync.flush();
+});
+
+/* Pantalla de acceso */
+function loginView(msg) {
+  view = 'login';
+  setHeader('', 'LIMPFINC', '', null, null);
+  ['vList', 'vSet', 'mapWrap', 'bNueva'].forEach(i => $(i).classList.add('hidden'));
+  $('vLogin').classList.remove('hidden');
+  $('lErr').textContent = msg || '';
+}
+async function doLogin() {
+  const email = $('lMail').value.trim(), pass = $('lPass').value;
+  if (!email || !pass) return ($('lErr').textContent = 'Indica email y contraseña');
+  $('lGo').disabled = true; $('lErr').textContent = 'Entrando…';
+  try {
+    const ses = await Remote.login(email, pass);
+    Sync.user = ses.user; SB.offline = false; await DB.raw.kvPut('settings', SB);
+    $('vLogin').classList.add('hidden');
+    toast('Sesión iniciada. Sincronizando…');
+    await Sync.pull(); showList();
+  } catch (e) { $('lErr').textContent = 'No se pudo entrar: ' + (e.message || e); }
+  finally { $('lGo').disabled = false; }
+}
+async function diagnostico() {
+  const res = [], ok = (n, t) => res.push(`<div class="kv"><span>${n}</span><span style="color:${t === true ? 'var(--pri)' : 'var(--err)'};text-align:right;max-width:60%">${t === true ? '✓' : '✗ ' + esc(t)}</span></div>`);
+  sheet(`<h3>🩺 Diagnóstico de Supabase</h3><div class="card" id="dgBody">Comprobando…</div>`);
+  ok('Librería Supabase cargada', !!window.supabase || 'no cargó (sin conexión o bloqueada)');
+  ok('Conexión a internet', navigator.onLine || 'sin conexión');
+  let ses = null; try { ses = await Remote.session(); } catch (e) { }
+  ok('Sesión iniciada', ses ? true : 'no hay sesión: inicia sesión');
+  if (ses) {
+    for (const t of ['fincas', 'trabajos', 'tractores', 'aperos', 'velocidades', 'ajustes']) {
+      try { const { error, count } = await Remote.c.from(t).select('*', { count: 'exact', head: true }); ok(`Tabla ${t}${error ? '' : ' (' + count + ' filas)'}`, error ? (/does not exist|schema cache/i.test(error.message) ? 'no existe: ejecuta supabase_limpfinc.sql' : error.message) : true); }
+      catch (e) { ok('Tabla ' + t, e.message); }
+    }
+    try { await Remote.upsert('ajustes', { user_id: ses.user.id, data: { settings: SB }, updated_at: iso(Date.now()) }, 'user_id'); ok('Escritura de prueba', true); }
+    catch (e) { ok('Escritura de prueba', e.message); }
+    const pend = (await DB.gAll('outbox')).length, loc = (await DB.all()).length, sub = (await DB.all()).filter(f => f._sync).length;
+    ok(`Fincas en el móvil: ${loc} · subidas: ${sub}`, sub === loc ? true : (loc - sub) + ' sin subir');
+    ok(`Cambios pendientes en cola: ${pend}`, pend === 0 ? true : 'pendientes');
+    if (Sync.err) ok('Último error', Sync.err);
+  }
+  const b = $('dgBody'); if (b) b.innerHTML = res.join('') + (ses ? `<button class="btn" id="dgFix" style="margin-top:10px">⬆️ Subir todo ahora</button>` : `<button class="btn" id="dgIn" style="margin-top:10px">Iniciar sesión</button>`);
+  if ($('dgFix')) $('dgFix').onclick = async () => {
+    for (const f of await DB.all()) await DB.gPut('outbox', { key: 'fincas:' + f.id, table: 'fincas', id: f.id, op: 'up', t: Date.now() });
+    for (const t of await DB.tAll()) await DB.gPut('outbox', { key: 'trabajos:' + t.id, table: 'trabajos', id: t.id, op: 'up', t: Date.now() });
+    for (const T of ['tractores', 'aperos', 'velocidades']) for (const o of await DB.gAll(T)) await DB.gPut('outbox', { key: T + ':' + o.id, table: T, id: o.id, op: 'up', t: Date.now() });
+    await Sync.flush(); diagnostico();
+  };
+  if ($('dgIn')) $('dgIn').onclick = () => { closeSheet(); loginView(); };
+}
+function cuentaSheet() {
+  const u = Sync.user;
+  sheet(`<h3>Cuenta y sincronización</h3>
+    ${u ? `<div class="card"><div class="kv"><span>Usuario</span><span>${esc(u.email)}</span></div>
+      <div class="kv"><span>Estado</span><span>${Sync.state === 'err' ? '⚠️ Error' : navigator.onLine ? '✓ Conectado' : '✕ Sin conexión'}</span></div>
+      <div class="kv"><span>Cambios pendientes de subir</span><span>${Sync.pend}</span></div>
+      <div class="kv"><span>Última sincronización</span><span>${Sync.last ? new Date(Sync.last).toLocaleTimeString('es-ES') : '–'}</span></div></div>
+      ${Sync.err ? `<div class="card" style="background:#ffebee;color:#b71c1c">${esc(Sync.err)}</div>` : ''}
+      <button class="btn" id="kSync" style="margin-bottom:8px">🔄 Sincronizar ahora</button>
+      <button class="btn sec" id="kDg" style="margin-bottom:8px">🩺 Diagnóstico</button>
+      <button class="btn sec" id="kOut">Cerrar sesión</button>`
+      : `<div class="note" style="margin-bottom:8px">Sin sesión: los datos solo están en este dispositivo.</div><button class="btn" id="kIn">Iniciar sesión en Supabase</button>`}`,
+    () => {
+      if ($('kSync')) $('kSync').onclick = async () => { closeSheet(); await Sync.pull(); toast(Sync.state === 'ok' ? 'Sincronizado' : 'Error: ' + Sync.err, 3500); if (view === 'list') showList(); };
+      if ($('kDg')) $('kDg').onclick = diagnostico;
+      if ($('kOut')) $('kOut').onclick = () => confirmSheet('¿Cerrar sesión? Los datos de este dispositivo se mantienen.', 'Cerrar sesión', async () => { await Remote.logout(); Sync.user = null; Sync.paint(); loginView(); });
+      if ($('kIn')) $('kIn').onclick = () => { closeSheet(); loginView(); };
+    });
+}
+
 /* ---------- Panel de herramienta genérico ---------- */
 function showTool(title, hint, btns) {
   $('tbMain').classList.add('hidden'); $('pRec').classList.add('hidden'); $('pTool').classList.remove('hidden');
@@ -2580,18 +3107,26 @@ $('tInfo').onclick = () => { if (!busy()) infoSheet(); };
 (async () => {
   try {
     await DB.open();
-    const s = await DB.kvGet('settings'); if (s) S = { ...DEF, ...s };
+    const s = await DB.kvGet('settings'); if (s) SB = { ...DEF, ...s };
+    if (SB.mapaBase && !['OpenStreetMap', 'OpenTopoMap'].includes(SB.mapaBase)) SB.mapaBase = 'OpenStreetMap';
     const c = await DB.kvGet('capas'); if (c) CFG = { ...CFG_DEF, ...c };
+    await loadCat(); applyS();
   } catch (e) { toast('Error de almacenamiento: ' + e.message, 5000); }
+  $('syncSt').onclick = () => Sync.state === 'err' ? diagnostico() : cuentaSheet(); $('lGo').onclick = doLogin; $('lPass').onkeydown = e => { if (e.key === 'Enter') doLogin(); };
+  $('lOff').onclick = async () => { SB.offline = true; await DB.raw.kvPut('settings', SB); await seedCat(); applyS(); showList(); };
+  let ses = null;
+  try { ses = await Remote.session(); } catch (e) { }
+  if (ses) { Sync.user = ses.user; Sync.paint(); showList(); Sync.pull().then(() => { if (view === 'list') showList(); }); }
+  else if (!SB.offline && window.supabase) { loginView(); }
+  else { await seedCat(); applyS(); showList(); }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('sw.js').then(r => { r.update().catch(() => {}); }).catch(() => {});
     let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloaded || busy()) return; reloaded = true; location.reload(); });
   }
-  showList();
 })();
-window.LIMPFINC = { Geo, processTrack, DB, Planner, get map() { return map; }, get S() { return S; }, get cur() { return cur; } }; // para pruebas
+window.LIMPFINC = { Geo, processTrack, DB, Planner, Sync, Remote, get CAT() { return CAT; }, get SB() { return SB; }, get map() { return map; }, get S() { return S; }, get cur() { return cur; } }; // para pruebas
 </script>
 </body>
 </html>
