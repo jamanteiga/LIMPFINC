@@ -106,11 +106,14 @@ table.cmp tr+tr>*{border-top:1px solid var(--line)}
 .covimg{image-rendering:pixelated}
 #bLay{top:146px}
 #pWork .stats b{font-size:20px}
-.gpsChip{position:absolute;left:50%;top:8px;transform:translateX(-50%);z-index:820;background:rgba(255,255,255,.96);border-radius:16px;
+.gpsChip{position:absolute;left:8px;top:8px;z-index:820;background:rgba(255,255,255,.97);border-radius:18px;
   padding:6px 12px;font-size:13px;font-weight:600;box-shadow:0 1px 6px rgba(0,0,0,.25);display:flex;align-items:center;gap:6px;white-space:nowrap}
-.gdot{width:10px;height:10px;border-radius:5px;background:#9e9e9e;display:inline-block}
-.g-ok .gdot{background:#2e7d32}.g-mid .gdot{background:#ef6c00}.g-bad .gdot{background:#c62828}.g-wait .gdot{background:#9e9e9e;animation:bl 1s infinite}
-.st-ready{background:#9e9e9e!important}.st-pause{background:#ef6c00!important}
+.gdot{width:16px;height:16px;border-radius:8px;background:#c62828;display:inline-block;box-shadow:0 0 0 2px #fff,0 0 0 3px rgba(0,0,0,.15)}
+.g-ok .gdot{background:#2e7d32}.g-bad .gdot{background:#c62828}.g-wait .gdot{background:#c62828;animation:bl 1s infinite}
+.leaflet-top.leaflet-left{margin-top:46px}
+.st-ready{background:#9e9e9e!important}
+.btn.big{padding:16px 10px;font-size:18px}
+.lnk{display:block;margin:10px auto 0;background:none;color:var(--sub);font-size:14px;text-decoration:underline}.st-pause{background:#ef6c00!important}
 .gtab td{padding:5px 0;border-bottom:1px solid var(--line)}.gtab td:last-child{text-align:right;font-weight:600}
 .leaflet-control-layers{border-radius:10px!important}
 .leaflet-top{top:4px}
@@ -149,7 +152,7 @@ table.cmp tr+tr>*{border-top:1px solid var(--line)}
       <div><b id="wEta">–</b><small>η</small></div>
     </div>
     <button class="btn" id="wApero" style="padding:16px;font-size:17px;margin-bottom:8px">🟢 APERO EN TRABAJO</button>
-    <div class="row"><button class="btn sec" id="wPause">Pausa</button><button class="btn err" id="wEnd">Terminar</button></div>
+    <div class="row"><button class="btn" id="wPause">▶ Iniciar</button><button class="btn err" id="wEnd">■ Parar</button></div>
     <div class="note" style="text-align:center;margin-top:4px">GPS <span id="wAcc">–</span></div>
   </div>
   <div class="tb" id="tbMain">
@@ -170,10 +173,10 @@ table.cmp tr+tr>*{border-top:1px solid var(--line)}
     </div>
     <div class="note" id="recHint" style="margin:-2px 0 8px"></div>
     <div class="row">
-      <button class="btn" id="bPause">▶ Iniciar</button>
-      <button class="btn" id="bFin">■ Finalizar</button>
-      <button class="btn err" id="bCancelRec">Cancelar</button>
+      <button class="btn big" id="bPause">▶ Iniciar</button>
+      <button class="btn big err" id="bFin">■ Parar</button>
     </div>
+    <button class="lnk" id="bCancelRec">Cancelar y descartar</button>
   </div>
   <!-- panel dibujo / edición / revisión -->
   <div class="panel hidden" id="pTool">
@@ -190,7 +193,7 @@ table.cmp tr+tr>*{border-top:1px solid var(--line)}
 /* =========================================================
    LIMPFINC · F1 — Fincas, linde, exclusiones, área
    ========================================================= */
-const VERSION = 'F5 · 0.6.1';
+const VERSION = '0.7.0';
 
 /* ---------- Ajustes por defecto ---------- */
 const DEF = {
@@ -201,7 +204,7 @@ const DEF = {
   anchoTractor:1.70, longTractorApero:5.0,
   umbralPrecision:8, holguraLinde:0.5,
   mallaX:3.5, mallaY:3.5, holguraTronco:0.30,
-  mapaBase:'Ortofoto PNOA (IGN)', mapaNombres:true,
+  mapaBase:'OpenStreetMap',
   consumoAuto:true, velocidadGiro:3.0, velocidadTraslado:5.0, tCambioSentido:4, tManiobra:20, tEsquina:15, margenObstaculo:0.30
 };
 const SET_FIELDS = [
@@ -397,7 +400,8 @@ async function showList() {
   $('vSet').classList.add('hidden'); $('mapWrap').classList.add('hidden');
   const fs = (await DB.all()).sort((a, b) => b.mod - a.mod);
   const el = $('fincaList');
-  if (!fs.length) { el.innerHTML = `<div class="empty">No hay fincas.<br>Pulsa «Nueva finca» para empezar.</div>`; return; }
+  const ver = `<div class="note" style="text-align:center;margin-top:14px">LIMPFINC v${VERSION}</div>`;
+  if (!fs.length) { el.innerHTML = ver + `<div class="empty">No hay fincas.<br>Pulsa «Nueva finca» para empezar.</div>`; return; }
   el.innerHTML = fs.map(f => {
     const a = fincaAreas(f);
     return `<div class="card finca" data-id="${f.id}">
@@ -405,7 +409,7 @@ async function showList() {
       <div style="flex:1;min-width:0"><div class="t">${esc(f.nombre)}</div>
       <div class="s">${f.tipo === 'monte' ? 'Monte / plantación' : 'Abierta'} · ${f.linde ? fmtArea(a.neta) : 'sin linde'}${f.plan ? ' · plan ' + fmtH(f.plan.stats.t.total / 3600) + ' / ' + fmt(f.plan.stats.litros, 1) + ' L' : ''}</div></div>
       <div style="color:#c7c7cc;font-size:20px">›</div></div>`;
-  }).join('');
+  }).join('') + ver;
   el.querySelectorAll('.finca').forEach(c => c.onclick = () => openFinca(c.dataset.id));
 }
 
@@ -557,17 +561,13 @@ function initMap() {
   const pnoa = L.tileLayer('https://www.ign.es/wmts/pnoa-ma?request=GetTile&service=WMTS&VERSION=1.0.0&Layer=OI.OrthoimageCoverage&Style=default&Format=image/jpeg&TileMatrixSet=GoogleMapsCompatible&TileMatrix={z}&TileRow={y}&TileCol={x}',
     { maxNativeZoom: 19, maxZoom: 21, attribution: 'PNOA © IGN' });
   const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 21, attribution: '© OpenStreetMap' });
-  // Solo fuentes libres: PNOA e IGN (CC BY 4.0), OSM (ODbL), OpenTopoMap (CC BY-SA)
+  // Solo fuentes libres: OSM (ODbL), OpenTopoMap (CC BY-SA), PNOA del IGN (CC BY 4.0)
   const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { subdomains: 'abc', maxNativeZoom: 17, maxZoom: 21, attribution: '© OpenStreetMap · SRTM · © OpenTopoMap (CC BY-SA)' });
-  const ignTxt = L.tileLayer('https://www.ign.es/wmts/ign-base?request=GetTile&service=WMTS&VERSION=1.0.0&Layer=IGNBaseOrto&Style=default&Format=image/png&TileMatrixSet=GoogleMapsCompatible&TileMatrix={z}&TileRow={y}&TileCol={x}',
-    { maxNativeZoom: 19, maxZoom: 21, attribution: 'IGN' });
-  const bases = { 'Ortofoto PNOA (IGN)': pnoa, 'OpenStreetMap': osm, 'Topográfico (OpenTopoMap)': topo };
-  const ctl = L.control.layers(bases, { 'Nombres y vías (IGN)': ignTxt }, { position: 'topright' }).addTo(map);
-  (bases[S.mapaBase] || pnoa).addTo(map);
-  if (S.mapaNombres) ignTxt.addTo(map);
-  map.on('overlayadd overlayremove', async e => { if (e.layer === ignTxt) { S.mapaNombres = e.type === 'overlayadd'; try { await DB.kvPut('settings', S); } catch { } } });
+  const bases = { 'OpenStreetMap': osm, 'OpenTopoMap': topo, 'Ortofoto PNOA': pnoa };
+  L.control.layers(bases, null, { position: 'topright' }).addTo(map);
+  (bases[S.mapaBase] || osm).addTo(map);
   map.on('baselayerchange', async e => { S.mapaBase = e.name; try { await DB.kvPut('settings', S); } catch { } });
-  L.control.scale({ imperial: false, position: 'topleft' }).addTo(map);
+  L.control.scale({ imperial: false, position: 'topleft' }).addTo(map); // queda debajo del indicador GPS
   lyr.finca = L.layerGroup().addTo(map);
   lyr.plan = L.layerGroup().addTo(map);
   lyr.real = L.layerGroup().addTo(map);
@@ -634,16 +634,13 @@ function stopGPS() { if (watchId !== null) { navigator.geolocation.clearWatch(wa
 function gpsAge() { return lastPos ? (Date.now() - lastPos.rx) / 1000 : Infinity; }
 function updGpsChip() {
   const ch = $('gpsChip'); if (!ch) return;
-  let cls = 'g-wait', txt = 'GPS buscando señal…';
+  let cls = 'g-bad', txt = 'GPS inactivo';
   const age = gpsAge();
-  if (GPS.estado === 'off') { cls = ''; txt = 'GPS apagado'; }
-  else if (GPS.estado === 'denied') { cls = 'g-bad'; txt = 'GPS sin permiso'; }
-  else if (GPS.estado === 'nohttps') { cls = 'g-bad'; txt = 'GPS: requiere https'; }
-  else if (GPS.estado === 'error') { cls = 'g-bad'; txt = 'GPS error'; }
-  else if (lastPos && age < 10) {
-    const a = lastPos.acc; cls = a <= 5 ? 'g-ok' : a <= S.umbralPrecision ? 'g-mid' : 'g-bad';
-    txt = `GPS ±${fmt(a, a < 10 ? 1 : 0)} m · ${age < 1.5 ? 'ahora' : 'hace ' + Math.round(age) + ' s'}`;
-  } else if (lastPos) { cls = 'g-bad'; txt = `GPS sin lecturas hace ${Math.round(age)} s`; }
+  if (GPS.estado === 'denied') txt = 'GPS sin permiso';
+  else if (GPS.estado === 'nohttps') txt = 'GPS: requiere https';
+  else if (GPS.estado === 'error') txt = 'GPS error';
+  else if (lastPos && age < 10 && GPS.estado === 'ok') { cls = 'g-ok'; txt = `GPS activo · ±${fmt(lastPos.acc, lastPos.acc < 10 ? 1 : 0)} m`; }
+  else if (GPS.estado === 'wait' || (GPS.estado === 'ok' && age >= 10)) { cls = 'g-wait'; txt = 'GPS buscando señal…'; }
   ch.className = 'gpsChip ' + cls; $('gpsTxt').textContent = txt;
 }
 setInterval(updGpsChip, 1000);
@@ -763,11 +760,15 @@ function paintRec() {
   $('recTitle').textContent = { ready: 'Preparado · ', rec: 'Grabando · ', pause: 'En pausa · ' }[st] + name;
   const dot = $('recDot'); dot.className = 'dot' + (st === 'rec' ? ' rec' : st === 'ready' ? ' st-ready' : ' st-pause');
   const bp = $('bPause');
-  bp.textContent = st === 'ready' ? '▶ Iniciar' : st === 'rec' ? '⏸ Pausa' : '▶ Reanudar';
-  bp.className = 'btn ' + (st === 'rec' ? 'sec' : '');
+  bp.textContent = st === 'ready' ? '▶ Iniciar' : st === 'rec' ? '⏸ Pausar' : '▶ Continuar';
+  bp.className = 'btn big ' + (st === 'rec' ? 'warn' : '');
   $('bFin').classList.toggle('hidden', st === 'ready');
-  if (st === 'ready') $('recHint').textContent = 'Colócate en el punto de inicio' + (rec.mode === 'tractor' ? ' con el tractor junto al linde' : ' del linde') + ' y pulsa «Iniciar». Comprueba arriba que el GPS da buena precisión.';
-  else if (st === 'pause') $('recHint').textContent = 'Grabación en pausa: los puntos no se registran. Pulsa «Reanudar» para seguir o «Finalizar» para cerrar el linde.';
+  const como = rec.mode === 'tractor'
+    ? 'Con tractor: circula por DENTRO de la finca, lo más pegado posible al borde. La app desplaza el trazado hacia fuera (' + fmt(S.anchoTractor / 2 + S.holguraLinde, 2) + ' m).'
+    : 'A pie: camina POR EL BORDE de la finca. Es la medición más precisa.';
+  if (st === 'ready') $('recHint').textContent = como + ' Ve al punto de partida y pulsa «Iniciar».';
+  else if (st === 'rec') $('recHint').textContent = 'Registrando el trazado… Pulsa «Pausar» para detenerte o «Parar» al terminar.';
+  else $('recHint').textContent = 'En pausa: no se registra nada. Pulsa «Continuar» y el trazado seguirá desde el último punto.';
 }
 function recPoint(p) {
   updRecStats(p);
@@ -795,13 +796,22 @@ function updRecStats(p) {
 }
 $('bPause').onclick = () => {
   if (!rec) return;
-  const go = () => { rec.state = 'rec'; rec.paused = false; paintRec(); if (lastPos && gpsAge() < 3) recPoint(lastPos); };
-  if (rec.state === 'rec') { rec.state = 'pause'; rec.paused = true; paintRec(); return; }
-  if (!lastPos || gpsAge() > 10) return toast('Todavía no hay señal GPS. Espera a que el indicador se ponga verde o naranja.', 4000);
-  if (lastPos.acc > S.umbralPrecision) return confirmSheet(`La precisión actual es ±${fmt(lastPos.acc, 0)} m (peor que ${S.umbralPrecision} m). Los puntos imprecisos se descartan. ¿${rec.state === 'ready' ? 'Iniciar' : 'Reanudar'} igualmente?`, rec.state === 'ready' ? 'Iniciar' : 'Reanudar', go);
-  go();
+  if (rec.state === 'rec') { rec.state = 'pause'; rec.paused = true; paintRec(); markRec('pausa'); return; }
+  if (!lastPos || gpsAge() > 10) return toast('Esperando señal GPS: el indicador de arriba a la izquierda debe estar en verde.', 4000);
+  const first = rec.state === 'ready';
+  rec.state = 'rec'; rec.paused = false; paintRec();
+  // punto actual: se marca en el mapa y se registra
+  rec.pts.push(lastPos); rec.line.addLatLng([lastPos.lat, lastPos.lon]); updRecStats(lastPos);
+  markRec(first ? 'inicio' : 'continuar');
+  followPos = true; map.setView([lastPos.lat, lastPos.lon], Math.max(map.getZoom(), 19));
+  if (lastPos.acc > S.umbralPrecision) toast(`Precisión baja (±${fmt(lastPos.acc, 0)} m): los puntos imprecisos se descartarán.`, 3500);
 };
-$('bCancelRec').onclick = () => rec && rec.pts.length ? confirmSheet('¿Descartar la medición?', 'Descartar', endRec, true) : endRec();
+function markRec(tipo) {
+  const p = tipo === 'pausa' ? rec.pts[rec.pts.length - 1] : lastPos; if (!p) return;
+  const st = { inicio: ['I', '#2e7d32'], pausa: ['❚❚', '#ef6c00'], continuar: ['▶', '#1565c0'] }[tipo];
+  L.marker([p.lat, p.lon], { interactive: false, icon: L.divIcon({ className: '', html: `<div class="pin" style="background:${st[1]}">${st[0]}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] }) }).addTo(lyr.tmp);
+}
+$('bCancelRec').onclick = () => rec && rec.pts.length ? confirmSheet('¿Descartar el trazado registrado?', 'Descartar', endRec, true) : endRec();
 $('bFin').onclick = () => {
   if (!rec || rec.state === 'ready') return;
   rec.state = 'pause'; rec.paused = true; paintRec();
@@ -812,7 +822,7 @@ $('bFin').onclick = () => {
   startReview(target, mode, pts, r);
 };
 function endRec() {
-  if (rec) { lyr.tmp.removeLayer(rec.line); }
+  if (rec) { lyr.tmp.clearLayers(); }
   rec = null; keepAwake(false); followPos = false; showMain();
 }
 
@@ -2060,9 +2070,9 @@ function paintApero() {
 $('wApero').onclick = () => { if (!work) return; work.on = !work.on; paintApero(); };
 $('wPause').onclick = async () => {
   if (!work) return;
-  if (!work.paused) { work.paused = true; work.ses.fin = Date.now(); await saveWork(); $('wPause').textContent = '▶ Reanudar'; $('wPause').className = 'btn'; return; }
-  const go = () => { work.paused = false; work.ready = false; work.ses = { inicio: Date.now(), fin: Date.now(), pts: [] }; work.trab.sesiones.push(work.ses); work.tr.reset(); work.outs.push(null); $('wPause').textContent = '⏸ Pausa'; $('wPause').className = 'btn sec'; keepAwake(true); };
-  if (!lastPos || gpsAge() > 10) return toast('Todavía no hay señal GPS. Espera a que el indicador se ponga verde o naranja.', 4000);
+  if (!work.paused) { work.paused = true; work.ses.fin = Date.now(); await saveWork(); $('wPause').textContent = '▶ Continuar'; $('wPause').className = 'btn'; return; }
+  const go = () => { work.paused = false; work.ready = false; work.ses = { inicio: Date.now(), fin: Date.now(), pts: [] }; work.trab.sesiones.push(work.ses); work.tr.reset(); work.outs.push(null); $('wPause').textContent = '⏸ Pausar'; $('wPause').className = 'btn sec'; keepAwake(true); };
+  if (!lastPos || gpsAge() > 10) return toast('Esperando señal GPS: el indicador de arriba a la izquierda debe estar en verde.', 4000);
   if (lastPos.acc > S.umbralPrecision) return confirmSheet(`La precisión actual es ±${fmt(lastPos.acc, 0)} m. ¿Empezar igualmente?`, 'Empezar', go);
   go();
 };
@@ -2315,7 +2325,11 @@ $('tInfo').onclick = () => { if (!busy()) infoSheet(); };
     const c = await DB.kvGet('capas'); if (c) CFG = { ...CFG_DEF, ...c };
   } catch (e) { toast('Error de almacenamiento: ' + e.message, 5000); }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator && location.protocol === 'https:') {
+    navigator.serviceWorker.register('sw.js').then(r => { r.update().catch(() => {}); }).catch(() => {});
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloaded || busy()) return; reloaded = true; location.reload(); });
+  }
   showList();
 })();
 window.LIMPFINC = { Geo, processTrack, DB, Planner, get map() { return map; }, get S() { return S; }, get cur() { return cur; } }; // para pruebas
