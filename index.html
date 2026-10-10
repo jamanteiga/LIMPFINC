@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>LIMPFINC</title>
+<meta name="theme-color" content="#2e7d32">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="LIMPFINC">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{
+  --bg:#f2f3f5;--card:#fff;--txt:#1c1c1e;--sub:#6b7280;--line:#e3e5e8;
+  --pri:#2e7d32;--pri2:#e8f5e9;--warn:#e65100;--err:#c62828;--blue:#1565c0;
+  --safe-b:env(safe-area-inset-bottom,0px);--safe-t:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
+  font:15px/1.35 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;overscroll-behavior:none}
+button{font:inherit;border:0;cursor:pointer}
+input,select{font:inherit}
+.hidden{display:none!important}
+header{position:fixed;top:0;left:0;right:0;z-index:1000;background:#fff;border-bottom:1px solid var(--line);
+  padding:calc(var(--safe-t) + 8px) 12px 8px;display:flex;align-items:center;gap:8px;min-height:52px}
+header h1{font-size:17px;margin:0;flex:1;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hbtn{background:none;color:var(--pri);font-size:16px;padding:6px 8px;min-width:64px;text-align:left}
+.hbtn.r{text-align:right}
+main{position:fixed;top:calc(var(--safe-t) + 52px);left:0;right:0;bottom:0;overflow:auto}
+.view{padding:14px 14px calc(var(--safe-b) + 90px)}
+.card{background:var(--card);border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.finca{display:flex;align-items:center;gap:12px}
+.finca .ic{width:44px;height:44px;border-radius:10px;background:var(--pri2);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none}
+.finca .t{font-weight:600}.finca .s{color:var(--sub);font-size:13px}
+.empty{color:var(--sub);text-align:center;padding:40px 10px}
+.fab{position:fixed;right:18px;bottom:calc(var(--safe-b) + 18px);z-index:900;background:var(--pri);color:#fff;
+  border-radius:28px;padding:14px 20px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.2)}
+label.f{display:block;margin:10px 0 4px;color:var(--sub);font-size:13px}
+.inp{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.btn{padding:12px 14px;border-radius:10px;background:var(--pri);color:#fff;font-weight:600;width:100%}
+.btn.sec{background:#e9ecef;color:var(--txt)}.btn.err{background:var(--err)}.btn.warn{background:var(--warn)}
+.btn:disabled{opacity:.45}
+.seg{display:flex;background:#e9ecef;border-radius:10px;padding:3px}
+.seg button{flex:1;background:none;padding:8px;border-radius:8px}
+.seg button.on{background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.15);font-weight:600}
+h3{margin:4px 0 8px;font-size:15px}
+.kv{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)}
+.kv:last-child{border:0}.kv span:first-child{color:var(--sub)}.kv span:last-child{font-weight:600;text-align:right}
+.note{font-size:12px;color:var(--sub);margin-top:6px}
+.sgrp{margin-bottom:6px;font-size:12px;text-transform:uppercase;color:var(--sub);letter-spacing:.04em;margin-top:14px}
+.srow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.srow:last-child{border:0}.srow span{flex:1}.srow input{width:110px;text-align:right}
+/* mapa */
+#mapWrap{position:fixed;top:calc(var(--safe-t) + 52px);left:0;right:0;bottom:0}
+#map{position:absolute;inset:0}
+.tb{position:absolute;left:8px;right:8px;bottom:calc(var(--safe-b) + 10px);z-index:800;display:flex;gap:6px;
+  background:rgba(255,255,255,.96);border-radius:14px;padding:6px;box-shadow:0 2px 10px rgba(0,0,0,.18)}
+.tb button{flex:1;background:none;padding:6px 2px;border-radius:10px;font-size:11px;color:var(--txt);display:flex;flex-direction:column;align-items:center;gap:2px}
+.tb button b{font-size:19px;font-weight:400;line-height:1}
+.tb button:active{background:#eef}
+.mbtn{position:absolute;right:10px;z-index:800;width:42px;height:42px;border-radius:21px;background:#fff;
+  box-shadow:0 2px 8px rgba(0,0,0,.2);font-size:19px;display:flex;align-items:center;justify-content:center}
+#bLoc{top:96px}
+.sheetBg{position:fixed;inset:0;z-index:1500;background:rgba(0,0,0,.3)}
+.sheet{position:fixed;padding-top:14px;left:0;right:0;bottom:0;z-index:1600;background:var(--bg);border-radius:16px 16px 0 0;
+  padding:12px 14px calc(var(--safe-b) + 14px);max-height:80vh;overflow:auto;box-shadow:0 -4px 20px rgba(0,0,0,.2)}
+.shX{position:absolute;right:10px;top:8px;width:32px;height:32px;border-radius:16px;background:#e3e5e8;color:#555;font-size:15px}
+.sheet .grab{width:40px;height:5px;border-radius:3px;background:#c7c7cc;margin:0 auto 10px}
+.sheet .opt{display:block;width:100%;text-align:left;background:#fff;padding:13px 14px;border-radius:10px;margin-bottom:6px}
+.sheet .opt small{display:block;color:var(--sub);font-size:12px}
+.panel{position:absolute;left:8px;right:8px;bottom:calc(var(--safe-b) + 10px);z-index:850;background:rgba(255,255,255,.97);
+  border-radius:14px;padding:10px 12px;box-shadow:0 2px 12px rgba(0,0,0,.22)}
+.panel .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;text-align:center;margin-bottom:8px}
+.panel .stats div{background:#f4f5f7;border-radius:8px;padding:6px 2px}
+.panel .stats b{display:block;font-size:17px}.panel .stats small{color:var(--sub);font-size:11px}
+.panel .title{font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.dot{width:10px;height:10px;border-radius:5px;background:var(--err);display:inline-block}
+.dot.rec{animation:bl 1s infinite}@keyframes bl{50%{opacity:.2}}
+.acc-ok{color:var(--pri)}.acc-mid{color:var(--warn)}.acc-bad{color:var(--err)}
+.toast{position:fixed;left:50%;top:calc(var(--safe-t) + 64px);transform:translateX(-50%);z-index:3000;background:rgba(30,30,30,.92);
+  color:#fff;padding:9px 14px;border-radius:10px;font-size:14px;max-width:90vw;text-align:center}
+.vtx{width:18px;height:18px;border-radius:9px;background:#fff;border:3px solid #1b5e20;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.vtx.ex{border-color:#b71c1c}
+.vtx.del{border-color:var(--err);background:#ffcdd2}
+.mid{width:14px;height:14px;border-radius:7px;background:rgba(255,255,255,.7);border:2px dashed #1b5e20}
+.pos{width:16px;height:16px;border-radius:8px;background:#1e88e5;border:3px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3)}
+.leaflet-control-layers{border-radius:10px!important}
+.leaflet-top{top:4px}
+</style>
+</head>
+<body>
+
+<header>
+  <button class="hbtn" id="hLeft"></button>
+  <h1 id="hTitle">LIMPFINC</h1>
+  <button class="hbtn r" id="hRight"></button>
+</header>
+
+<!-- LISTA -->
+<main id="vList"><div class="view">
+  <div id="fincaList"></div>
+</div></main>
+<button class="fab" id="bNueva">＋ Nueva finca</button>
+
+<!-- AJUSTES -->
+<main id="vSet" class="hidden"><div class="view" id="setBody"></div></main>
+
+<!-- MAPA -->
+<div id="mapWrap" class="hidden">
+  <div id="map"></div>
+  <button class="mbtn" id="bLoc" title="Mi posición">◎</button>
+  <div class="tb" id="tbMain">
+    <button id="tLinde"><b>⬠</b>Linde</button>
+    <button id="tExcl"><b>⛔</b>Exclusión</button>
+    <button id="tEdit"><b>✎</b>Editar</button>
+    <button id="tInfo"><b>ⓘ</b>Datos</button>
+  </div>
+  <!-- panel grabación -->
+  <div class="panel hidden" id="pRec">
+    <div class="title"><span class="dot rec" id="recDot"></span><span id="recTitle">Midiendo</span></div>
+    <div class="stats">
+      <div><b id="sAcc">–</b><small>Precisión</small></div>
+      <div><b id="sPts">0</b><small>Puntos</small></div>
+      <div><b id="sLen">0 m</b><small>Recorrido</small></div>
+    </div>
+    <div class="note" id="recHint" style="margin:-2px 0 8px"></div>
+    <div class="row">
+      <button class="btn sec" id="bPause">Pausa</button>
+      <button class="btn" id="bFin">Terminar</button>
+      <button class="btn err" id="bCancelRec">Cancelar</button>
+    </div>
+  </div>
+  <!-- panel dibujo / edición / revisión -->
+  <div class="panel hidden" id="pTool">
+    <div class="title" id="toolTitle"></div>
+    <div class="note" id="toolHint" style="margin:-2px 0 8px"></div>
+    <div class="row" id="toolBtns"></div>
+  </div>
+</div>
+
+<div id="sheetHost"></div>
+
+<script>
+'use strict';
+/* =========================================================
+   LIMPFINC · F1 — Fincas, linde, exclusiones, área
+   ========================================================= */
+const VERSION = 'F1 · 0.1.0';
+
+/* ---------- Ajustes por defecto ---------- */
+const DEF = {
+  tractor:'New Holland TN95F', potencia:95,
+  radioGiro:4.0, marchaAtras:true,
+  aperoNombre:'Desbrozadora de cadenas', aperoAncho:1.70, offsetApero:2.0,
+  velocidad:2.5, consumo:5.0, solape:0.10, umbralDesv:1.0,
+  anchoTractor:1.70, longTractorApero:5.0,
+  umbralPrecision:8, holguraLinde:0.5,
+  mallaX:3.5, mallaY:3.5, holguraTronco:0.30
+};
+const SET_FIELDS = [
+  ['Tractor',[['tractor','Modelo','text'],['potencia','Potencia (CV)'],['anchoTractor','Ancho tractor (m)'],
+    ['longTractorApero','Longitud tractor + apero (m)'],['radioGiro','Radio de giro mínimo (m)'],['marchaAtras','Maniobras marcha atrás','bool']]],
+  ['Apero',[['aperoNombre','Apero','text'],['aperoAncho','Ancho de trabajo (m)'],['offsetApero','iPhone → centro apero (m)']]],
+  ['Trabajo',[['velocidad','Velocidad por defecto (km/h)'],['consumo','Consumo (L/h)'],['solape','Solape entre pasadas (m)'],['umbralDesv','Umbral desviación (m)']]],
+  ['Medición GPS',[['umbralPrecision','Descartar puntos con precisión peor que (m)'],['holguraLinde','Holgura lateral tractor–linde (m)']]],
+  ['Monte',[['mallaX','Separación entre filas (m)'],['mallaY','Separación en fila (m)'],['holguraTronco','Holgura al tronco (m)']]]
+];
+
+/* ---------- IndexedDB ---------- */
+const DB = (() => {
+  let db;
+  const open = () => new Promise((res, rej) => {
+    const r = indexedDB.open('limpfinc', 1);
+    r.onupgradeneeded = e => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('fincas')) d.createObjectStore('fincas', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('kv')) d.createObjectStore('kv');
+    };
+    r.onsuccess = () => { db = r.result; res(); };
+    r.onerror = () => rej(r.error);
+  });
+  const tx = (st, mode, fn) => new Promise((res, rej) => {
+    const t = db.transaction(st, mode), s = t.objectStore(st); const q = fn(s);
+    t.oncomplete = () => res(q && q.result); t.onerror = () => rej(t.error);
+  });
+  return {
+    open,
+    all: () => tx('fincas', 'readonly', s => s.getAll()),
+    get: id => tx('fincas', 'readonly', s => s.get(id)),
+    put: f => tx('fincas', 'readwrite', s => s.put(f)),
+    del: id => tx('fincas', 'readwrite', s => s.delete(id)),
+    kvGet: k => tx('kv', 'readonly', s => s.get(k)),
+    kvPut: (k, v) => tx('kv', 'readwrite', s => s.put(v, k))
+  };
+})();
+
+/* ---------- Geometría (plano local métrico, WGS84) ---------- */
+const D2R = Math.PI / 180;
+const Geo = {
+  proj(lat0, lon0) {
+    const a = 6378137, e2 = 6.69437999014e-3, s = Math.sin(lat0 * D2R), w = 1 - e2 * s * s;
+    const N = a / Math.sqrt(w), M = a * (1 - e2) / (w * Math.sqrt(w));
+    const kx = N * Math.cos(lat0 * D2R) * D2R, ky = M * D2R;
+    return { fwd: (lat, lon) => [(lon - lon0) * kx, (lat - lat0) * ky], inv: (x, y) => [lat0 + y / ky, lon0 + x / kx] };
+  },
+  projFor(ll) { // ll: [[lat,lon],...]
+    let la = 0, lo = 0; ll.forEach(p => { la += p[0]; lo += p[1]; });
+    return Geo.proj(la / ll.length, lo / ll.length);
+  },
+  toXY(ll, P) { return ll.map(p => P.fwd(p[0], p[1])); },
+  toLL(xy, P) { return xy.map(p => P.inv(p[0], p[1])); },
+  dist: (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]),
+  signedArea(xy) { let s = 0; for (let i = 0, n = xy.length; i < n; i++) { const a = xy[i], b = xy[(i + 1) % n]; s += a[0] * b[1] - b[0] * a[1]; } return s / 2; },
+  area: xy => Math.abs(Geo.signedArea(xy)),
+  perim(xy, closed = true) { let s = 0; for (let i = 0; i < xy.length - (closed ? 0 : 1); i++) s += Geo.dist(xy[i], xy[(i + 1) % xy.length]); return s; },
+  lenLL(ll) { if (ll.length < 2) return 0; const P = Geo.projFor(ll); return Geo.perim(Geo.toXY(ll, P), false); },
+  areaLL(ll) { if (ll.length < 3) return 0; const P = Geo.projFor(ll); return Geo.area(Geo.toXY(ll, P)); },
+  perimLL(ll) { if (ll.length < 2) return 0; const P = Geo.projFor(ll); return Geo.perim(Geo.toXY(ll, P), true); },
+  decimate(xy, dmin) { if (!xy.length) return []; const o = [xy[0]]; for (const p of xy) if (Geo.dist(o[o.length - 1], p) >= dmin) o.push(p); return o; },
+  smooth(xy, k) { // media móvil abierta, ventana 2k+1
+    const n = xy.length; if (n < 2 * k + 1) return xy.slice();
+    return xy.map((_, i) => { let sx = 0, sy = 0, c = 0; for (let j = Math.max(0, i - k); j <= Math.min(n - 1, i + k); j++) { sx += xy[j][0]; sy += xy[j][1]; c++; } return [sx / c, sy / c]; });
+  },
+  dp(xy, eps) { // Douglas-Peucker
+    if (xy.length < 3) return xy.slice();
+    const keep = new Uint8Array(xy.length); keep[0] = keep[xy.length - 1] = 1;
+    const st = [[0, xy.length - 1]];
+    while (st.length) {
+      const [i, j] = st.pop(); let dm = 0, im = -1; const a = xy[i], b = xy[j];
+      const L = Geo.dist(a, b) || 1e-9;
+      for (let k = i + 1; k < j; k++) { const p = xy[k]; const d = Math.abs((b[0] - a[0]) * (a[1] - p[1]) - (a[0] - p[0]) * (b[1] - a[1])) / L; if (d > dm) { dm = d; im = k; } }
+      if (dm > eps && im > 0) { keep[im] = 1; st.push([i, im], [im, j]); }
+    }
+    return xy.filter((_, i) => keep[i]);
+  },
+  dpClosed(xy, eps) { // anillo cerrado: se parte por el punto más alejado del primero
+    if (xy.length < 4) return xy.slice();
+    let k = 1, dm = 0; xy.forEach((p, i) => { const d = Geo.dist(xy[0], p); if (d > dm) { dm = d; k = i; } });
+    const a = Geo.dp(xy.slice(0, k + 1), eps), b = Geo.dp([...xy.slice(k), xy[0]], eps);
+    return [...a.slice(0, -1), ...b.slice(0, -1)];
+  },
+  mergeClose(xy, dmin) { // fusiona vértices a menos de dmin
+    const o = [];
+    for (const p of xy) { const q = o[o.length - 1]; if (q && Geo.dist(p, q) < dmin) { q[0] = (q[0] + p[0]) / 2; q[1] = (q[1] + p[1]) / 2; } else o.push(p.slice()); }
+    while (o.length > 3 && Geo.dist(o[0], o[o.length - 1]) < dmin) o.pop();
+    return o;
+  },
+  ccw(xy) { return Geo.signedArea(xy) < 0 ? xy.slice().reverse() : xy; },
+  offsetOut(xy, d) { // desplaza polígono CCW hacia fuera d metros (inglete limitado)
+    const n = xy.length, o = [];
+    for (let i = 0; i < n; i++) {
+      const p0 = xy[(i - 1 + n) % n], p1 = xy[i], p2 = xy[(i + 1) % n];
+      const n1 = Geo.nrm([p1[1] - p0[1], -(p1[0] - p0[0])]), n2 = Geo.nrm([p2[1] - p1[1], -(p2[0] - p1[0])]);
+      let m = Geo.nrm([n1[0] + n2[0], n1[1] + n2[1]]); const c = m[0] * n1[0] + m[1] * n1[1];
+      const f = d / Math.max(c, 0.5);
+      o.push([p1[0] + m[0] * f, p1[1] + m[1] * f]);
+    }
+    return o;
+  },
+  nrm(v) { const l = Math.hypot(v[0], v[1]) || 1; return [v[0] / l, v[1] / l]; },
+  segX(a, b, c, d) {
+    const o = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+    return o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0;
+  },
+  selfIntersects(xy) {
+    const n = xy.length;
+    for (let i = 0; i < n; i++) for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue;
+      if (Geo.segX(xy[i], xy[(i + 1) % n], xy[j], xy[(j + 1) % n])) return true;
+    }
+    return false;
+  },
+  inPoly(p, xy) {
+    let c = false;
+    for (let i = 0, j = xy.length - 1; i < xy.length; j = i++) {
+      const a = xy[i], b = xy[j];
+      if ((a[1] > p[1]) !== (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c;
+    }
+    return c;
+  }
+};
+
+/* Proceso de un recorrido GPS a polígono */
+function processTrack(pts, mode, S) {
+  const good = pts.filter(p => p.acc <= S.umbralPrecision);
+  if (good.length < 5) return { error: 'Muy pocos puntos válidos (' + good.length + '). Revisa la precisión GPS.' };
+  const ll = good.map(p => [p.lat, p.lon]);
+  const P = Geo.projFor(ll);
+  let xy = Geo.toXY(ll, P);
+  xy = Geo.decimate(xy, 1.0);
+  xy = Geo.smooth(xy, 2);
+  // quitar cola que solapa el inicio
+  while (xy.length > 4 && Geo.dist(xy[xy.length - 1], xy[0]) < 1.0) xy.pop();
+  xy = Geo.dpClosed(xy, 1.0);
+  xy = Geo.mergeClose(xy, 2.0);
+  if (xy.length < 3) return { error: 'El recorrido no forma un polígono.' };
+  xy = Geo.ccw(xy);
+  let off = 0;
+  if (mode === 'tractor') {
+    off = S.anchoTractor / 2 + S.holguraLinde;
+    xy = Geo.offsetOut(xy, off);
+  }
+  const gap = Geo.dist(good[0] && P.fwd(good[0].lat, good[0].lon), P.fwd(good[good.length - 1].lat, good[good.length - 1].lon));
+  return {
+    coords: Geo.toLL(xy, P), offset: off, gap,
+    selfX: Geo.selfIntersects(xy),
+    used: good.length, total: pts.length,
+    accMed: good.reduce((s, p) => s + p.acc, 0) / good.length
+  };
+}
+
+/* ---------- Utilidades UI ---------- */
+const $ = id => document.getElementById(id);
+const fmt = (v, d = 0) => v.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmtArea = m2 => m2 >= 10000 ? fmt(m2 / 10000, 3) + ' ha' : fmt(m2, 0) + ' m²';
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+function toast(msg, ms = 2500) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), ms); }
+function sheet(html, onReady) {
+  const host = $('sheetHost');
+  host.innerHTML = `<div class="sheetBg"></div><div class="sheet"><div class="grab"></div><button class="shX" aria-label="Cerrar">✕</button>${html}</div>`;
+  host.querySelector('.sheetBg').onclick = closeSheet; host.querySelector('.shX').onclick = closeSheet;
+  onReady && onReady(host.querySelector('.sheet'));
+}
+function closeSheet() { $('sheetHost').innerHTML = ''; }
+function confirmSheet(msg, okTxt, cb, danger) {
+  sheet(`<h3>${msg}</h3><div class="row" style="margin-top:12px"><button class="btn sec" id="cNo">Cancelar</button><button class="btn ${danger ? 'err' : ''}" id="cOk">${okTxt}</button></div>`,
+    () => { $('cNo').onclick = closeSheet; $('cOk').onclick = () => { closeSheet(); cb(); }; });
+}
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* ---------- Estado ---------- */
+let S = { ...DEF };
+let cur = null;           // finca abierta
+let view = 'list';
+
+/* =========================================================
+   LISTA DE FINCAS
+   ========================================================= */
+async function showList() {
+  view = 'list';
+  setHeader('', 'LIMPFINC', '⚙︎', null, showSettings);
+  $('vList').classList.remove('hidden'); $('bNueva').classList.remove('hidden');
+  $('vSet').classList.add('hidden'); $('mapWrap').classList.add('hidden');
+  const fs = (await DB.all()).sort((a, b) => b.mod - a.mod);
+  const el = $('fincaList');
+  if (!fs.length) { el.innerHTML = `<div class="empty">No hay fincas.<br>Pulsa «Nueva finca» para empezar.</div>`; return; }
+  el.innerHTML = fs.map(f => {
+    const a = fincaAreas(f);
+    return `<div class="card finca" data-id="${f.id}">
+      <div class="ic">${f.tipo === 'monte' ? '🌲' : '🌾'}</div>
+      <div style="flex:1;min-width:0"><div class="t">${esc(f.nombre)}</div>
+      <div class="s">${f.tipo === 'monte' ? 'Monte / plantación' : 'Abierta'} · ${f.linde ? fmtArea(a.neta) : 'sin linde'}</div></div>
+      <div style="color:#c7c7cc;font-size:20px">›</div></div>`;
+  }).join('');
+  el.querySelectorAll('.finca').forEach(c => c.onclick = () => openFinca(c.dataset.id));
+}
+
+function setHeader(left, title, right, onL, onR) {
+  $('hLeft').textContent = left; $('hTitle').textContent = title; $('hRight').textContent = right;
+  $('hLeft').onclick = onL || null; $('hRight').onclick = onR || null;
+}
+
+$('bNueva').onclick = () => fincaForm(null);
+
+function fincaForm(f) {
+  const isNew = !f; f = f || { tipo: 'abierta', nombre: '' };
+  sheet(`<h3>${isNew ? 'Nueva finca' : 'Editar finca'}</h3>
+    <label class="f">Nombre</label><input class="inp" id="fNom" value="${esc(f.nombre)}" placeholder="p. ej. Leira do Souto">
+    <label class="f">Tipo</label>
+    <div class="seg" id="fTipo"><button data-v="abierta">🌾 Abierta</button><button data-v="monte">🌲 Monte / plantación</button></div>
+    <label class="f">Referencia catastral (opcional)</label><input class="inp" id="fRef" value="${esc(f.refCat || '')}" placeholder="15001A00100001">
+    <label class="f">Notas</label><input class="inp" id="fNot" value="${esc(f.notas || '')}">
+    <div class="row" style="margin-top:14px">${isNew ? '' : '<button class="btn err" id="fDel">Eliminar</button>'}<button class="btn" id="fOk">${isNew ? 'Crear' : 'Guardar'}</button></div>`,
+    () => {
+      let tipo = f.tipo;
+      const seg = $('fTipo'); const paint = () => seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === tipo));
+      seg.querySelectorAll('button').forEach(b => b.onclick = () => { tipo = b.dataset.v; paint(); }); paint();
+      $('fOk').onclick = async () => {
+        const nombre = $('fNom').value.trim(); if (!nombre) { toast('Indica un nombre'); return; }
+        const now = Date.now();
+        const nf = isNew ? { id: uid(), creada: now, linde: null, exclusiones: [] } : f;
+        Object.assign(nf, { nombre, tipo, refCat: $('fRef').value.trim(), notas: $('fNot').value.trim(), mod: now });
+        await DB.put(nf); closeSheet();
+        if (isNew) openFinca(nf.id); else { cur = nf; setHeader('‹ Fincas', nf.nombre, '⋯', showList, () => fincaForm(cur)); }
+      };
+      if (!isNew) $('fDel').onclick = () => confirmSheet(`¿Eliminar «${esc(f.nombre)}» y todos sus datos?`, 'Eliminar', async () => { await DB.del(f.id); cur = null; showList(); }, true);
+    });
+}
+
+function fincaAreas(f) {
+  const bruta = f.linde ? Geo.areaLL(f.linde.coords) : 0;
+  const excl = (f.exclusiones || []).reduce((s, e) => s + Geo.areaLL(e.coords), 0);
+  return { bruta, excl, neta: Math.max(0, bruta - excl), perim: f.linde ? Geo.perimLL(f.linde.coords) : 0 };
+}
+
+/* =========================================================
+   AJUSTES
+   ========================================================= */
+function showSettings() {
+  view = 'set';
+  setHeader('‹ Fincas', 'Ajustes', '', showList);
+  $('vList').classList.add('hidden'); $('bNueva').classList.add('hidden'); $('vSet').classList.remove('hidden');
+  let h = '';
+  for (const [g, fields] of SET_FIELDS) {
+    h += `<div class="sgrp">${g}</div><div class="card">`;
+    for (const [k, lbl, t] of fields) {
+      if (t === 'bool') h += `<div class="srow"><span>${lbl}</span><input type="checkbox" data-k="${k}" ${S[k] ? 'checked' : ''} style="width:auto"></div>`;
+      else h += `<div class="srow"><span>${lbl}</span><input class="inp" data-k="${k}" ${t === 'text' ? '' : 'inputmode="decimal"'} value="${esc(t === 'text' ? S[k] : String(S[k]).replace('.', ','))}"></div>`;
+    }
+    h += '</div>';
+  }
+  h += `<div class="sgrp">Datos</div><div class="card">
+    <button class="btn sec" id="bExp" style="margin-bottom:8px">Exportar copia de seguridad (JSON)</button>
+    <button class="btn sec" id="bImp" style="margin-bottom:8px">Importar copia de seguridad</button>
+    <input type="file" id="fImp" accept=".json,application/json" class="hidden">
+    <button class="btn sec" id="bDef">Restaurar valores por defecto</button></div>
+    <div class="note" style="text-align:center">LIMPFINC ${VERSION}</div>`;
+  $('setBody').innerHTML = h;
+  $('setBody').querySelectorAll('[data-k]').forEach(inp => inp.onchange = async () => {
+    const k = inp.dataset.k;
+    if (inp.type === 'checkbox') S[k] = inp.checked;
+    else if (typeof DEF[k] === 'string') S[k] = inp.value;
+    else { const v = parseFloat(inp.value.replace(',', '.')); if (isFinite(v) && v >= 0) S[k] = v; else { toast('Valor no válido'); inp.value = String(S[k]).replace('.', ','); return; } }
+    await DB.kvPut('settings', S); toast('Guardado', 900);
+  });
+  $('bDef').onclick = () => confirmSheet('¿Restaurar todos los ajustes por defecto?', 'Restaurar', async () => { S = { ...DEF }; await DB.kvPut('settings', S); showSettings(); });
+  $('bExp').onclick = exportBackup;
+  $('bImp').onclick = () => $('fImp').click();
+  $('fImp').onchange = importBackup;
+}
+
+async function exportBackup() {
+  const data = { app: 'LIMPFINC', version: VERSION, fecha: new Date().toISOString(), settings: S, fincas: await DB.all() };
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'LIMPFINC_' + new Date().toISOString().slice(0, 10) + '.json'; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+async function importBackup(e) {
+  const file = e.target.files[0]; if (!file) return;
+  try {
+    const d = JSON.parse(await file.text());
+    if (d.app !== 'LIMPFINC' || !Array.isArray(d.fincas)) throw 0;
+    confirmSheet(`Importar ${d.fincas.length} finca(s)? Las que tengan el mismo identificador se sobrescriben.`, 'Importar', async () => {
+      for (const f of d.fincas) await DB.put(f);
+      if (d.settings) { S = { ...DEF, ...d.settings }; await DB.kvPut('settings', S); }
+      toast('Importado'); showSettings();
+    });
+  } catch { toast('Archivo no válido'); }
+  e.target.value = '';
+}
+
+/* =========================================================
+   MAPA
+   ========================================================= */
+let map, lyr = {}, posMarker, posCircle, followPos = false;
+function initMap() {
+  if (map) return;
+  map = L.map('map', { zoomControl: false, attributionControl: true, maxZoom: 21 }).setView([43.22, -8.29], 15);
+  const pnoa = L.tileLayer('https://www.ign.es/wmts/pnoa-ma?request=GetTile&service=WMTS&VERSION=1.0.0&Layer=OI.OrthoimageCoverage&Style=default&Format=image/jpeg&TileMatrixSet=GoogleMapsCompatible&TileMatrix={z}&TileRow={y}&TileCol={x}',
+    { maxNativeZoom: 19, maxZoom: 21, attribution: 'PNOA © IGN' });
+  const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 21, attribution: '© OpenStreetMap' });
+  pnoa.addTo(map);
+  L.control.layers({ 'Ortofoto PNOA': pnoa, 'OpenStreetMap': osm }, null, { position: 'topright' }).addTo(map);
+  L.control.scale({ imperial: false, position: 'topleft' }).addTo(map);
+  lyr.finca = L.layerGroup().addTo(map);
+  lyr.tmp = L.layerGroup().addTo(map);
+  lyr.edit = L.layerGroup().addTo(map);
+  map.on('dragstart', () => { followPos = false; });
+}
+
+async function openFinca(id) {
+  cur = await DB.get(id); if (!cur) return showList();
+  view = 'map';
+  setHeader('‹ Fincas', cur.nombre, '⋯', () => { if (busy()) return toast('Termina o cancela la operación en curso'); stopGPS(); showList(); }, () => fincaForm(cur));
+  $('vList').classList.add('hidden'); $('bNueva').classList.add('hidden'); $('vSet').classList.add('hidden');
+  $('mapWrap').classList.remove('hidden');
+  initMap(); setTimeout(() => map.invalidateSize(), 50);
+  showMain();
+  drawFinca(true);
+  startGPS(); // posición visible
+}
+
+function drawFinca(fit) {
+  lyr.finca.clearLayers();
+  if (!cur) return;
+  if (cur.linde) {
+    L.polygon(cur.linde.coords, { color: '#1b5e20', weight: 2.5, fillColor: '#a5d6a7', fillOpacity: .35 }).addTo(lyr.finca);
+  }
+  (cur.exclusiones || []).forEach(e => {
+    L.polygon(e.coords, { color: '#b71c1c', weight: 2, dashArray: '6 4', fillColor: '#757575', fillOpacity: .55 })
+      .bindTooltip(esc(e.nombre), { sticky: true }).addTo(lyr.finca);
+  });
+  if (fit) {
+    const all = [...(cur.linde ? cur.linde.coords : []), ...(cur.exclusiones || []).flatMap(e => e.coords)];
+    if (all.length) map.fitBounds(L.latLngBounds(all), { padding: [30, 30], maxZoom: 19 });
+  }
+}
+
+function showMain() { $('tbMain').classList.remove('hidden'); $('pRec').classList.add('hidden'); $('pTool').classList.add('hidden'); }
+function busy() { return !!(rec || draw || edit || review); }
+
+/* ---------- GPS ---------- */
+let watchId = null, lastPos = null, wakeLock = null;
+function startGPS() {
+  if (watchId !== null) return;
+  if (!('geolocation' in navigator)) { toast('Geolocalización no disponible'); return; }
+  watchId = navigator.geolocation.watchPosition(onPos, err => {
+    toast(err.code === 1 ? 'Permiso de ubicación denegado. Ajustes › Privacidad › Localización › Safari: «Al usar la app» + Ubicación exacta' : 'GPS: ' + err.message, 5000);
+  }, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+}
+function stopGPS() { if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; } }
+function onPos(p) {
+  const c = p.coords;
+  lastPos = { lat: c.latitude, lon: c.longitude, acc: c.accuracy, t: p.timestamp, spd: c.speed, hdg: c.heading };
+  const ll = [c.latitude, c.longitude];
+  if (!posMarker) {
+    posCircle = L.circle(ll, { radius: c.accuracy, color: '#1e88e5', weight: 1, fillOpacity: .12, interactive: false }).addTo(map);
+    posMarker = L.marker(ll, { icon: L.divIcon({ className: '', html: '<div class="pos"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }), interactive: false, zIndexOffset: 1000 }).addTo(map);
+  } else { posMarker.setLatLng(ll); posCircle.setLatLng(ll).setRadius(c.accuracy); }
+  if (followPos) map.panTo(ll, { animate: false });
+  if (rec) recPoint(lastPos);
+}
+$('bLoc').onclick = () => {
+  startGPS();
+  if (lastPos) { followPos = true; map.setView([lastPos.lat, lastPos.lon], Math.max(map.getZoom(), 18)); }
+  else toast('Esperando posición GPS…');
+};
+async function keepAwake(on) {
+  try {
+    if (on && 'wakeLock' in navigator) { wakeLock = await navigator.wakeLock.request('screen'); }
+    else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+  } catch (e) { /* no soportado */ }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && rec) { keepAwake(true); }
+  if (document.visibilityState === 'hidden' && rec) rec.hiddenAt = Date.now();
+  if (document.visibilityState === 'visible' && rec && rec.hiddenAt) {
+    const s = Math.round((Date.now() - rec.hiddenAt) / 1000); rec.hiddenAt = 0;
+    if (s > 3) toast(`La app estuvo en segundo plano ${s} s: el GPS no registró ese tramo.`, 4500);
+  }
+});
+
+/* =========================================================
+   MEDICIÓN POR GPS (a pie / tractor)
+   ========================================================= */
+let rec = null; // {target:'linde'|'excl', mode:'pie'|'tractor', pts:[], paused, line}
+function lindeMenu() {
+  if (busy()) return;
+  sheet(`<h3>Linde de la finca</h3>
+    <button class="opt" id="oPie">🚶 Medir a pie<small>Recorre el linde con el iPhone. Máxima precisión.</small></button>
+    <button class="opt" id="oTrac">🚜 Medir con tractor<small>Recorre el interior junto al linde. Se corrige ${fmt(S.anchoTractor / 2 + S.holguraLinde, 2)} m hacia fuera.</small></button>
+    <button class="opt" id="oDraw">✍️ Dibujar sobre el mapa<small>Toca los vértices sobre la ortofoto.</small></button>
+    ${cur.linde ? '<button class="opt" id="oDel" style="color:var(--err)">🗑 Borrar linde</button>' : ''}`,
+    () => {
+      $('oPie').onclick = () => { closeSheet(); startRec('linde', 'pie'); };
+      $('oTrac').onclick = () => { closeSheet(); tractorSetup(); };
+      $('oDraw').onclick = () => { closeSheet(); startDraw('linde'); };
+      if ($('oDel')) $('oDel').onclick = () => confirmSheet('¿Borrar el linde?', 'Borrar', async () => { cur.linde = null; await saveCur(); drawFinca(); }, true);
+    });
+}
+function tractorSetup() {
+  sheet(`<h3>Medir con tractor</h3>
+    <div class="note" style="margin-bottom:8px">Recorre la finca por dentro, con el linde siempre al mismo lado y el tractor lo más pegado posible. La app desplaza el recorrido hacia fuera: medio ancho del tractor + holgura.</div>
+    <div class="srow"><span>Ancho tractor (m)</span><input class="inp" id="tAn" inputmode="decimal" value="${String(S.anchoTractor).replace('.', ',')}" style="width:100px;text-align:right"></div>
+    <div class="srow"><span>Holgura lateral tractor–linde (m)</span><input class="inp" id="tHo" inputmode="decimal" value="${String(S.holguraLinde).replace('.', ',')}" style="width:100px;text-align:right"></div>
+    <div class="note" id="tOff"></div>
+    <button class="btn" id="tGo" style="margin-top:12px">Empezar</button>`,
+    () => {
+      const upd = () => { const a = parseFloat($('tAn').value.replace(',', '.')), h = parseFloat($('tHo').value.replace(',', '.')); $('tOff').textContent = isFinite(a + h) ? `Corrección hacia fuera: ${fmt(a / 2 + h, 2)} m` : ''; };
+      $('tAn').oninput = $('tHo').oninput = upd; upd();
+      $('tGo').onclick = async () => {
+        const a = parseFloat($('tAn').value.replace(',', '.')), h = parseFloat($('tHo').value.replace(',', '.'));
+        if (!(a > 0) || !(h >= 0)) return toast('Valores no válidos');
+        S.anchoTractor = a; S.holguraLinde = h; await DB.kvPut('settings', S);
+        closeSheet(); startRec('linde', 'tractor');
+      };
+    });
+}
+function startRec(target, mode) {
+  startGPS(); keepAwake(true);
+  rec = { target, mode, pts: [], paused: false, line: L.polyline([], { color: '#ff6f00', weight: 4 }).addTo(lyr.tmp) };
+  followPos = true;
+  $('tbMain').classList.add('hidden'); $('pRec').classList.remove('hidden');
+  $('recTitle').textContent = (target === 'linde' ? 'Linde' : 'Exclusión') + ' · ' + (mode === 'pie' ? 'a pie' : 'con tractor');
+  $('bPause').textContent = 'Pausa'; $('recDot').classList.add('rec');
+  $('recHint').textContent = 'Mantén la pantalla encendida. Vuelve al punto de inicio para cerrar.';
+  updRecStats();
+  if (lastPos) map.setView([lastPos.lat, lastPos.lon], Math.max(map.getZoom(), 18));
+}
+function recPoint(p) {
+  updRecStats(p);
+  if (rec.paused) return;
+  const last = rec.pts[rec.pts.length - 1];
+  if (last && p.t - last.t < 900) return; // ~1 Hz
+  rec.pts.push(p);
+  if (p.acc <= S.umbralPrecision) rec.line.addLatLng([p.lat, p.lon]);
+  updRecStats(p);
+}
+function updRecStats(p) {
+  p = p || lastPos;
+  if (p) {
+    const a = p.acc; const el = $('sAcc');
+    el.textContent = '±' + fmt(a, a < 10 ? 1 : 0) + ' m';
+    el.className = a <= 5 ? 'acc-ok' : a <= S.umbralPrecision ? 'acc-mid' : 'acc-bad';
+  }
+  $('sPts').textContent = rec.pts.length;
+  const ll = rec.pts.filter(q => q.acc <= S.umbralPrecision).map(q => [q.lat, q.lon]);
+  $('sLen').textContent = fmt(Geo.lenLL(ll), 0) + ' m';
+  if (p && rec.pts.length > 20 && ll.length) {
+    const d = Geo.lenLL([ll[0], [p.lat, p.lon]]);
+    $('recHint').textContent = d < 10 ? `Cerca del inicio (${fmt(d, 0)} m). Puedes terminar.` : `Distancia al inicio: ${fmt(d, 0)} m`;
+  }
+}
+$('bPause').onclick = () => {
+  rec.paused = !rec.paused; $('bPause').textContent = rec.paused ? 'Reanudar' : 'Pausa';
+  $('recDot').classList.toggle('rec', !rec.paused); $('recDot').style.background = rec.paused ? '#9e9e9e' : '';
+};
+$('bCancelRec').onclick = () => confirmSheet('¿Descartar la medición?', 'Descartar', endRec, true);
+$('bFin').onclick = () => {
+  const r = processTrack(rec.pts, rec.mode, S);
+  if (r.error) return toast(r.error, 4000);
+  const { target, mode, pts } = rec;
+  endRec();
+  startReview(target, mode, pts, r);
+};
+function endRec() {
+  if (rec) { lyr.tmp.removeLayer(rec.line); }
+  rec = null; keepAwake(false); followPos = false; showMain();
+}
+
+/* Revisión del resultado antes de guardar */
+let review = null;
+function startReview(target, mode, pts, r) {
+  review = { target, mode, pts, r };
+  lyr.tmp.clearLayers();
+  L.polyline(pts.filter(p => p.acc <= S.umbralPrecision).map(p => [p.lat, p.lon]), { color: '#ff6f00', weight: 2, opacity: .8, dashArray: '3 4' }).addTo(lyr.tmp);
+  L.polygon(r.coords, { color: target === 'linde' ? '#1b5e20' : '#b71c1c', weight: 3, fillColor: target === 'linde' ? '#a5d6a7' : '#757575', fillOpacity: .4 }).addTo(lyr.tmp);
+  map.fitBounds(L.latLngBounds(r.coords), { padding: [30, 30], maxZoom: 19 });
+  const a = Geo.areaLL(r.coords);
+  let warn = [];
+  if (r.gap > 15) warn.push(`⚠️ El final queda a ${fmt(r.gap, 0)} m del inicio; se ha cerrado con línea recta.`);
+  if (r.selfX) warn.push('⚠️ El polígono se cruza consigo mismo. Revísalo con «Editar».');
+  if (r.used < r.total) warn.push(`${r.total - r.used} punto(s) descartados por precisión.`);
+  showTool(target === 'linde' ? 'Resultado: linde' : 'Resultado: exclusión',
+    `Área ${fmtArea(a)} · Perímetro ${fmt(Geo.perimLL(r.coords), 0)} m · ${r.coords.length} vértices · Precisión media ±${fmt(r.accMed, 1)} m` +
+    (r.offset ? ` · Corrección ${fmt(r.offset, 2)} m` : '') + (warn.length ? '<br>' + warn.join('<br>') : ''),
+    [['Descartar', 'sec', () => { review = null; lyr.tmp.clearLayers(); showMain(); }],
+     ['Guardar', '', async () => {
+       await commitPolygon(target, r.coords, { metodo: mode, raw: compactPts(pts), offset: r.offset, accMed: r.accMed });
+       review = null; lyr.tmp.clearLayers(); showMain();
+     }]]);
+}
+const compactPts = pts => pts.map(p => [+p.lat.toFixed(7), +p.lon.toFixed(7), +p.acc.toFixed(1), p.t]);
+
+async function commitPolygon(target, coords, meta) {
+  if (target === 'linde') {
+    cur.linde = { coords, ...meta, fecha: Date.now() };
+  } else {
+    const n = (cur.exclusiones || []).length + 1;
+    cur.exclusiones = cur.exclusiones || [];
+    cur.exclusiones.push({ id: uid(), nombre: 'Exclusión ' + n, coords, metodo: meta.metodo, fecha: Date.now() });
+    checkExclInside(coords);
+  }
+  await saveCur(); drawFinca(); toast('Guardado');
+}
+function checkExclInside(coords) {
+  if (!cur.linde) return;
+  const P = Geo.projFor(cur.linde.coords), L0 = Geo.toXY(cur.linde.coords, P);
+  const out = coords.filter(c => !Geo.inPoly(P.fwd(c[0], c[1]), L0)).length;
+  if (out) toast(`Aviso: ${out} vértice(s) de la exclusión quedan fuera del linde.`, 4000);
+}
+async function saveCur() { cur.mod = Date.now(); await DB.put(cur); }
+
+/* =========================================================
+   DIBUJO MANUAL
+   ========================================================= */
+let draw = null;
+function startDraw(target) {
+  draw = { target, pts: [] };
+  draw.layer = L.polygon([], { color: target === 'linde' ? '#1b5e20' : '#b71c1c', weight: 2.5, dashArray: '5 4', fillOpacity: .25 }).addTo(lyr.tmp);
+  draw.mk = L.layerGroup().addTo(lyr.tmp);
+  map.on('click', drawClick);
+  drawPanel();
+}
+function drawPanel() {
+  const n = draw.pts.length;
+  showTool(draw.target === 'linde' ? 'Dibujar linde' : 'Dibujar exclusión',
+    n < 3 ? `Toca el mapa para añadir vértices (${n}/3 mínimo).` : `${n} vértices · ${fmtArea(Geo.areaLL(draw.pts))}`,
+    [['Cancelar', 'sec', () => endDraw()], ['Deshacer', 'sec', () => { draw.pts.pop(); drawUpd(); }, !n],
+     ['Terminar', '', async () => {
+       const P = Geo.projFor(draw.pts); let xy = Geo.ccw(Geo.toXY(draw.pts, P));
+       if (Geo.selfIntersects(xy)) toast('Aviso: el polígono se cruza consigo mismo', 3500);
+       const coords = Geo.toLL(xy, P), t = draw.target; endDraw();
+       await commitPolygon(t, coords, { metodo: 'manual' });
+     }, n < 3]]);
+}
+function drawClick(e) { draw.pts.push([e.latlng.lat, e.latlng.lng]); drawUpd(); }
+function drawUpd() {
+  draw.layer.setLatLngs(draw.pts); draw.mk.clearLayers();
+  draw.pts.forEach(p => L.marker(p, { icon: vIcon(draw.target === 'excl'), interactive: false }).addTo(draw.mk));
+  drawPanel();
+}
+function endDraw() { map.off('click', drawClick); lyr.tmp.clearLayers(); draw = null; showMain(); }
+const vIcon = (ex, del) => L.divIcon({ className: '', html: `<div class="vtx ${ex ? 'ex' : ''} ${del ? 'del' : ''}"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
+const midIcon = L.divIcon({ className: '', html: '<div class="mid"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
+
+/* =========================================================
+   EDICIÓN DE VÉRTICES
+   ========================================================= */
+let edit = null;
+function editMenu() {
+  if (busy()) return;
+  const items = [];
+  if (cur.linde) items.push(['linde', null, '⬠ Linde', `${cur.linde.coords.length} vértices`]);
+  (cur.exclusiones || []).forEach(e => items.push(['excl', e.id, '⛔ ' + esc(e.nombre), `${e.coords.length} vértices · ${fmtArea(Geo.areaLL(e.coords))}`]));
+  if (!items.length) return toast('No hay nada que editar todavía');
+  sheet(`<h3>¿Qué quieres editar?</h3>` + items.map((it, i) => `<button class="opt" data-i="${i}">${it[2]}<small>${it[3]}</small></button>`).join(''),
+    sh => sh.querySelectorAll('.opt').forEach(b => b.onclick = () => { closeSheet(); const it = items[+b.dataset.i]; startEdit(it[0], it[1]); }));
+}
+function startEdit(kind, id) {
+  const src = kind === 'linde' ? cur.linde.coords : cur.exclusiones.find(e => e.id === id).coords;
+  edit = { kind, id, pts: src.map(p => p.slice()), delMode: false };
+  lyr.finca.clearLayers(); drawFincaExcept(kind, id);
+  edit.poly = L.polygon(edit.pts, { color: kind === 'linde' ? '#1b5e20' : '#b71c1c', weight: 3, fillColor: kind === 'linde' ? '#a5d6a7' : '#757575', fillOpacity: .35 }).addTo(lyr.edit);
+  editMarkers(); editPanel();
+}
+function drawFincaExcept(kind, id) {
+  if (cur.linde && kind !== 'linde') L.polygon(cur.linde.coords, { color: '#1b5e20', weight: 2, fillColor: '#a5d6a7', fillOpacity: .2, interactive: false }).addTo(lyr.finca);
+  (cur.exclusiones || []).forEach(e => { if (!(kind === 'excl' && e.id === id)) L.polygon(e.coords, { color: '#b71c1c', weight: 1.5, dashArray: '6 4', fillColor: '#757575', fillOpacity: .4, interactive: false }).addTo(lyr.finca); });
+}
+function editMarkers() {
+  lyr.edit.eachLayer(l => { if (l !== edit.poly) lyr.edit.removeLayer(l); });
+  const ex = edit.kind === 'excl';
+  edit.pts.forEach((p, i) => {
+    const m = L.marker(p, { icon: vIcon(ex, edit.delMode), draggable: !edit.delMode, zIndexOffset: 500 }).addTo(lyr.edit);
+    m.on('drag', e => { edit.pts[i] = [e.latlng.lat, e.latlng.lng]; edit.poly.setLatLngs(edit.pts); });
+    m.on('dragend', () => { editMarkers(); editPanel(); });
+    m.on('click', () => {
+      if (!edit.delMode) return;
+      if (edit.pts.length <= 3) return toast('Mínimo 3 vértices');
+      edit.pts.splice(i, 1); edit.poly.setLatLngs(edit.pts); editMarkers(); editPanel();
+    });
+  });
+  if (!edit.delMode) edit.pts.forEach((p, i) => {
+    const q = edit.pts[(i + 1) % edit.pts.length];
+    const m = L.marker([(p[0] + q[0]) / 2, (p[1] + q[1]) / 2], { icon: midIcon, zIndexOffset: 400 }).addTo(lyr.edit);
+    m.on('click', () => { edit.pts.splice(i + 1, 0, [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]); edit.poly.setLatLngs(edit.pts); editMarkers(); editPanel(); });
+  });
+}
+function editPanel() {
+  const name = edit.kind === 'linde' ? 'linde' : cur.exclusiones.find(e => e.id === edit.id).nombre;
+  const btns = [['Cancelar', 'sec', () => endEdit(false)],
+    [edit.delMode ? 'Mover' : 'Borrar vért.', edit.delMode ? 'warn' : 'sec', () => { edit.delMode = !edit.delMode; editMarkers(); editPanel(); }]];
+  if (edit.kind === 'excl') btns.push(['Eliminar', 'err', () => confirmSheet(`¿Eliminar «${esc(name)}»?`, 'Eliminar', async () => {
+    cur.exclusiones = cur.exclusiones.filter(e => e.id !== edit.id); await saveCur(); endEdit(false);
+  }, true)]);
+  btns.push(['Guardar', '', () => endEdit(true)]);
+  showTool('Editar ' + name,
+    (edit.delMode ? 'Toca un vértice para borrarlo.' : 'Arrastra los vértices. Toca ○ para insertar uno nuevo.') + ` · ${edit.pts.length} vértices · ${fmtArea(Geo.areaLL(edit.pts))}`,
+    btns);
+}
+async function endEdit(save) {
+  if (save) {
+    const P = Geo.projFor(edit.pts); const xy = Geo.toXY(edit.pts, P);
+    if (Geo.selfIntersects(xy)) toast('Aviso: el polígono se cruza consigo mismo', 3500);
+    const coords = Geo.toLL(Geo.ccw(xy), P);
+    if (edit.kind === 'linde') { cur.linde.coords = coords; cur.linde.editado = Date.now(); }
+    else { const e = cur.exclusiones.find(e => e.id === edit.id); e.coords = coords; checkExclInside(coords); }
+    await saveCur(); toast('Guardado');
+  }
+  lyr.edit.clearLayers(); edit = null; drawFinca(); showMain();
+}
+
+/* =========================================================
+   EXCLUSIONES
+   ========================================================= */
+function exclMenu() {
+  if (busy()) return;
+  sheet(`<h3>Zona de exclusión</h3><div class="note" style="margin-bottom:8px">Rocas, pozos, zonas que no se pueden pisar. Se restan del área a limpiar.</div>
+    <button class="opt" id="eDraw">✍️ Dibujar sobre el mapa</button>
+    <button class="opt" id="ePie">🚶 Rodear a pie</button>
+    ${(cur.exclusiones || []).length ? `<div class="sgrp">Existentes</div>` + cur.exclusiones.map(e => `<button class="opt" data-id="${e.id}">${esc(e.nombre)}<small>${fmtArea(Geo.areaLL(e.coords))} · tocar para editar o renombrar</small></button>`).join('') : ''}`,
+    sh => {
+      $('eDraw').onclick = () => { closeSheet(); startDraw('excl'); };
+      $('ePie').onclick = () => { closeSheet(); startRec('excl', 'pie'); };
+      sh.querySelectorAll('[data-id]').forEach(b => b.onclick = () => exclOpts(b.dataset.id));
+    });
+}
+function exclOpts(id) {
+  const e = cur.exclusiones.find(x => x.id === id);
+  sheet(`<h3>${esc(e.nombre)}</h3><label class="f">Nombre</label><input class="inp" id="xN" value="${esc(e.nombre)}">
+    <div class="row" style="margin-top:12px"><button class="btn err" id="xD">Eliminar</button><button class="btn sec" id="xE">Editar vértices</button><button class="btn" id="xS">Guardar</button></div>`,
+    () => {
+      $('xS').onclick = async () => { e.nombre = $('xN').value.trim() || e.nombre; await saveCur(); closeSheet(); drawFinca(); };
+      $('xE').onclick = () => { closeSheet(); startEdit('excl', id); };
+      $('xD').onclick = () => confirmSheet(`¿Eliminar «${esc(e.nombre)}»?`, 'Eliminar', async () => { cur.exclusiones = cur.exclusiones.filter(x => x.id !== id); await saveCur(); drawFinca(); }, true);
+    });
+}
+
+/* =========================================================
+   DATOS DE LA FINCA
+   ========================================================= */
+function infoSheet() {
+  const a = fincaAreas(cur);
+  const ancho = Math.max(0.1, S.aperoAncho - S.solape);
+  const hPrev = a.neta / (ancho * S.velocidad * 1000); // h
+  const met = { pie: 'A pie (GPS)', tractor: 'Con tractor (GPS)', manual: 'Dibujo manual' };
+  sheet(`<h3>${esc(cur.nombre)}</h3>
+    <div class="card">
+      <div class="kv"><span>Tipo</span><span>${cur.tipo === 'monte' ? 'Monte / plantación' : 'Abierta'}</span></div>
+      ${cur.refCat ? `<div class="kv"><span>Ref. catastral</span><span>${esc(cur.refCat)}</span></div>` : ''}
+      <div class="kv"><span>Linde</span><span>${cur.linde ? met[cur.linde.metodo] || cur.linde.metodo : '—'}</span></div>
+      ${cur.linde && cur.linde.accMed ? `<div class="kv"><span>Precisión media medición</span><span>±${fmt(cur.linde.accMed, 1)} m</span></div>` : ''}
+      ${cur.linde && cur.linde.offset ? `<div class="kv"><span>Corrección tractor</span><span>${fmt(cur.linde.offset, 2)} m</span></div>` : ''}
+    </div>
+    <div class="card">
+      <div class="kv"><span>Área total (linde)</span><span>${fmtArea(a.bruta)}</span></div>
+      <div class="kv"><span>Exclusiones (${(cur.exclusiones || []).length})</span><span>− ${fmtArea(a.excl)}</span></div>
+      <div class="kv"><span>Área a limpiar</span><span style="color:var(--pri)">${fmtArea(a.neta)}</span></div>
+      <div class="kv"><span>Perímetro</span><span>${fmt(a.perim, 0)} m</span></div>
+      <div class="kv"><span>Superficie en m²</span><span>${fmt(a.neta, 0)} m²</span></div>
+    </div>
+    ${a.neta > 0 && cur.tipo !== 'monte' ? `<div class="card"><h3>Estimación preliminar</h3>
+      <div class="kv"><span>Tiempo (sin giros)</span><span>${fmtH(hPrev)}</span></div>
+      <div class="kv"><span>Combustible (sin giros)</span><span>${fmt(hPrev * S.consumo, 1)} L</span></div>
+      <div class="note">Ancho efectivo ${fmt(ancho, 2)} m · ${fmt(S.velocidad, 1)} km/h · ${fmt(S.consumo, 1)} L/h. El cálculo con trayectoria y giros llega en la fase F2.</div></div>` : ''}
+    ${cur.notas ? `<div class="note">${esc(cur.notas)}</div>` : ''}
+    <button class="btn sec" id="iGeo" style="margin-top:4px">Exportar finca (GeoJSON)</button>`,
+    () => { $('iGeo').onclick = exportGeoJSON; });
+}
+const fmtH = h => { const m = Math.round(h * 60); return Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0') + ' min'; };
+function exportGeoJSON() {
+  const ring = c => { const r = c.map(p => [p[1], p[0]]); r.push(r[0]); return [r]; };
+  const feats = [];
+  if (cur.linde) feats.push({ type: 'Feature', properties: { tipo: 'linde', nombre: cur.nombre, area_m2: Math.round(Geo.areaLL(cur.linde.coords)) }, geometry: { type: 'Polygon', coordinates: ring(cur.linde.coords) } });
+  (cur.exclusiones || []).forEach(e => feats.push({ type: 'Feature', properties: { tipo: 'exclusion', nombre: e.nombre, area_m2: Math.round(Geo.areaLL(e.coords)) }, geometry: { type: 'Polygon', coordinates: ring(e.coords) } }));
+  const blob = new Blob([JSON.stringify({ type: 'FeatureCollection', features: feats }, null, 1)], { type: 'application/geo+json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = cur.nombre.replace(/[^\w\-]+/g, '_') + '.geojson'; a.click();
+}
+
+/* ---------- Panel de herramienta genérico ---------- */
+function showTool(title, hint, btns) {
+  $('tbMain').classList.add('hidden'); $('pRec').classList.add('hidden'); $('pTool').classList.remove('hidden');
+  $('toolTitle').textContent = title; $('toolHint').innerHTML = hint;
+  const host = $('toolBtns'); host.innerHTML = '';
+  btns.forEach(([txt, cls, fn, dis]) => { const b = document.createElement('button'); b.className = 'btn ' + cls; b.textContent = txt; b.disabled = !!dis; b.onclick = fn; host.appendChild(b); });
+}
+
+$('tLinde').onclick = lindeMenu;
+$('tExcl').onclick = exclMenu;
+$('tEdit').onclick = editMenu;
+$('tInfo').onclick = () => { if (!busy()) infoSheet(); };
+
+/* =========================================================
+   ARRANQUE
+   ========================================================= */
+(async () => {
+  try {
+    await DB.open();
+    const s = await DB.kvGet('settings'); if (s) S = { ...DEF, ...s };
+  } catch (e) { toast('Error de almacenamiento: ' + e.message, 5000); }
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  showList();
+})();
+window.LIMPFINC = { Geo, processTrack, DB, get S() { return S; }, get cur() { return cur; } }; // para pruebas
+</script>
+</body>
+</html>
