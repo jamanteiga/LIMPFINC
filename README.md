@@ -537,3 +537,60 @@ Al tocarlo se abre «Cuenta y sincronización».
 
 - Comprueba: librería cargada, conexión, sesión, que existan las 6 tablas (con número de filas), escritura de prueba, fincas subidas frente a fincas en el móvil y cola de cambios pendientes.
 - Botón «⬆️ Subir todo ahora».
+
+## 14. Comodidad de uso (v1.1)
+
+**1. Recuperación**
+
+- El estado «en marcha» se guarda en el móvil: el trabajo al pulsar Iniciar o Continuar, y la medición del linde cada 5 puntos.
+- Si la app se cierra (bloqueo, batería, cierre accidental), al abrirla pregunta «⏯ Hay algo a medias»: Continuar donde lo dejé / Descartar.
+- Se ofrece durante 72 h.
+
+**2. Pausa automática**
+
+- Si el tractor está parado más de `autoPausa` s (120 por defecto; 0 la desactiva), se pausa con aviso de voz.
+- Se reanuda solo al moverse más de máx(6 m, 1,5 × precisión), en una sesión nueva.
+
+**3. Última finca**
+
+- Tarjeta «▶ Continuar con …» arriba de la lista.
+
+**4. Deshacer** (6 s)
+
+- Disponible al eliminar una finca (con sus trabajos y fotos), una exclusión, un vértice, un trabajo o una foto.
+
+**5. Ferrados**
+
+- La superficie se muestra también en ferrados.
+- Ferrado configurable en Ajustes › Unidades (436 m² por defecto, el de Abegondo; varía según la comarca).
+
+**6. Mapa de todas las fincas** («🗺 Ver todas las fincas en el mapa»)
+
+- Color por estado:
+  - Verde: limpia (último trabajo cerrado con cobertura ≥ 85 %).
+  - Naranja: trabajo en curso.
+  - Azul: con plan, sin limpiar.
+  - Gris: pendiente.
+- Nombre sobre cada finca. Al tocarla: estado, superficie, plan, Tiempo y Abrir.
+
+**9. Tiempo (5 días)** — Open-Meteo, libre, sin clave
+
+- Datos: estado del cielo, temperatura máxima/mínima, lluvia (mm y %), viento y rachas.
+- Valoración para desbrozar:
+
+| Valoración | Criterio |
+|---|---|
+| ❌ Lluvia | ≥ 5 mm o probabilidad ≥ 70 % |
+| ⚠️ Viento fuerte | Rachas ≥ 50 km/h o viento ≥ 35 km/h |
+| ⚠️ Terreno húmedo | ≥ 15 mm en las 48 h anteriores |
+| 🟡 Posible lluvia | ≥ 1 mm o probabilidad ≥ 40 % |
+| ✅ Apto | Resto |
+
+- Caché de 1 h por finca.
+
+**13. Notas y fotos por finca**
+
+- Notas de texto libre.
+- Fotos tomadas con la cámara, reducidas a 1280 px (JPEG al 72 %), con descripción y posición GPS si hay señal.
+- Las fotos aparecen en el mapa (📷).
+- Se sincronizan con la tabla `fotos` de Supabase (ver `supabase_limpfinc_v110.sql`). Si la tabla no existe, el resto sigue sincronizando.
