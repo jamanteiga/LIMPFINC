@@ -512,3 +512,28 @@ Al tocarlo se abre «Cuenta y sincronización».
 - «‹ Fincas» ya no se bloquea: si hay una medición o edición a medias, pregunta si descartarla.
 - Durante el trabajo pide pulsar Parar.
 - **Encuadre automático** al abrir la finca, al guardar el linde y al girar la pantalla. Usa el espacio libre entre la cabecera y el panel inferior, con zoom fraccionario (pasos de 0,25), en iPhone, iPad, tablet o Android.
+
+### v1.0.1 · Gestión de fincas, recálculo y diagnóstico
+
+**Lista de fincas**
+
+- Botón **⋯** en cada finca: Abrir, Editar, Recalcular plan, Copiar, Eliminar.
+- Buscador cuando hay más de 4 fincas.
+- Aviso de estado de la nube: librería no cargada, sin sesión, error o cambios pendientes.
+- Marca «sin subir» en las fincas que aún no están en Supabase.
+
+**Copiar finca**
+
+- Duplica linde, exclusiones, malla, plan y configuración. No copia los trabajos.
+- Propone el nombre «(copia)» y comprueba que no esté repetido.
+
+**Recalcular plan** (desde la lista, desde ⋯ de la finca o desde Plan)
+
+- Parámetros: velocidad de trabajo, tractor, apero, solape, velocidad en giros, consumo (L/h), vueltas de cabecera y rumbo de las pasadas.
+- Muestra el plan actual y el nuevo, con la diferencia en minutos y litros, rendimiento, pasadas y giros.
+- Solape, consumo y velocidad en giros se guardan como ajustes propios de la finca (`config.solape`, `config.consumo`, `config.velGiro`) si difieren de los del apero o los generales.
+
+**🩺 Diagnóstico de Supabase** (☁️ › Cuenta, o tocando ☁️⚠️)
+
+- Comprueba: librería cargada, conexión, sesión, que existan las 6 tablas (con número de filas), escritura de prueba, fincas subidas frente a fincas en el móvil y cola de cambios pendientes.
+- Botón «⬆️ Subir todo ahora».
