@@ -416,7 +416,7 @@ La copia de seguridad JSON incluye fincas, trabajos, repostajes y filtros.
 - **Fondos** (solo libres):
   - **OpenStreetMap**, por defecto.
   - OpenTopoMap.
-  - Ortofoto PNOA (IGN).
+  - La ortofoto PNOA se ha retirado (v1.0).
   - La app recuerda el último fondo elegido.
 - **Almacenamiento**: IndexedDB.
   - Fincas, sesiones, recorridos, ajustes y repostajes.
@@ -454,3 +454,61 @@ La copia de seguridad JSON incluye fincas, trabajos, repostajes y filtros.
 - **Sin Bluetooth en iOS Safari**: no se puede conectar un GNSS RTK externo.
 - **El GPS se detiene en segundo plano**: hace falta la pantalla encendida y el iPhone cargando en la cabina.
 - **El consumo es una estimación** mientras no se calibre.
+
+## 13. Datos en Supabase y catálogo (v1.0)
+
+### Almacenamiento
+
+- **Supabase** (`wuarkraddnndmgvfnkmm`), con inicio de sesión por email y contraseña de un único usuario.
+- RLS: cada fila solo es visible y editable por su propietario (`user_id = auth.uid()`).
+- Tablas: `fincas` y `trabajos` (con un campo JSON), `tractores`, `aperos`, `velocidades` y `ajustes`. El script está en `app/supabase_limpfinc.sql`.
+- GitHub Pages solo aloja la app; no se puede escribir en él.
+
+### Sincronización
+
+**Local primero:**
+- Todo se guarda al instante en el iPhone (IndexedDB).
+- Cada cambio se anota en una cola y se sube a Supabase a los ~2,5 s.
+- Durante el trabajo, la subida se agrupa cada 90 s.
+- Sin conexión, se acumula y se sube al volver la cobertura.
+
+**Bajada:**
+- Al abrir la app y al volver a primer plano (como mucho una vez por minuto).
+- Se descargan solo los registros con fecha más reciente; gana el último cambio.
+- Lo borrado en otro dispositivo se borra también en local.
+- Lo creado antes de iniciar sesión (por ejemplo, «A Gándará») se sube automáticamente.
+
+**Indicador en la cabecera:**
+
+| Icono | Significado |
+|---|---|
+| ☁️✓ | Sincronizado |
+| ☁️n | n cambios pendientes de subir |
+| ☁️⟳ | Sincronizando |
+| ☁️✕ | Sin conexión |
+| ☁️⚠️ | Error |
+
+Al tocarlo se abre «Cuenta y sincronización».
+
+### Catálogo
+
+- **Tractores:** modelo, CV, ancho, longitud sin apero, radio de giro, depósito, marcha atrás.
+- **Aperos:** nombre, labor, ancho, longitud, enganche, distancia iPhone → apero, desplazamiento lateral, solape, velocidad típica, consumo (L/h), CV necesarios, toma de fuerza.
+- Cada uno puede marcarse como predeterminado para fincas nuevas.
+- Por defecto: New Holland TN95F y desbrozadora de cadenas de 1,70 m.
+- **Velocidades estándar** por labor (desbroce, trituración, siega, grada, arado, cultivador, fresado, otra) × vegetación (ligera, media, densa). Valores orientativos editables.
+
+### Finca
+
+- Cada finca tiene su configuración: tipo, tractor, apero, vegetación y **velocidad de trabajo (3 km/h por defecto)**.
+- Se muestra la velocidad estándar de la combinación labor × vegetación, con un botón «usar».
+- Al cambiar la configuración, el plan se **recalcula** automáticamente. También desde ⋯ › Recalcular plan.
+- Cada trabajo guarda la configuración con la que se hizo, para que el histórico no cambie.
+- El consumo calibrado en los repostajes se guarda en el apero de la finca.
+
+### Navegación
+
+- Fincas ilimitadas: «＋ Nueva finca» en la lista, en ⋯ › Nueva finca y en el selector del título (▾).
+- «‹ Fincas» ya no se bloquea: si hay una medición o edición a medias, pregunta si descartarla.
+- Durante el trabajo pide pulsar Parar.
+- **Encuadre automático** al abrir la finca, al guardar el linde y al girar la pantalla. Usa el espacio libre entre la cabecera y el panel inferior, con zoom fraccionario (pasos de 0,25), en iPhone, iPad, tablet o Android.
