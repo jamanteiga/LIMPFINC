@@ -84,7 +84,7 @@ h3{margin:4px 0 8px;font-size:15px}
 .dot{width:10px;height:10px;border-radius:5px;background:var(--err);display:inline-block}
 .dot.rec{animation:bl 1s infinite}@keyframes bl{50%{opacity:.2}}
 .acc-ok{color:var(--pri)}.acc-mid{color:var(--warn)}.acc-bad{color:var(--err)}
-.toast{position:fixed;left:50%;top:calc(var(--safe-t) + 64px);transform:translateX(-50%);z-index:3000;background:rgba(30,30,30,.92);
+.toast{position:fixed;left:50%;top:calc(var(--safe-t) + 110px);transform:translateX(-50%);z-index:3000;background:rgba(30,30,30,.92);
   color:#fff;padding:9px 14px;border-radius:10px;font-size:14px;max-width:90vw;text-align:center}
 .vtx{width:18px;height:18px;border-radius:9px;background:#fff;border:3px solid #1b5e20;box-shadow:0 1px 3px rgba(0,0,0,.4)}
 .vtx.ex{border-color:#b71c1c}
@@ -106,6 +106,12 @@ table.cmp tr+tr>*{border-top:1px solid var(--line)}
 .covimg{image-rendering:pixelated}
 #bLay{top:146px}
 #pWork .stats b{font-size:20px}
+.gpsChip{position:absolute;left:50%;top:8px;transform:translateX(-50%);z-index:820;background:rgba(255,255,255,.96);border-radius:16px;
+  padding:6px 12px;font-size:13px;font-weight:600;box-shadow:0 1px 6px rgba(0,0,0,.25);display:flex;align-items:center;gap:6px;white-space:nowrap}
+.gdot{width:10px;height:10px;border-radius:5px;background:#9e9e9e;display:inline-block}
+.g-ok .gdot{background:#2e7d32}.g-mid .gdot{background:#ef6c00}.g-bad .gdot{background:#c62828}.g-wait .gdot{background:#9e9e9e;animation:bl 1s infinite}
+.st-ready{background:#9e9e9e!important}.st-pause{background:#ef6c00!important}
+.gtab td{padding:5px 0;border-bottom:1px solid var(--line)}.gtab td:last-child{text-align:right;font-weight:600}
 .leaflet-control-layers{border-radius:10px!important}
 .leaflet-top{top:4px}
 </style>
@@ -130,6 +136,7 @@ table.cmp tr+tr>*{border-top:1px solid var(--line)}
 <!-- MAPA -->
 <div id="mapWrap" class="hidden">
   <div id="map"></div>
+  <button class="gpsChip" id="gpsChip"><span class="gdot"></span><span id="gpsTxt">GPS apagado</span></button>
   <button class="mbtn" id="bLoc" title="Mi posición">◎</button>
   <button class="mbtn" id="bLay" title="Capas y filtros">🗂</button>
   <div class="panel hidden" id="pWork">
@@ -163,8 +170,8 @@ table.cmp tr+tr>*{border-top:1px solid var(--line)}
     </div>
     <div class="note" id="recHint" style="margin:-2px 0 8px"></div>
     <div class="row">
-      <button class="btn sec" id="bPause">Pausa</button>
-      <button class="btn" id="bFin">Terminar</button>
+      <button class="btn" id="bPause">▶ Iniciar</button>
+      <button class="btn" id="bFin">■ Finalizar</button>
       <button class="btn err" id="bCancelRec">Cancelar</button>
     </div>
   </div>
@@ -183,7 +190,7 @@ table.cmp tr+tr>*{border-top:1px solid var(--line)}
 /* =========================================================
    LIMPFINC · F1 — Fincas, linde, exclusiones, área
    ========================================================= */
-const VERSION = 'F5 · 0.5.0';
+const VERSION = 'F5 · 0.6.1';
 
 /* ---------- Ajustes por defecto ---------- */
 const DEF = {
@@ -194,6 +201,7 @@ const DEF = {
   anchoTractor:1.70, longTractorApero:5.0,
   umbralPrecision:8, holguraLinde:0.5,
   mallaX:3.5, mallaY:3.5, holguraTronco:0.30,
+  mapaBase:'Ortofoto PNOA (IGN)', mapaNombres:true,
   consumoAuto:true, velocidadGiro:3.0, velocidadTraslado:5.0, tCambioSentido:4, tManiobra:20, tEsquina:15, margenObstaculo:0.30
 };
 const SET_FIELDS = [
@@ -384,7 +392,7 @@ let view = 'list';
    ========================================================= */
 async function showList() {
   view = 'list';
-  setHeader('', 'LIMPFINC', '⚙︎', null, showSettings);
+  setHeader('📡 GPS', 'LIMPFINC', '⚙︎', gpsSheet, showSettings);
   $('vList').classList.remove('hidden'); $('bNueva').classList.remove('hidden');
   $('vSet').classList.add('hidden'); $('mapWrap').classList.add('hidden');
   const fs = (await DB.all()).sort((a, b) => b.mod - a.mod);
@@ -492,6 +500,7 @@ function showSettings() {
     h += '</div>';
   }
   h += `<div class="sgrp">Datos</div><div class="card">
+    <button class="btn sec" id="bGps" style="margin-bottom:8px">📡 Estado del GPS</button>
     <button class="btn sec" id="bFuel" style="margin-bottom:8px">⛽ Registrar repostaje (calibrar consumo)</button>
     <button class="btn sec" id="bExp" style="margin-bottom:8px">Exportar copia de seguridad (JSON)</button>
     <button class="btn sec" id="bImp" style="margin-bottom:8px">Importar copia de seguridad</button>
@@ -509,6 +518,7 @@ function showSettings() {
   $('bDef').onclick = () => confirmSheet('¿Restaurar todos los ajustes por defecto?', 'Restaurar', async () => { S = { ...DEF }; await DB.kvPut('settings', S); showSettings(); });
   $('bExp').onclick = exportBackup;
   $('bFuel').onclick = repostajeSheet;
+  $('bGps').onclick = gpsSheet;
   $('bImp').onclick = () => $('fImp').click();
   $('fImp').onchange = importBackup;
 }
@@ -547,8 +557,16 @@ function initMap() {
   const pnoa = L.tileLayer('https://www.ign.es/wmts/pnoa-ma?request=GetTile&service=WMTS&VERSION=1.0.0&Layer=OI.OrthoimageCoverage&Style=default&Format=image/jpeg&TileMatrixSet=GoogleMapsCompatible&TileMatrix={z}&TileRow={y}&TileCol={x}',
     { maxNativeZoom: 19, maxZoom: 21, attribution: 'PNOA © IGN' });
   const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 21, attribution: '© OpenStreetMap' });
-  pnoa.addTo(map);
-  L.control.layers({ 'Ortofoto PNOA': pnoa, 'OpenStreetMap': osm }, null, { position: 'topright' }).addTo(map);
+  // Solo fuentes libres: PNOA e IGN (CC BY 4.0), OSM (ODbL), OpenTopoMap (CC BY-SA)
+  const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { subdomains: 'abc', maxNativeZoom: 17, maxZoom: 21, attribution: '© OpenStreetMap · SRTM · © OpenTopoMap (CC BY-SA)' });
+  const ignTxt = L.tileLayer('https://www.ign.es/wmts/ign-base?request=GetTile&service=WMTS&VERSION=1.0.0&Layer=IGNBaseOrto&Style=default&Format=image/png&TileMatrixSet=GoogleMapsCompatible&TileMatrix={z}&TileRow={y}&TileCol={x}',
+    { maxNativeZoom: 19, maxZoom: 21, attribution: 'IGN' });
+  const bases = { 'Ortofoto PNOA (IGN)': pnoa, 'OpenStreetMap': osm, 'Topográfico (OpenTopoMap)': topo };
+  const ctl = L.control.layers(bases, { 'Nombres y vías (IGN)': ignTxt }, { position: 'topright' }).addTo(map);
+  (bases[S.mapaBase] || pnoa).addTo(map);
+  if (S.mapaNombres) ignTxt.addTo(map);
+  map.on('overlayadd overlayremove', async e => { if (e.layer === ignTxt) { S.mapaNombres = e.type === 'overlayadd'; try { await DB.kvPut('settings', S); } catch { } } });
+  map.on('baselayerchange', async e => { S.mapaBase = e.name; try { await DB.kvPut('settings', S); } catch { } });
   L.control.scale({ imperial: false, position: 'topleft' }).addTo(map);
   lyr.finca = L.layerGroup().addTo(map);
   lyr.plan = L.layerGroup().addTo(map);
@@ -598,23 +616,79 @@ function busy() { return !!(rec || draw || edit || review || planRev || work || 
 
 /* ---------- GPS ---------- */
 let watchId = null, lastPos = null, wakeLock = null;
+const GPS = { estado: 'off', err: '', n: 0, t0: 0, alt: null, altAcc: null, rx: 0 };
+const PERM_TXT = 'Ajustes del iPhone › Privacidad y seguridad › Localización › Sitios web de Safari → «Al usar la app» y «Ubicación exacta» activada. Revisa también Ajustes › Apps › Safari › Ubicación → «Permitir».';
 function startGPS() {
   if (watchId !== null) return;
-  if (!('geolocation' in navigator)) { toast('Geolocalización no disponible'); return; }
+  if (!window.isSecureContext) { GPS.estado = 'nohttps'; GPS.err = 'La app debe abrirse desde una dirección https:// (p. ej. GitHub Pages). Abierta como archivo local, el iPhone no da la ubicación.'; updGpsChip(); toast(GPS.err, 6000); return; }
+  if (!('geolocation' in navigator)) { GPS.estado = 'error'; GPS.err = 'Este navegador no ofrece geolocalización.'; updGpsChip(); return; }
+  GPS.estado = 'wait'; GPS.err = ''; GPS.t0 = Date.now(); updGpsChip();
   watchId = navigator.geolocation.watchPosition(onPos, err => {
-    toast(err.code === 1 ? 'Permiso de ubicación denegado. Ajustes › Privacidad › Localización › Safari: «Al usar la app» + Ubicación exacta' : 'GPS: ' + err.message, 5000);
+    if (err.code === 1) { GPS.estado = 'denied'; GPS.err = 'Permiso de ubicación denegado. ' + PERM_TXT; stopGPS(); toast('Permiso de ubicación denegado. Toca el indicador GPS para ver cómo activarlo.', 5000); }
+    else if (err.code === 3) { GPS.estado = 'wait'; GPS.err = 'Sin señal todavía (tiempo de espera agotado). Sal a cielo abierto.'; }
+    else { GPS.estado = 'error'; GPS.err = 'GPS: ' + err.message; }
+    updGpsChip();
   }, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
 }
-function stopGPS() { if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; } }
+function stopGPS() { if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; } if (GPS.estado !== 'denied' && GPS.estado !== 'nohttps') GPS.estado = 'off'; updGpsChip(); }
+function gpsAge() { return lastPos ? (Date.now() - lastPos.rx) / 1000 : Infinity; }
+function updGpsChip() {
+  const ch = $('gpsChip'); if (!ch) return;
+  let cls = 'g-wait', txt = 'GPS buscando señal…';
+  const age = gpsAge();
+  if (GPS.estado === 'off') { cls = ''; txt = 'GPS apagado'; }
+  else if (GPS.estado === 'denied') { cls = 'g-bad'; txt = 'GPS sin permiso'; }
+  else if (GPS.estado === 'nohttps') { cls = 'g-bad'; txt = 'GPS: requiere https'; }
+  else if (GPS.estado === 'error') { cls = 'g-bad'; txt = 'GPS error'; }
+  else if (lastPos && age < 10) {
+    const a = lastPos.acc; cls = a <= 5 ? 'g-ok' : a <= S.umbralPrecision ? 'g-mid' : 'g-bad';
+    txt = `GPS ±${fmt(a, a < 10 ? 1 : 0)} m · ${age < 1.5 ? 'ahora' : 'hace ' + Math.round(age) + ' s'}`;
+  } else if (lastPos) { cls = 'g-bad'; txt = `GPS sin lecturas hace ${Math.round(age)} s`; }
+  ch.className = 'gpsChip ' + cls; $('gpsTxt').textContent = txt;
+}
+setInterval(updGpsChip, 1000);
+function gpsSheet() {
+  startGPS();
+  const row = (k, v) => `<tr><td>${k}</td><td>${v}</td></tr>`;
+  const paint = () => {
+    const el = $('gpsBody'); if (!el) { clearInterval(tm); return; }
+    const p = lastPos, age = gpsAge();
+    let est = { off: 'Apagado', wait: 'Buscando señal…', ok: 'Recibiendo', denied: 'Sin permiso', nohttps: 'Requiere https', error: 'Error' }[GPS.estado] || GPS.estado;
+    if (GPS.estado === 'ok' && age > 10) est = 'Sin lecturas recientes';
+    el.innerHTML = `<table class="gtab" style="width:100%;border-collapse:collapse">
+      ${row('Estado', est)}
+      ${row('Precisión horizontal', p ? '±' + fmt(p.acc, 1) + ' m ' + (p.acc <= 5 ? '✅ buena' : p.acc <= S.umbralPrecision ? '🟠 aceptable' : '🔴 insuficiente (> ' + S.umbralPrecision + ' m)') : '–')}
+      ${row('Latitud', p ? p.lat.toFixed(7) + '°' : '–')}
+      ${row('Longitud', p ? p.lon.toFixed(7) + '°' : '–')}
+      ${row('Altitud', GPS.alt != null ? fmt(GPS.alt, 1) + ' m' + (GPS.altAcc != null ? ' (±' + fmt(GPS.altAcc, 0) + ')' : '') : '–')}
+      ${row('Velocidad', p && p.spd != null && p.spd >= 0 ? fmt(p.spd * 3.6, 1) + ' km/h' : '–')}
+      ${row('Rumbo', p && p.hdg != null && !isNaN(p.hdg) ? fmt(p.hdg, 0) + '°' : '–')}
+      ${row('Última lectura', p ? (age < 1.5 ? 'ahora' : 'hace ' + Math.round(age) + ' s') : '–')}
+      ${row('Lecturas recibidas', GPS.n)}
+      ${row('Conexión segura (https)', window.isSecureContext ? 'Sí' : 'No')}
+      </table>${GPS.err ? `<div class="card" style="margin-top:10px;background:#ffebee;color:#b71c1c">${esc(GPS.err)}</div>` : ''}
+      <div class="note" style="margin-top:8px">La primera posición puede tardar 10–60 s y llegar con poca precisión (wifi/antenas). Espera a que baje de ${S.umbralPrecision} m antes de medir. Cielo abierto, lejos de edificios y árboles densos.</div>`;
+  };
+  sheet(`<h3>📡 Estado del GPS</h3><div id="gpsBody"></div>
+    <div class="row" style="margin-top:12px"><button class="btn sec" id="gRe">Reiniciar GPS</button><button class="btn" id="gMap" ${cur ? '' : 'disabled'}>Ver en el mapa</button></div>`,
+    () => {
+      $('gRe').onclick = () => { if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; } GPS.estado = 'off'; GPS.err = ''; startGPS(); paint(); };
+      $('gMap').onclick = () => { closeSheet(); if (lastPos && map) { followPos = true; map.setView([lastPos.lat, lastPos.lon], Math.max(map.getZoom(), 18)); } };
+    });
+  paint(); const tm = setInterval(paint, 1000);
+}
+$('gpsChip').onclick = gpsSheet;
 function onPos(p) {
   const c = p.coords;
-  lastPos = { lat: c.latitude, lon: c.longitude, acc: c.accuracy, t: p.timestamp, spd: c.speed, hdg: c.heading };
+  GPS.estado = 'ok'; GPS.err = ''; GPS.n++; GPS.alt = c.altitude; GPS.altAcc = c.altitudeAccuracy;
+  lastPos = { lat: c.latitude, lon: c.longitude, acc: c.accuracy, t: p.timestamp, rx: Date.now(), spd: c.speed, hdg: c.heading };
+  updGpsChip();
   const ll = [c.latitude, c.longitude];
   if (!posMarker) {
     posCircle = L.circle(ll, { radius: c.accuracy, color: '#1e88e5', weight: 1, fillOpacity: .12, interactive: false }).addTo(map);
     posMarker = L.marker(ll, { icon: L.divIcon({ className: '', html: '<div class="pos"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }), interactive: false, zIndexOffset: 1000 }).addTo(map);
   } else { posMarker.setLatLng(ll); posCircle.setLatLng(ll).setRadius(c.accuracy); }
-  if (followPos) map.panTo(ll, { animate: false });
+  if (followPos) { if (map.getZoom() < 17) map.setView(ll, 18, { animate: false }); else map.panTo(ll, { animate: false }); }
   if (rec) recPoint(lastPos);
   if (work) workPoint(lastPos);
 }
@@ -630,6 +704,8 @@ async function keepAwake(on) {
   } catch (e) { /* no soportado */ }
 }
 document.addEventListener('visibilitychange', () => {
+  // al volver a primer plano, si el GPS se quedó parado, se reinicia
+  if (document.visibilityState === 'visible' && watchId !== null && gpsAge() > 5) { navigator.geolocation.clearWatch(watchId); watchId = null; startGPS(); }
   if (document.visibilityState === 'visible' && rec) { keepAwake(true); }
   if (document.visibilityState === 'hidden' && rec) rec.hiddenAt = Date.now();
   if (document.visibilityState === 'visible' && rec && rec.hiddenAt) {
@@ -676,18 +752,26 @@ function tractorSetup() {
 }
 function startRec(target, mode) {
   startGPS(); keepAwake(true);
-  rec = { target, mode, pts: [], paused: false, line: L.polyline([], { color: '#ff6f00', weight: 4 }).addTo(lyr.tmp) };
+  rec = { target, mode, pts: [], state: 'ready', paused: true, line: L.polyline([], { color: '#ff6f00', weight: 4 }).addTo(lyr.tmp) };
   followPos = true;
   $('tbMain').classList.add('hidden'); $('pRec').classList.remove('hidden');
-  $('recTitle').textContent = (target === 'linde' ? 'Linde' : 'Exclusión') + ' · ' + (mode === 'pie' ? 'a pie' : 'con tractor');
-  $('bPause').textContent = 'Pausa'; $('recDot').classList.add('rec');
-  $('recHint').textContent = 'Mantén la pantalla encendida. Vuelve al punto de inicio para cerrar.';
-  updRecStats();
+  paintRec(); updRecStats();
   if (lastPos) map.setView([lastPos.lat, lastPos.lon], Math.max(map.getZoom(), 18));
+}
+function paintRec() {
+  const st = rec.state, name = (rec.target === 'linde' ? 'Linde' : 'Exclusión') + ' · ' + (rec.mode === 'pie' ? 'a pie' : 'con tractor');
+  $('recTitle').textContent = { ready: 'Preparado · ', rec: 'Grabando · ', pause: 'En pausa · ' }[st] + name;
+  const dot = $('recDot'); dot.className = 'dot' + (st === 'rec' ? ' rec' : st === 'ready' ? ' st-ready' : ' st-pause');
+  const bp = $('bPause');
+  bp.textContent = st === 'ready' ? '▶ Iniciar' : st === 'rec' ? '⏸ Pausa' : '▶ Reanudar';
+  bp.className = 'btn ' + (st === 'rec' ? 'sec' : '');
+  $('bFin').classList.toggle('hidden', st === 'ready');
+  if (st === 'ready') $('recHint').textContent = 'Colócate en el punto de inicio' + (rec.mode === 'tractor' ? ' con el tractor junto al linde' : ' del linde') + ' y pulsa «Iniciar». Comprueba arriba que el GPS da buena precisión.';
+  else if (st === 'pause') $('recHint').textContent = 'Grabación en pausa: los puntos no se registran. Pulsa «Reanudar» para seguir o «Finalizar» para cerrar el linde.';
 }
 function recPoint(p) {
   updRecStats(p);
-  if (rec.paused) return;
+  if (rec.state !== 'rec') return;
   const last = rec.pts[rec.pts.length - 1];
   if (last && p.t - last.t < 900) return; // ~1 Hz
   rec.pts.push(p);
@@ -710,11 +794,17 @@ function updRecStats(p) {
   }
 }
 $('bPause').onclick = () => {
-  rec.paused = !rec.paused; $('bPause').textContent = rec.paused ? 'Reanudar' : 'Pausa';
-  $('recDot').classList.toggle('rec', !rec.paused); $('recDot').style.background = rec.paused ? '#9e9e9e' : '';
+  if (!rec) return;
+  const go = () => { rec.state = 'rec'; rec.paused = false; paintRec(); if (lastPos && gpsAge() < 3) recPoint(lastPos); };
+  if (rec.state === 'rec') { rec.state = 'pause'; rec.paused = true; paintRec(); return; }
+  if (!lastPos || gpsAge() > 10) return toast('Todavía no hay señal GPS. Espera a que el indicador se ponga verde o naranja.', 4000);
+  if (lastPos.acc > S.umbralPrecision) return confirmSheet(`La precisión actual es ±${fmt(lastPos.acc, 0)} m (peor que ${S.umbralPrecision} m). Los puntos imprecisos se descartan. ¿${rec.state === 'ready' ? 'Iniciar' : 'Reanudar'} igualmente?`, rec.state === 'ready' ? 'Iniciar' : 'Reanudar', go);
+  go();
 };
-$('bCancelRec').onclick = () => confirmSheet('¿Descartar la medición?', 'Descartar', endRec, true);
+$('bCancelRec').onclick = () => rec && rec.pts.length ? confirmSheet('¿Descartar la medición?', 'Descartar', endRec, true) : endRec();
 $('bFin').onclick = () => {
+  if (!rec || rec.state === 'ready') return;
+  rec.state = 'pause'; rec.paused = true; paintRec();
   const r = processTrack(rec.pts, rec.mode, S);
   if (r.error) return toast(r.error, 4000);
   const { target, mode, pts } = rec;
@@ -1630,7 +1720,7 @@ async function exportSheet() {
   sheet(`<h3>Exportar · ${esc(cur.nombre)}</h3>
     <div class="note" style="margin-bottom:8px">Incluye linde, exclusiones, árboles, plan${t ? ' y el trabajo del ' + new Date(t.inicio).toLocaleDateString('es-ES') : ''}.</div>
     <button class="opt" id="xDxf">📐 DXF (AutoCAD)<small>ETRS89 / UTM, capas separadas.</small></button>
-    <button class="opt" id="xKml">🌍 KML (Google Earth)</button>
+    <button class="opt" id="xKml">🌍 KML (QGIS, gvSIG, visores GIS)</button>
     <button class="opt" id="xGpx">🛰 GPX</button>
     <button class="opt" id="xGeo">🧩 GeoJSON</button>
     ${t ? '<button class="opt" id="xCsv">📄 CSV de puntos GPS del trabajo</button>' : ''}`,
@@ -1906,15 +1996,16 @@ async function startWork(trab) {
   const hasPlan = cur.plan && !planStale(cur);
   if (!trab) trab = { id: uid(), fincaId: cur.id, inicio: Date.now(), estado: 'abierto', planFecha: hasPlan ? cur.plan.fecha : null, sesiones: [] };
   const R = rebuildTrab(cur, trab);
-  const ses = { inicio: Date.now(), fin: Date.now(), pts: [] };
-  trab.sesiones.push(ses); R.tr.reset(); R.outs.push(null);
-  work = { trab, ...R, ses, on: true, paused: false, last: null, spd: 0 };
+  R.tr.reset(); R.outs.push(null);
+  work = { trab, ...R, ses: null, on: true, paused: true, ready: true, last: null, spd: 0 };
   viewTrab = trab.id; trabCache = null;
   await DB.tPut(trab);
   startGPS(); keepAwake(true); followPos = true;
   $('tbMain').classList.add('hidden'); $('pTool').classList.add('hidden'); $('pWork').classList.remove('hidden');
   $('bLoc').classList.add('hidden');
   paintApero(); renderWork(); updWorkUI();
+  $('wPause').textContent = '▶ Iniciar'; $('wPause').className = 'btn';
+  toast('Colócate en el punto de inicio y pulsa «Iniciar»', 3500);
   work.tRender = setInterval(renderWork, 3000);
   work.tSave = setInterval(saveWork, 20000);
   if (lastPos) map.setView([lastPos.lat, lastPos.lon], Math.max(map.getZoom(), 19));
@@ -1969,8 +2060,11 @@ function paintApero() {
 $('wApero').onclick = () => { if (!work) return; work.on = !work.on; paintApero(); };
 $('wPause').onclick = async () => {
   if (!work) return;
-  if (!work.paused) { work.paused = true; work.ses.fin = Date.now(); await saveWork(); $('wPause').textContent = 'Reanudar'; keepAwake(false); }
-  else { work.paused = false; work.ses = { inicio: Date.now(), fin: Date.now(), pts: [] }; work.trab.sesiones.push(work.ses); work.tr.reset(); work.outs.push(null); $('wPause').textContent = 'Pausa'; keepAwake(true); }
+  if (!work.paused) { work.paused = true; work.ses.fin = Date.now(); await saveWork(); $('wPause').textContent = '▶ Reanudar'; $('wPause').className = 'btn'; return; }
+  const go = () => { work.paused = false; work.ready = false; work.ses = { inicio: Date.now(), fin: Date.now(), pts: [] }; work.trab.sesiones.push(work.ses); work.tr.reset(); work.outs.push(null); $('wPause').textContent = '⏸ Pausa'; $('wPause').className = 'btn sec'; keepAwake(true); };
+  if (!lastPos || gpsAge() > 10) return toast('Todavía no hay señal GPS. Espera a que el indicador se ponga verde o naranja.', 4000);
+  if (lastPos.acc > S.umbralPrecision) return confirmSheet(`La precisión actual es ±${fmt(lastPos.acc, 0)} m. ¿Empezar igualmente?`, 'Empezar', go);
+  go();
 };
 $('wEnd').onclick = () => {
   sheet(`<h3>Terminar</h3>
@@ -1983,11 +2077,11 @@ $('wEnd').onclick = () => {
       $('eFuel').onclick = () => repostajeSheet();
     });
 };
-async function saveWork() { if (!work) return; if (!work.paused) work.ses.fin = Date.now(); try { await DB.tPut(work.trab); } catch (e) { toast('Error guardando: ' + e.message); } }
+async function saveWork() { if (!work) return; if (!work.paused && work.ses) work.ses.fin = Date.now(); try { await DB.tPut(work.trab); } catch (e) { toast('Error guardando: ' + e.message); } }
 async function endWork(estado) {
   closeSheet();
   const w = work; if (!w) return;
-  if (!w.paused) w.ses.fin = Date.now();
+  if (!w.paused && w.ses) w.ses.fin = Date.now();
   w.trab.sesiones = w.trab.sesiones.filter(s => s.pts.length > 0);
   w.trab.sesiones.forEach(x => { const lp = x.pts[x.pts.length - 1]; if (lp) x.fin = Math.max(x.fin || 0, lp[3]); });
   w.trab.estado = estado; w.trab.fin = Date.now();
