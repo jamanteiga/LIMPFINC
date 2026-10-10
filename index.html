@@ -198,6 +198,7 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
     <div class="note" id="recHint" style="margin:-2px 0 8px"></div>
     <div class="row">
       <button class="btn big" id="bPause">▶ Iniciar</button>
+      <button class="btn big" id="bCorner" style="background:#1565c0;white-space:nowrap;font-size:16px">📍 Esquina</button>
       <button class="btn big err" id="bFin">■ Parar</button>
     </div>
     <button class="lnk" id="bCancelRec">Cancelar y descartar</button>
@@ -217,11 +218,11 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
 /* =========================================================
    LIMPFINC · F1 — Fincas, linde, exclusiones, área
    ========================================================= */
-const VERSION = '0.8.0';
+const VERSION = '0.9.0';
 
 /* ---------- Ajustes por defecto ---------- */
 const DEF = {
-  voz:true, altoContraste:false,
+  voz:true, altoContraste:false, umbralAuto:true,
   tractor:'New Holland TN95F', potencia:95,
   radioGiro:4.0, marchaAtras:true,
   aperoNombre:'Desbrozadora de cadenas', aperoAncho:1.70, offsetApero:2.0,
@@ -236,7 +237,7 @@ const SET_FIELDS = [
   ['Tractor',[['tractor','Modelo','text'],['potencia','Potencia (CV)'],['anchoTractor','Ancho tractor (m)'],
     ['longTractorApero','Longitud tractor + apero (m)'],['radioGiro','Radio de giro mínimo (m)'],['marchaAtras','Maniobras marcha atrás','bool']]],
   ['Apero',[['aperoNombre','Apero','text'],['aperoAncho','Ancho de trabajo (m)'],['offsetApero','iPhone → centro apero (m)']]],
-  ['Trabajo',[['velocidad','Velocidad por defecto (km/h)'],['consumo','Consumo (L/h)'],['consumoAuto','Usar consumo calibrado en repostajes','bool'],['solape','Solape entre pasadas (m)'],['umbralDesv','Umbral desviación (m)'],['voz','Avisos por voz en el modo trabajo','bool'],['altoContraste','Alto contraste en el modo trabajo','bool']]],
+  ['Trabajo',[['velocidad','Velocidad por defecto (km/h)'],['consumo','Consumo (L/h)'],['consumoAuto','Usar consumo calibrado en repostajes','bool'],['solape','Solape entre pasadas (m)'],['umbralDesv','Umbral desviación mínimo (m)'],['umbralAuto','Umbral automático según precisión GPS','bool'],['voz','Avisos por voz en el modo trabajo','bool'],['altoContraste','Alto contraste en el modo trabajo','bool']]],
   ['Planificación',[['velocidadGiro','Velocidad en giros (km/h)'],['velocidadTraslado','Velocidad en traslados (km/h)'],['tCambioSentido','Tiempo cambio de sentido (s)'],
     ['tManiobra','Maniobra al iniciar traslado (s)'],['tEsquina','Maniobra en esquina (s)'],['margenObstaculo','Margen a exclusiones (m)']]],
   ['Medición GPS',[['umbralPrecision','Descartar puntos con precisión peor que (m)'],['holguraLinde','Holgura lateral tractor–linde (m)']]],
@@ -362,19 +363,116 @@ const Geo = {
   }
 };
 
+/* ---------- Filtro de Kalman (velocidad constante, por eje) ---------- */
+const KF_Q = 0.5;            // densidad espectral de aceleración (m²/s³)
+const kfR = acc => Math.max(1, acc * acc * 0.5);
+// en línea (tiempo real): devuelve posición filtrada, velocidad y desviación típica
+function KF2(q = KF_Q) {
+  let x = null, P = null, tl = 0, rej = 0;
+  return {
+    step(z, acc, t) {
+      const r = kfR(acc);
+      if (!x || rej >= 3) { x = [[z[0], 0], [z[1], 0]]; P = [[r, 0, 0, 4], [r, 0, 0, 4]]; tl = t; rej = 0; return { p: z.slice(), v: [0, 0], speed: 0, sigma: Math.sqrt(r) }; }
+      const dt = Math.max(0.05, Math.min(10, t - tl));
+      const xp = [], Pp = [];
+      for (let k = 0; k < 2; k++) {
+        const [p0, v0] = x[k], [a, b, c, d] = P[k];
+        xp[k] = [p0 + v0 * dt, v0];
+        Pp[k] = [a + dt * (b + c) + dt * dt * d + q * dt ** 3 / 3, b + dt * d + q * dt * dt / 2, c + dt * d + q * dt * dt / 2, d + q * dt];
+      }
+      const iy = [z[0] - xp[0][0], z[1] - xp[1][0]], S0 = Pp[0][0] + r, S1 = Pp[1][0] + r;
+      if (iy[0] * iy[0] / S0 + iy[1] * iy[1] / S1 > 25) { rej++; return { reject: true }; }   // salto > 5σ
+      rej = 0; tl = t;
+      for (let k = 0; k < 2; k++) {
+        const [a, b, c, d] = Pp[k], Sk = a + r, k0 = a / Sk, k1 = c / Sk;
+        x[k] = [xp[k][0] + k0 * iy[k], xp[k][1] + k1 * iy[k]];
+        P[k] = [(1 - k0) * a, (1 - k0) * b, c - k1 * a, d - k1 * b];
+      }
+      return { p: [x[0][0], x[1][0]], v: [x[0][1], x[1][1]], speed: Math.hypot(x[0][1], x[1][1]), sigma: Math.sqrt((P[0][0] + P[1][0]) / 2) };
+    }
+  };
+}
+// fuera de línea (linde): filtro hacia delante + suavizado hacia atrás (Rauch-Tung-Striebel)
+function kfSmooth(xy, acc, t, q = KF_Q) {
+  const n = xy.length; if (n < 3) return xy.slice();
+  const out = xy.map(() => [0, 0]);
+  for (let k = 0; k < 2; k++) {
+    const xf = [], Pf = [], xp = [], Pp = [];
+    for (let i = 0; i < n; i++) {
+      const z = xy[i][k], r = kfR(acc[i]);
+      let xpi, Ppi;
+      if (i === 0) { xpi = [z, 0]; Ppi = [r, 0, 0, 4]; }
+      else {
+        const dt = Math.max(0.05, Math.min(10, t[i] - t[i - 1])), [p0, v0] = xf[i - 1], [a, b, c, d] = Pf[i - 1];
+        xpi = [p0 + v0 * dt, v0];
+        Ppi = [a + dt * (b + c) + dt * dt * d + q * dt ** 3 / 3, b + dt * d + q * dt * dt / 2, c + dt * d + q * dt * dt / 2, d + q * dt];
+      }
+      xp[i] = xpi; Pp[i] = Ppi;
+      const [a, b, c, d] = Ppi, Sk = a + r, k0 = a / Sk, k1 = c / Sk, iy = z - xpi[0];
+      xf[i] = [xpi[0] + k0 * iy, xpi[1] + k1 * iy]; Pf[i] = [(1 - k0) * a, (1 - k0) * b, c - k1 * a, d - k1 * b];
+    }
+    let xs = xf[n - 1];
+    out[n - 1][k] = xs[0];
+    for (let i = n - 2; i >= 0; i--) {
+      const dt = Math.max(0.05, Math.min(10, t[i + 1] - t[i])), [a, b, c, d] = Pf[i], [e, f, g, h] = Pp[i + 1];
+      // C = Pf·Fᵀ·inv(Pp), con F = [[1,dt],[0,1]]
+      const m00 = a + b * dt, m01 = b, m10 = c + d * dt, m11 = d, det = e * h - f * g || 1e-12;
+      const i00 = h / det, i01 = -f / det, i10 = -g / det, i11 = e / det;
+      const C00 = m00 * i00 + m01 * i10, C01 = m00 * i01 + m01 * i11, C10 = m10 * i00 + m11 * i10, C11 = m10 * i01 + m11 * i11;
+      const d0 = xs[0] - xp[i + 1][0], d1 = xs[1] - xp[i + 1][1];
+      xs = [xf[i][0] + C00 * d0 + C01 * d1, xf[i][1] + C10 * d0 + C11 * d1];
+      out[i][k] = xs[0];
+    }
+  }
+  return out;
+}
+
 /* Proceso de un recorrido GPS a polígono */
 function processTrack(pts, mode, S) {
-  const good = pts.filter(p => p.acc <= S.umbralPrecision);
-  if (good.length < 5) return { error: 'Muy pocos puntos válidos (' + good.length + '). Revisa la precisión GPS.' };
-  const ll = good.map(p => [p.lat, p.lon]);
-  const P = Geo.projFor(ll);
-  let xy = Geo.toXY(ll, P);
-  xy = Geo.decimate(xy, 1.0);
-  xy = Geo.smooth(xy, 2);
-  // quitar cola que solapa el inicio
-  while (xy.length > 4 && Geo.dist(xy[xy.length - 1], xy[0]) < 1.0) xy.pop();
-  xy = Geo.dpClosed(xy, 1.0);
-  xy = Geo.mergeClose(xy, 2.0);
+  const corners = pts.filter(p => p.corner);
+  const good = pts.filter(p => !p.corner && p.acc <= S.umbralPrecision);
+  if (good.length < 5 && corners.length < 3) return { error: 'Muy pocos puntos válidos (' + good.length + ' puntos, ' + corners.length + ' esquinas). Revisa la precisión GPS.' };
+  const all = [...good, ...corners];
+  const P = Geo.projFor(all.map(p => [p.lat, p.lon]));
+  let xy;
+  if (good.length < 5) {
+    // solo esquinas: el polígono son las esquinas en el orden en que se tomaron
+    xy = corners.map(c => P.fwd(c.lat, c.lon));
+  } else {
+    xy = kfSmooth(good.map(p => P.fwd(p.lat, p.lon)), good.map(p => p.acc), good.map(p => p.t / 1000));
+    xy = Geo.decimate(xy, 1.0);
+    while (xy.length > 4 && Geo.dist(xy[xy.length - 1], xy[0]) < 1.0) xy.pop();  // cola que solapa el inicio
+    xy = Geo.dpClosed(xy, 1.0);
+    xy = Geo.mergeClose(xy, 2.0);
+    // las esquinas promediadas sustituyen al vértice cercano o se insertan en el lado más próximo
+    corners.forEach(c => {
+      const q = P.fwd(c.lat, c.lon);
+      let bi = -1, bd = Infinity; xy.forEach((v, i) => { const d = Geo.dist(v, q); if (d < bd) { bd = d; bi = i; } });
+      if (bd < 10) { xy[bi] = q; return; }
+      let be = 0, bde = Infinity;
+      for (let i = 0; i < xy.length; i++) {
+        const a = xy[i], b = xy[(i + 1) % xy.length], dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1e-12;
+        let u = ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / L2; u = Math.max(0, Math.min(1, u));
+        const d = Math.hypot(q[0] - a[0] - u * dx, q[1] - a[1] - u * dy); if (d < bde) { bde = d; be = i; }
+      }
+      xy.splice(be + 1, 0, q);
+    });
+    // entre esquinas los lados se simplifican más (solo se conservan quiebros reales > 2 m)
+    if (corners.length >= 2) {
+      const cq = corners.map(c => P.fwd(c.lat, c.lon));
+      const isC = v => cq.some(q => q[0] === v[0] && q[1] === v[1]);
+      const ci = xy.map((v, i) => isC(v) ? i : -1).filter(i => i >= 0);
+      if (ci.length >= 2) {
+        const out = [];
+        for (let k = 0; k < ci.length; k++) {
+          const a = ci[k], b = ci[(k + 1) % ci.length];
+          const seg = []; for (let i = a; ; i = (i + 1) % xy.length) { seg.push(xy[i]); if (i === b) break; }
+          const simp = Geo.dp(seg, 2.0); simp.pop(); out.push(...simp);
+        }
+        xy = out;
+      }
+    }
+  }
   if (xy.length < 3) return { error: 'El recorrido no forma un polígono.' };
   xy = Geo.ccw(xy);
   let off = 0;
@@ -382,12 +480,14 @@ function processTrack(pts, mode, S) {
     off = S.anchoTractor / 2 + S.holguraLinde;
     xy = Geo.offsetOut(xy, off);
   }
-  const gap = Geo.dist(good[0] && P.fwd(good[0].lat, good[0].lon), P.fwd(good[good.length - 1].lat, good[good.length - 1].lon));
+  const seq = good.length >= 5 ? good : corners;
+  const gap = Geo.dist(P.fwd(seq[0].lat, seq[0].lon), P.fwd(seq[seq.length - 1].lat, seq[seq.length - 1].lon));
   return {
-    coords: Geo.toLL(xy, P), offset: off, gap,
+    coords: Geo.toLL(xy, P), offset: off, gap: good.length >= 5 ? gap : 0,
     selfX: Geo.selfIntersects(xy),
-    used: good.length, total: pts.length,
-    accMed: good.reduce((s, p) => s + p.acc, 0) / good.length
+    used: good.length, total: pts.length - corners.length, nCorners: corners.length,
+    accMed: all.reduce((s, p) => s + p.acc, 0) / all.length,
+    accCorners: corners.length ? corners.reduce((s, p) => s + p.acc, 0) / corners.length : null
   };
 }
 
@@ -793,15 +893,18 @@ function paintRec() {
   bp.textContent = st === 'ready' ? '▶ Iniciar' : st === 'rec' ? '⏸ Pausar' : '▶ Continuar';
   bp.className = 'btn big ' + (st === 'rec' ? 'warn' : '');
   $('bFin').classList.toggle('hidden', st === 'ready');
+  $('bCorner').classList.toggle('hidden', st === 'ready');
+  if (!rec.avg) $('bCorner').textContent = '📍 Esquina';
   const como = rec.mode === 'tractor'
     ? 'Con tractor: circula por DENTRO de la finca, lo más pegado posible al borde. La app desplaza el trazado hacia fuera (' + fmt(S.anchoTractor / 2 + S.holguraLinde, 2) + ' m).'
     : 'A pie: camina POR EL BORDE de la finca. Es la medición más precisa.';
   if (st === 'ready') $('recHint').textContent = como + ' Ve al punto de partida y pulsa «Iniciar».';
-  else if (st === 'rec') $('recHint').textContent = 'Registrando el trazado… Pulsa «Pausar» para detenerte o «Parar» al terminar.';
+  else if (st === 'rec') $('recHint').textContent = 'Registrando el trazado… En cada esquina, párate y pulsa «📍 Esquina» (20 s quieto) para fijarla con más precisión. «Parar» al terminar.';
   else $('recHint').textContent = 'En pausa: no se registra nada. Pulsa «Continuar» y el trazado seguirá desde el último punto.';
 }
 function recPoint(p) {
   updRecStats(p);
+  if (rec.avg) { if (p.acc <= S.umbralPrecision * 1.5 && (!rec.avg.s.length || p.t !== rec.avg.s[rec.avg.s.length - 1].t)) rec.avg.s.push(p); return; }
   if (rec.state !== 'rec') return;
   const last = rec.pts[rec.pts.length - 1];
   if (last && p.t - last.t < 900) return; // ~1 Hz
@@ -816,8 +919,8 @@ function updRecStats(p) {
     el.textContent = '±' + fmt(a, a < 10 ? 1 : 0) + ' m';
     el.className = a <= 5 ? 'acc-ok' : a <= S.umbralPrecision ? 'acc-mid' : 'acc-bad';
   }
-  $('sPts').textContent = rec.pts.length;
-  const ll = rec.pts.filter(q => q.acc <= S.umbralPrecision).map(q => [q.lat, q.lon]);
+  { const nc = rec.pts.filter(q => q.corner).length; $('sPts').textContent = (rec.pts.length - nc) + (nc ? ' · ' + nc + '📍' : ''); }
+  const ll = rec.pts.filter(q => q.corner || q.acc <= S.umbralPrecision).map(q => [q.lat, q.lon]);
   $('sLen').textContent = fmt(Geo.lenLL(ll), 0) + ' m';
   if (p && rec.pts.length > 20 && ll.length) {
     const d = Geo.lenLL([ll[0], [p.lat, p.lon]]);
@@ -836,6 +939,31 @@ $('bPause').onclick = () => {
   followPos = true; map.setView([lastPos.lat, lastPos.lon], Math.max(map.getZoom(), 19));
   if (lastPos.acc > S.umbralPrecision) toast(`Precisión baja (±${fmt(lastPos.acc, 0)} m): los puntos imprecisos se descartarán.`, 3500);
 };
+$('bCorner').onclick = () => {
+  if (!rec || rec.state === 'ready') return;
+  if (rec.avg) { clearInterval(rec.avg.tm); rec.avg = null; paintRec(); return toast('Esquina cancelada'); }   // segundo toque cancela
+  if (!lastPos || gpsAge() > 10) return toast('Esperando señal GPS: el indicador de arriba a la izquierda debe estar en verde.', 4000);
+  const DUR = 20; let n = DUR;
+  rec.avg = { s: [], tm: null };
+  $('bCorner').textContent = `⏳ ${n} s`; $('recHint').textContent = 'Quieto en la esquina… promediando el GPS. Toca otra vez para cancelar.';
+  try { speak('Esquina. No te muevas', true); } catch { }
+  rec.avg.tm = setInterval(() => {
+    n--; if (!rec || !rec.avg) return;
+    $('bCorner').textContent = `⏳ ${n} s`;
+    if (n > 0) return;
+    clearInterval(rec.avg.tm); const S0 = rec.avg.s; rec.avg = null;
+    if (S0.length < 5) { paintRec(); return toast('Pocas lecturas con buena precisión: esquina no guardada. Inténtalo de nuevo.', 4000); }
+    let sw = 0, la = 0, lo = 0; S0.forEach(q => { const w = 1 / (q.acc * q.acc); sw += w; la += q.lat * w; lo += q.lon * w; });
+    // la precisión de la media no baja de 1/√n·σ por errores correlados del GPS: se limita a la mitad de la precisión media
+    const accMean = S0.reduce((s, q) => s + q.acc, 0) / S0.length, acc = Math.max(Math.sqrt(1 / sw), accMean / 2);
+    const c = { lat: la / sw, lon: lo / sw, acc, t: Date.now(), corner: true, n: S0.length };
+    rec.pts.push(c); rec.line.addLatLng([c.lat, c.lon]);
+    const k = rec.pts.filter(q => q.corner).length;
+    L.marker([c.lat, c.lon], { interactive: false, icon: L.divIcon({ className: '', html: `<div class="pin" style="background:#1565c0">${k}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] }) }).addTo(lyr.tmp);
+    paintRec(); updRecStats(); toast(`📍 Esquina ${k} guardada (±${fmt(acc, 1)} m, ${S0.length} lecturas)`, 3000);
+    try { speak(`Esquina ${k} guardada`, true); } catch { }
+  }, 1000);
+};
 function markRec(tipo) {
   const p = tipo === 'pausa' ? rec.pts[rec.pts.length - 1] : lastPos; if (!p) return;
   const st = { inicio: ['I', '#2e7d32'], pausa: ['❚❚', '#ef6c00'], continuar: ['▶', '#1565c0'] }[tipo];
@@ -844,6 +972,7 @@ function markRec(tipo) {
 $('bCancelRec').onclick = () => rec && rec.pts.length ? confirmSheet('¿Descartar el trazado registrado?', 'Descartar', endRec, true) : endRec();
 $('bFin').onclick = () => {
   if (!rec || rec.state === 'ready') return;
+  if (rec.avg) return toast('Espera a que termine la esquina (o tócala para cancelar)');
   rec.state = 'pause'; rec.paused = true; paintRec();
   const r = processTrack(rec.pts, rec.mode, S);
   if (r.error) return toast(r.error, 4000);
@@ -852,7 +981,7 @@ $('bFin').onclick = () => {
   startReview(target, mode, pts, r);
 };
 function endRec() {
-  if (rec) { lyr.tmp.clearLayers(); }
+  if (rec) { if (rec.avg) clearInterval(rec.avg.tm); lyr.tmp.clearLayers(); }
   rec = null; keepAwake(false); followPos = false; showMain();
 }
 
@@ -869,6 +998,7 @@ function startReview(target, mode, pts, r) {
   if (r.gap > 15) warn.push(`⚠️ El final queda a ${fmt(r.gap, 0)} m del inicio; se ha cerrado con línea recta.`);
   if (r.selfX) warn.push('⚠️ El polígono se cruza consigo mismo. Revísalo con «Editar».');
   if (r.used < r.total) warn.push(`${r.total - r.used} punto(s) descartados por precisión.`);
+  if (r.nCorners) warn.unshift(`📍 ${r.nCorners} esquina(s) promediada(s), precisión media ±${fmt(r.accCorners, 1)} m.`);
   showTool(target === 'linde' ? 'Resultado: linde' : 'Resultado: exclusión',
     `Área ${fmtArea(a)} · Perímetro ${fmt(Geo.perimLL(r.coords), 0)} m · ${r.coords.length} vértices · Precisión media ±${fmt(r.accMed, 1)} m` +
     (r.offset ? ` · Corrección ${fmt(r.offset, 2)} m` : '') + (warn.length ? '<br>' + warn.join('<br>') : ''),
@@ -878,7 +1008,7 @@ function startReview(target, mode, pts, r) {
        review = null; lyr.tmp.clearLayers(); showMain();
      }]]);
 }
-const compactPts = pts => pts.map(p => [+p.lat.toFixed(7), +p.lon.toFixed(7), +p.acc.toFixed(1), p.t]);
+const compactPts = pts => pts.map(p => p.corner ? [+p.lat.toFixed(8), +p.lon.toFixed(8), +p.acc.toFixed(2), p.t, 'E'] : [+p.lat.toFixed(7), +p.lon.toFixed(7), +p.acc.toFixed(1), p.t]);
 
 async function commitPolygon(target, coords, meta) {
   if (target === 'linde') {
@@ -1948,19 +2078,27 @@ function Tracker(g, plan, S, t0) {
   st.add = pt => {
     const [lat, lon, acc, tms, on] = pt;
     if (acc > S.umbralPrecision) return { valid: false };
-    const p = P.fwd(lat, lon), t = (tms - t0) / 1000;
-    let moving = false, ds = 0, dt = 0;
-    if (st.lastP) { ds = Geo.dist(st.lastP.p, p); dt = t - st.lastP.t; if (dt > 0 && ds / dt > 8) return { valid: false }; moving = dt > 0 && ds / dt > 0.15; }
-    st.lastP = { p, t };
+    const p0 = P.fwd(lat, lon), t = (tms - t0) / 1000;
+    if (st.lastP) { const dd = Geo.dist(st.lastP.raw, p0), dtt = t - st.lastP.t; if (dtt > 0 && dd / dtt > 8) return { valid: false }; }
+    // filtro de Kalman: posición suavizada, velocidad y precisión estimada
+    if (!st.kf) st.kf = KF2();
+    const kf = st.kf.step(p0, acc, t);
+    if (kf.reject) return { valid: false };
+    const p = kf.p, accF = kf.sigma;
+    let moving = kf.speed > 0.15, ds = 0, dt = 0;
+    if (st.lastP) { ds = Geo.dist(st.lastP.p, p); dt = t - st.lastP.t; }
+    st.lastP = { p, t, raw: p0 };
+    // umbral de desvío: el fijado, o mayor si la precisión del GPS no da para más
+    const thr = S.umbralAuto ? Math.max(S.umbralDesv, 1.5 * accF) : S.umbralDesv;
     st.buf.push(p); if (st.buf.length > 40) st.buf.shift();
     for (let i = st.buf.length - 2; i >= 0; i--) { const d = Geo.dist(st.buf[i], p); if (d >= 3) { st.h = [(p[0] - st.buf[i][0]) / d, (p[1] - st.buf[i][1]) / d]; break; } }
-    const speed = dt > 0 ? ds / dt * 3.6 : 0;
-    if (!st.h) return { valid: true, moving, speed, cut: null };
+    const speed = kf.speed * 3.6;
+    if (!st.h) return { valid: true, moving, speed, cut: null, thr, accF };
     const cut = [p[0] - S.offsetApero * st.h[0], p[1] - S.offsetApero * st.h[1]];
     const dev = segs.length ? nearest(cut) : null;
     // solo cuenta como desvío en tramo recto, alineado con el plan (no en esquinas, giros ni al entrar/salir de pasada)
     if (dev) dev.ok = !!(dev.dir && Math.abs(st.h[0] * dev.dir[0] + st.h[1] * dev.dir[1]) > 0.9 && dev.into > 6 && dev.rem > 2);
-    const flag = !!(dev && on && dev.ok && dev.d > Math.max(S.umbralDesv, acc));
+    const flag = !!(dev && on && dev.ok && dev.d > thr);
     if (st.lastCut && moving) {
       const L = Geo.dist(st.lastCut, cut);
       st.L += L;
@@ -1968,9 +2106,9 @@ function Tracker(g, plan, S, t0) {
       if (dev && on) { st.Lplan += L; st.devSum += dev.d * L; if (flag) st.Ldev += L; if (dev.d > st.devMax) st.devMax = dev.d; }
     }
     if (moving || !st.lastCut) st.lastCut = cut;
-    return { valid: true, moving, speed, cut, cutLL: P.inv(cut[0], cut[1]), dev, flag, on };
+    return { valid: true, moving, speed, cut, cutLL: P.inv(cut[0], cut[1]), dev, flag, on, thr, accF };
   };
-  st.reset = () => { st.buf = []; st.lastCut = null; st.lastP = null; st.h = null; };
+  st.reset = () => { st.buf = []; st.lastCut = null; st.lastP = null; st.h = null; st.kf = null; };
   return st;
 }
 
@@ -2100,7 +2238,7 @@ function guideUpdate(r, p) {
   if (inf && inf.next && inf.next.avisar && r.dev.rem < 12 && !G.warned && r.moving) { G.warned = true; speak(`Fin en ${Math.max(5, Math.round(r.dev.rem / 5) * 5)} metros. Después, ${inf.next.txt}`); }
   // desvío mantenido > 3 s
   const enTrabajo = inf && work.on;
-  if (enTrabajo && r.dev.ok && r.dev.d > S.umbralDesv) {
+  if (enTrabajo && r.dev.ok && r.dev.d > (r.thr || S.umbralDesv)) {
     if (!G.devSince) G.devSince = now;
     if (now - G.devSince > 3000 && now - G.devSay > 8000) { G.devSay = now; speak(`Desvío de ${fmt(r.dev.d, 1)} metros. Corrige a la ${r.dev.side > 0 ? 'derecha' : 'izquierda'}`); }
   } else G.devSince = 0;
@@ -2111,11 +2249,12 @@ function drawBar(r) {
   const cells = bar.children; for (let i = 0; i < N; i++) cells[i].className = i === c ? 'c' : '';
   if (!r || !r.dev) { $('wSteer').textContent = '–'; return; }
   const d = r.dev.d, sgn = r.dev.side > 0 ? -1 : 1;              // izquierda de la línea → luces a la izquierda
-  const k = Math.max(-c, Math.min(c, Math.round(sgn * d / (S.umbralDesv * 2 / c))));
-  const col = d <= S.umbralDesv ? 'g' : d <= S.umbralDesv * 2 ? 'o' : 'r';
+  const U = r.thr || S.umbralDesv;
+  const k = Math.max(-c, Math.min(c, Math.round(sgn * d / (U * 2 / c))));
+  const col = d <= U ? 'g' : d <= U * 2 ? 'o' : 'r';
   if (k === 0) cells[c].className = 'c g';
   else for (let i = 1; i <= Math.abs(k); i++) cells[c + Math.sign(k) * i].className = col;
-  if (d <= S.umbralDesv * .3) { $('wSteer').textContent = '✔ ' + fmt(d, 1) + ' m'; $('wSteer').style.color = '#2e7d32'; }
+  if (d <= U * .3) { $('wSteer').textContent = '✔ ' + fmt(d, 1) + ' m'; $('wSteer').style.color = '#2e7d32'; }
   else { $('wSteer').textContent = (r.dev.side > 0 ? 'Corrige ▶ ' : '◀ Corrige ') + fmt(d, 1) + ' m'; $('wSteer').style.color = col === 'g' ? '#2e7d32' : col === 'o' ? '#e65100' : '#c62828'; }
 }
 function paintTools() {
@@ -2180,7 +2319,7 @@ function updWorkUI(p) {
   $('wLit').textContent = fmt(horas * S.consumo, 1);
   const planL = work.plan ? work.plan.stats.L.total : 0;
   $('wEta').textContent = planL && work.tr.L > 20 ? fmt(Math.min(1.5, planL * cov / work.tr.L) * 100, 0) + ' %' : '–';
-  if (p) { const el = $('wAcc'); el.textContent = '±' + fmt(p.acc, p.acc < 10 ? 1 : 0) + ' m'; el.className = p.acc <= 5 ? 'acc-ok' : p.acc <= S.umbralPrecision ? 'acc-mid' : 'acc-bad'; }
+  if (p) { const el = $('wAcc'); el.textContent = '±' + fmt(r.accF != null ? r.accF : p.acc, 1) + ' m' + (r.thr ? ' · umbral ' + fmt(r.thr, 1) : ''); el.className = p.acc <= 5 ? 'acc-ok' : p.acc <= S.umbralPrecision ? 'acc-mid' : 'acc-bad'; }
 }
 function paintApero() {
   const b = $('wApero');
