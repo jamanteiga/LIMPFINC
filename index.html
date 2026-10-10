@@ -26,7 +26,7 @@
 html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
   font:15px/1.35 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;overscroll-behavior:none}
 button{font:inherit;border:0;cursor:pointer}
-input,select{font:inherit}
+input,select,textarea{font:inherit}
 .hidden{display:none!important}
 header{position:fixed;top:0;left:0;right:0;z-index:1000;background:#fff;border-bottom:1px solid var(--line);
   padding:calc(var(--safe-t) + 8px) 12px 8px;display:flex;align-items:center;gap:8px;min-height:52px}
@@ -42,6 +42,17 @@ main{position:fixed;top:calc(var(--safe-t) + 52px);left:0;right:0;bottom:0;overf
 .finca .ic{width:44px;height:44px;border-radius:10px;background:var(--pri2);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none}
 .finca .t{font-weight:600}.finca .s{color:var(--sub);font-size:13px}
 .empty{color:var(--sub);text-align:center;padding:40px 10px}
+.toast.undo{display:flex;align-items:center;gap:12px;pointer-events:auto}
+.toast.undo button{background:#ffd54f;color:#000;border-radius:8px;padding:6px 10px;font-weight:700}
+.ovlab{background:rgba(255,255,255,.85);border:0;box-shadow:none;font-weight:700;font-size:12px;padding:1px 4px}
+.fgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}
+.fth{aspect-ratio:1;border-radius:10px;background:#e0e0e0 center/cover;position:relative;overflow:hidden;display:flex;align-items:flex-end;justify-content:center;font-size:26px}
+.fth span{font-size:11px;background:rgba(0,0,0,.45);color:#fff;width:100%;padding:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fadd{flex-direction:column;justify-content:center;align-items:center;background:#fff;border:2px dashed #bbb;color:#555}.fadd span{background:none;color:#555;text-align:center}
+.fpin{font-size:18px;background:#fff;border-radius:13px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.tmT td,.tmT th{text-align:center;font-weight:600}.tmT small{font-weight:400;color:var(--sub)}
+.lastc{display:flex;align-items:center;gap:10px;background:var(--pri);color:#fff;font-weight:600;width:100%;text-align:left}
+.lastc small{display:block;font-weight:400;opacity:.85}
 .fmore{background:#f1f3f5;border-radius:18px;width:38px;height:38px;font-size:20px;color:#555;flex:none}
 .warnc{background:#fff3e0;color:#e65100;font-size:14px}
 .fab{position:fixed;right:18px;bottom:calc(var(--safe-b) + 18px);z-index:900;background:var(--pri);color:#fff;
@@ -235,11 +246,11 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
 /* =========================================================
    LIMPFINC · F1 — Fincas, linde, exclusiones, área
    ========================================================= */
-const VERSION = '1.0.1';
+const VERSION = '1.1.0';
 
 /* ---------- Ajustes por defecto ---------- */
 const DEF = {
-  voz:true, altoContraste:false, umbralAuto:true,
+  voz:true, altoContraste:false, umbralAuto:true, autoPausa:120, ferrado:437, verFerrados:true,
   tractor:'New Holland TN95F', potencia:95,
   radioGiro:4.0, marchaAtras:true,
   aperoNombre:'Desbrozadora de cadenas', aperoAncho:1.70, offsetApero:2.0,
@@ -251,9 +262,10 @@ const DEF = {
   consumoAuto:true, velocidadGiro:3.0, velocidadTraslado:5.0, tCambioSentido:4, tManiobra:20, tEsquina:15, margenObstaculo:0.30
 };
 const SET_FIELDS = [
-  ['Trabajo',[['velocidad','Velocidad por defecto en fincas nuevas (km/h)'],['consumoAuto','Usar consumo calibrado en repostajes','bool'],['umbralDesv','Umbral desviación mínimo (m)'],['umbralAuto','Umbral automático según precisión GPS','bool'],['voz','Avisos por voz en el modo trabajo','bool'],['altoContraste','Alto contraste en el modo trabajo','bool']]],
+  ['Trabajo',[['velocidad','Velocidad por defecto en fincas nuevas (km/h)'],['consumoAuto','Usar consumo calibrado en repostajes','bool'],['umbralDesv','Umbral desviación mínimo (m)'],['umbralAuto','Umbral automático según precisión GPS','bool'],['autoPausa','Pausa automática si está parado (s, 0 = no)'],['voz','Avisos por voz en el modo trabajo','bool'],['altoContraste','Alto contraste en el modo trabajo','bool']]],
   ['Planificación',[['velocidadGiro','Velocidad en giros (km/h)'],['velocidadTraslado','Velocidad en traslados (km/h)'],['tCambioSentido','Tiempo cambio de sentido (s)'],
     ['tManiobra','Maniobra al iniciar traslado (s)'],['tEsquina','Maniobra en esquina (s)'],['margenObstaculo','Margen a exclusiones (m)']]],
+  ['Unidades',[['verFerrados','Mostrar superficie también en ferrados','bool'],['ferrado','Ferrado de tu comarca (m²)']]],
   ['Medición GPS',[['umbralPrecision','Descartar puntos con precisión peor que (m)'],['holguraLinde','Holgura lateral tractor–linde (m)']]],
   ['Monte',[['mallaX','Separación entre filas (m)'],['mallaY','Separación en fila (m)'],['holguraTronco','Holgura al tronco (m)']]]
 ];
@@ -262,13 +274,13 @@ const SET_FIELDS = [
 const DB = (() => {
   let db;
   const open = () => new Promise((res, rej) => {
-    const r = indexedDB.open('limpfinc', 3);
+    const r = indexedDB.open('limpfinc', 4);
     r.onupgradeneeded = e => {
       const d = e.target.result;
       if (!d.objectStoreNames.contains('fincas')) d.createObjectStore('fincas', { keyPath: 'id' });
       if (!d.objectStoreNames.contains('kv')) d.createObjectStore('kv');
       if (!d.objectStoreNames.contains('trabajos')) d.createObjectStore('trabajos', { keyPath: 'id' });
-      for (const st of ['tractores', 'aperos', 'velocidades']) if (!d.objectStoreNames.contains(st)) d.createObjectStore(st, { keyPath: 'id' });
+      for (const st of ['tractores', 'aperos', 'velocidades', 'fotos']) if (!d.objectStoreNames.contains(st)) d.createObjectStore(st, { keyPath: 'id' });
       if (!d.objectStoreNames.contains('outbox')) d.createObjectStore('outbox', { keyPath: 'key' });
     };
     r.onsuccess = () => { db = r.result; res(); };
@@ -524,7 +536,7 @@ function processTrack(pts, mode, S) {
 /* ---------- Utilidades UI ---------- */
 const $ = id => document.getElementById(id);
 const fmt = (v, d = 0) => v.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d });
-const fmtArea = m2 => m2 >= 10000 ? fmt(m2 / 10000, 3) + ' ha' : fmt(m2, 0) + ' m²';
+const fmtArea = m2 => (m2 >= 10000 ? fmt(m2 / 10000, 3) + ' ha' : fmt(m2, 0) + ' m²') + (S.verFerrados && S.ferrado > 0 && m2 > 0 ? ' · ' + fmt(m2 / S.ferrado, m2 / S.ferrado < 100 ? 1 : 0) + ' ferr.' : '');
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 function toast(msg, ms = 2500) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), ms); }
 function sheet(html, onReady) {
@@ -549,6 +561,7 @@ let view = 'list';
    LISTA DE FINCAS
    ========================================================= */
 async function showList() {
+  if (view === 'overview' && lyr.over) lyr.over.clearLayers();
   view = 'list'; cur = null; applyS();
   $('vLogin').classList.add('hidden');
   setHeader('📡 GPS', 'LIMPFINC', '⚙︎', gpsSheet, showSettings);
@@ -563,7 +576,10 @@ async function showList() {
     : pend ? `<div class="card warnc" style="background:#e3f2fd;color:#0d47a1">☁️ ${pend} cambio(s) pendiente(s) de subir…</div>` : '';
   const ver = `<div class="note" style="text-align:center;margin-top:14px">LIMPFINC v${VERSION} · ${Sync.user ? '☁️ ' + esc(Sync.user.email) + (Sync.last ? ' · sincronizado ' + new Date(Sync.last).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '') : '📱 solo este dispositivo'}</div>`;
   if (!fs.length) { el.innerHTML = nube + `<div class="empty">No hay fincas.<br>Pulsa «Nueva finca» para empezar.</div>` + ver; bindNube(); return; }
-  el.innerHTML = nube + (fs.length > 4 ? `<input class="inp" id="fBus" placeholder="🔍 Buscar finca…" style="margin-bottom:10px">` : '') + fs.map(f => {
+  const ult = await DB.kvGet('ultima'), fu = fs.find(f => f.id === ult);
+  const top = (fu ? `<button class="card lastc" id="lLast"><span style="font-size:24px">▶</span><span>Continuar con ${esc(fu.nombre)}<small>${fu.linde ? fmtArea(fincaAreas(fu).neta) : 'sin linde'}${fu.plan ? ' · plan ' + fmtH(fu.plan.stats.t.total / 3600) : ''}</small></span></button>` : '')
+    + `<button class="btn sec" id="lMap" style="margin-bottom:10px">🗺 Ver todas las fincas en el mapa</button>`;
+  el.innerHTML = nube + top + (fs.length > 4 ? `<input class="inp" id="fBus" placeholder="🔍 Buscar finca…" style="margin-bottom:10px">` : '') + fs.map(f => {
     const a = fincaAreas(f), c = f.config || {};
     return `<div class="card finca" data-id="${f.id}" data-n="${esc(normName(f.nombre))}">
       <div class="ic">${f.tipo === 'monte' ? '🌲' : '🌾'}</div>
@@ -573,6 +589,8 @@ async function showList() {
   }).join('') + ver;
   el.querySelectorAll('.finca').forEach(c => c.onclick = e => { if (e.target.closest('.fmore')) return; openFinca(c.dataset.id); });
   el.querySelectorAll('.fmore').forEach(b => b.onclick = () => fincaAcciones(fs.find(f => f.id === b.dataset.m)));
+  if ($('lLast')) $('lLast').onclick = () => openFinca(fu.id);
+  $('lMap').onclick = verMapaFincas;
   if ($('fBus')) $('fBus').oninput = e => { const q = normName(e.target.value); el.querySelectorAll('.finca').forEach(c => c.classList.toggle('hidden', !!q && !c.dataset.n.includes(q))); };
   bindNube();
 }
@@ -587,6 +605,8 @@ function fincaAcciones(f) {
     <button class="opt" id="aOpen">🗺 Abrir en el mapa</button>
     <button class="opt" id="aEdit">✎ Editar (nombre, tipo, tractor, apero, velocidad)</button>
     ${f.linde ? '<button class="opt" id="aRec">🔄 Recalcular plan (velocidad y parámetros)</button>' : ''}
+    <button class="opt" id="aNot">📝 Notas y fotos</button>
+    ${f.linde ? '<button class="opt" id="aTie">🌦 Tiempo (5 días)</button>' : ''}
     <button class="opt" id="aCopy">⧉ Copiar finca<small>Duplica linde, exclusiones, árboles, plan y configuración (sin trabajos).</small></button>
     <button class="opt" id="aDel" style="color:var(--err)">🗑 Eliminar</button>`,
     () => {
@@ -594,7 +614,9 @@ function fincaAcciones(f) {
       $('aEdit').onclick = () => { cur = f; applyS(); fincaForm(f, true); };
       if ($('aRec')) $('aRec').onclick = () => { cur = f; applyS(); recalcSheet(true); };
       $('aCopy').onclick = () => copiarFinca(f);
-      $('aDel').onclick = () => confirmSheet(`¿Eliminar «${esc(f.nombre)}» y todos sus trabajos?`, 'Eliminar', async () => { for (const t of await DB.tByFinca(f.id)) await DB.tDel(t.id); await DB.del(f.id); toast('Finca eliminada'); showList(); }, true);
+      $('aDel').onclick = () => confirmSheet(`¿Eliminar «${esc(f.nombre)}» y todos sus trabajos?`, 'Eliminar', () => borrarFinca(f), true);
+      $('aNot').onclick = () => notasSheet(f);
+      if ($('aTie')) $('aTie').onclick = () => tiempoSheet(f);
     });
 }
 async function copiarFinca(f) {
@@ -697,7 +719,7 @@ function fincaForm(f, desdeLista) {
         if (cambio && f.plan) await recalcPlan();
         if (desdeLista) { showList(); return; } setHeader('‹ Fincas', f.nombre, '⋯', volverLista, fincaMenu);
       };
-      $('fDel').onclick = () => confirmSheet(`¿Eliminar «${esc(f.nombre)}» y todos sus datos?`, 'Eliminar', async () => { for (const t of await DB.tByFinca(f.id)) await DB.tDel(t.id); await DB.del(f.id); cur = null; stopGPS(); showList(); }, true);
+      $('fDel').onclick = () => confirmSheet(`¿Eliminar «${esc(f.nombre)}» y todos sus datos?`, 'Eliminar', () => borrarFinca(f), true);
       if (desdeLista) $('fOk').insertAdjacentHTML('beforebegin', '');
     });
 }
@@ -792,6 +814,8 @@ function initMap() {
   lyr.finca = L.layerGroup().addTo(map);
   lyr.plan = L.layerGroup().addTo(map);
   lyr.real = L.layerGroup().addTo(map);
+  lyr.over = L.layerGroup().addTo(map);
+  lyr.fotos = L.layerGroup().addTo(map);
   lyr.desv = L.layerGroup().addTo(map);
   lyr.tmp = L.layerGroup().addTo(map);
   lyr.edit = L.layerGroup().addTo(map);
@@ -802,6 +826,9 @@ function initMap() {
 async function openFinca(id) {
   cur = await DB.get(id); if (!cur) return showList();
   if (!cur.config) cur.config = { tractorId: SB.tractorDef, aperoId: SB.aperoDef, velocidad: SB.velocidad || 3, vegetacion: 'media' };
+  DB.raw.kvPut('ultima', cur.id).catch(() => {});
+  if (lyr.over) lyr.over.clearLayers();
+  $('bLay').classList.remove('hidden');
   applyS();
   viewTrab = null; trabCache = null;
   view = 'map';
@@ -827,7 +854,7 @@ function drawFinca(fit) {
     L.polygon(e.coords, { color: '#b71c1c', weight: 2, dashArray: '6 4', fillColor: '#757575', fillOpacity: .55 })
       .bindTooltip(esc(e.nombre), { sticky: true }).addTo(lyr.finca);
   });
-  drawTrabView();
+  drawTrabView(); drawFotos();
   if (fit) fitFinca();
 }
 // encuadra la finca en la parte visible del mapa (entre la cabecera y el panel inferior), en cualquier pantalla
@@ -1036,6 +1063,7 @@ function recPoint(p) {
   if (last && p.t - last.t < 900) return; // ~1 Hz
   rec.pts.push(p);
   if (p.acc <= S.umbralPrecision) rec.line.addLatLng([p.lat, p.lon]);
+  if (rec.pts.length % 5 === 0) setActivo({ tipo: 'linde', fincaId: cur.id, t: Date.now(), rec: { target: rec.target, mode: rec.mode, pts: rec.pts } });
   updRecStats(p);
 }
 function updRecStats(p) {
@@ -1059,6 +1087,7 @@ $('bPause').onclick = () => {
   if (!lastPos || gpsAge() > 10) return toast('Esperando señal GPS: el indicador de arriba a la izquierda debe estar en verde.', 4000);
   const first = rec.state === 'ready';
   rec.state = 'rec'; rec.paused = false; paintRec();
+  setActivo({ tipo: 'linde', fincaId: cur.id, t: Date.now(), rec: { target: rec.target, mode: rec.mode, pts: rec.pts } });
   // punto actual: se marca en el mapa y se registra
   rec.pts.push(lastPos); rec.line.addLatLng([lastPos.lat, lastPos.lon]); updRecStats(lastPos);
   markRec(first ? 'inicio' : 'continuar');
@@ -1107,7 +1136,7 @@ $('bFin').onclick = () => {
   startReview(target, mode, pts, r);
 };
 function endRec() {
-  if (rec) { if (rec.avg) clearInterval(rec.avg.tm); lyr.tmp.clearLayers(); }
+  if (rec) { if (rec.avg) clearInterval(rec.avg.tm); lyr.tmp.clearLayers(); setActivo(null); }
   rec = null; keepAwake(false); followPos = false; showMain();
 }
 
@@ -1227,7 +1256,8 @@ function editMarkers() {
     m.on('click', () => {
       if (!edit.delMode) return;
       if (edit.pts.length <= 3) return toast('Mínimo 3 vértices');
-      edit.pts.splice(i, 1); edit.poly.setLatLngs(edit.pts); editMarkers(); editPanel();
+      const quitado = edit.pts.splice(i, 1)[0]; edit.poly.setLatLngs(edit.pts); editMarkers(); editPanel();
+      toastUndo('Vértice borrado', async () => { if (!edit) return; edit.pts.splice(i, 0, quitado); edit.poly.setLatLngs(edit.pts); editMarkers(); editPanel(); }, 4000);
     });
   });
   if (!edit.delMode) edit.pts.forEach((p, i) => {
@@ -1241,7 +1271,9 @@ function editPanel() {
   const btns = [['Cancelar', 'sec', () => endEdit(false)],
     [edit.delMode ? 'Mover' : 'Borrar vért.', edit.delMode ? 'warn' : 'sec', () => { edit.delMode = !edit.delMode; editMarkers(); editPanel(); }]];
   if (edit.kind === 'excl') btns.push(['Eliminar', 'err', () => confirmSheet(`¿Eliminar «${esc(name)}»?`, 'Eliminar', async () => {
+    const ex = cur.exclusiones.find(e => e.id === edit.id), f0 = cur;
     cur.exclusiones = cur.exclusiones.filter(e => e.id !== edit.id); await saveCur(); endEdit(false);
+    toastUndo(`«${ex.nombre}» eliminada`, async () => { f0.exclusiones.push(ex); if (cur === f0) { await saveCur(); drawFinca(); } else await DB.put(f0); });
   }, true)]);
   btns.push(['Guardar', '', () => endEdit(true)]);
   showTool('Editar ' + name,
@@ -1282,7 +1314,10 @@ function exclOpts(id) {
     () => {
       $('xS').onclick = async () => { e.nombre = $('xN').value.trim() || e.nombre; await saveCur(); closeSheet(); drawFinca(); };
       $('xE').onclick = () => { closeSheet(); startEdit('excl', id); };
-      $('xD').onclick = () => confirmSheet(`¿Eliminar «${esc(e.nombre)}»?`, 'Eliminar', async () => { cur.exclusiones = cur.exclusiones.filter(x => x.id !== id); await saveCur(); drawFinca(); }, true);
+      $('xD').onclick = () => confirmSheet(`¿Eliminar «${esc(e.nombre)}»?`, 'Eliminar', async () => {
+        const f0 = cur; cur.exclusiones = cur.exclusiones.filter(x => x.id !== id); await saveCur(); drawFinca();
+        toastUndo(`«${e.nombre}» eliminada`, async () => { f0.exclusiones.push(e); if (cur === f0) { await saveCur(); drawFinca(); } else await DB.put(f0); });
+      }, true);
     });
 }
 
@@ -2038,7 +2073,10 @@ function trabOpts(t) {
       $('tRes').onclick = () => resumenSheet(t);
       if ($('tCont')) $('tCont').onclick = () => { closeSheet(); startWork(t); };
       if ($('tCer')) $('tCer').onclick = async () => { t.estado = 'cerrado'; t.resumen = resumenTrab(t, rebuildTrab(cur, t)); await DB.tPut(t); closeSheet(); toast('Trabajo finalizado'); };
-      $('tDel').onclick = () => confirmSheet('¿Eliminar este trabajo y su recorrido?', 'Eliminar', async () => { await DB.tDel(t.id); trabCache = null; if (viewTrab === t.id) viewTrab = null; drawFinca(); }, true);
+      $('tDel').onclick = () => confirmSheet('¿Eliminar este trabajo y su recorrido?', 'Eliminar', async () => {
+        await DB.tDel(t.id); trabCache = null; if (viewTrab === t.id) viewTrab = null; drawFinca();
+        toastUndo('Trabajo eliminado', async () => { const x = { ...t }; delete x._sync; await DB.tPut(x); trabCache = null; drawFinca(); });
+      }, true);
     });
 }
 function compararSheet(trs) {
@@ -2170,13 +2208,16 @@ function fincaMenu() {
     <button class="opt" id="fmEd">✎ Editar finca (tractor, apero, velocidad)</button>
     ${cur.linde ? '<button class="opt" id="fmRe">🔄 Recalcular plan (velocidad y parámetros)</button>' : ''}
     <button class="opt" id="fmCp">⧉ Copiar finca</button>
+    <button class="opt" id="fmNot">📝 Notas y fotos</button>
+    ${cur.linde ? '<button class="opt" id="fmTie">🌦 Tiempo (5 días)</button>' : ''}
     <button class="opt" id="fmSw">📂 Cambiar de finca</button>
     <button class="opt" id="fmNew">＋ Nueva finca</button>`,
     () => {
       $('fmCap').onclick = capasSheet; $('fmHis').onclick = historicoSheet; $('fmExp').onclick = exportSheet;
       $('fmFuel').onclick = repostajeSheet; $('fmEd').onclick = () => fincaForm(cur);
       if ($('fmRe')) $('fmRe').onclick = () => recalcSheet();
-      $('fmSw').onclick = fincaSwitcher; $('fmCp').onclick = () => copiarFinca(cur); $('fmNew').onclick = () => { closeSheet(); stopGPS(); showList(); nuevaFinca(); };
+      $('fmSw').onclick = fincaSwitcher; $('fmCp').onclick = () => copiarFinca(cur);
+      $('fmNot').onclick = () => notasSheet(cur); if ($('fmTie')) $('fmTie').onclick = () => tiempoSheet(cur); $('fmNew').onclick = () => { closeSheet(); stopGPS(); showList(); nuevaFinca(); };
       if ($('fmMal')) $('fmMal').onclick = () => { closeSheet(); mallaMenu(); };
     });
 }
@@ -2479,7 +2520,15 @@ setInterval(() => {
 }, 1000);
 
 function workPoint(p) {
-  if (!work || work.paused) return;
+  if (!work) return;
+  // reanudación automática: tras una pausa automática, al moverse más de 6 m
+  if (work.paused && work.autoPaused && work.pausePos && p.acc <= S.umbralPrecision && Geo.lenLL([work.pausePos, [p.lat, p.lon]]) > Math.max(6, p.acc * 1.5)) {
+    work.autoPaused = false; work.paused = false;
+    work.ses = { inicio: Date.now(), fin: Date.now(), pts: [] }; work.trab.sesiones.push(work.ses); work.tr.reset(); work.outs.push(null);
+    $('wPause').textContent = '⏸ Pausar'; $('wPause').className = 'btn big sec'; keepAwake(true); work.lastMove = Date.now();
+    speak('En marcha. Continuamos', true); toast('▶ Reanudado automáticamente');
+  }
+  if (work.paused) return;
   const pt = [+p.lat.toFixed(7), +p.lon.toFixed(7), +p.acc.toFixed(1), p.t, work.on ? 1 : 0];
   const last = work.ses.pts[work.ses.pts.length - 1];
   if (last && p.t - last[3] < 900) return;
@@ -2487,6 +2536,13 @@ function workPoint(p) {
   const r = work.tr.add(pt);
   if (r.cut) work.outs.push([r.cutLL, r.on, r.flag]);
   if (r.valid) { work.last = r; work.spd = work.spd * .6 + (r.speed || 0) * .4; guideUpdate(r, p); }
+  // pausa automática si el tractor lleva parado más de S.autoPausa segundos
+  if (r.valid && (r.moving || !work.lastMove)) work.lastMove = Date.now();
+  if (S.autoPausa > 0 && work.lastMove && Date.now() - work.lastMove > S.autoPausa * 1000) {
+    work.paused = true; work.autoPaused = true; work.ses.fin = Date.now(); work.pausePos = [p.lat, p.lon];
+    $('wPause').textContent = '▶ Continuar'; $('wPause').className = 'btn big';
+    speak('Pausa automática. Parado', true); toast('⏸ Pausa automática (parado). Se reanuda al moverte.', 4000); saveWork();
+  }
   updWorkUI(p);
 }
 function renderWork() {
@@ -2535,8 +2591,9 @@ function paintApero() {
 $('wApero').onclick = () => { if (!work) return; work.on = !work.on; paintApero(); speak(work.on ? 'Apero en trabajo' : 'Apero levantado', true); };
 $('wPause').onclick = async () => {
   if (!work) return;
-  if (!work.paused) { work.paused = true; work.ses.fin = Date.now(); speak('En pausa', true); await saveWork(); $('wPause').textContent = '▶ Continuar'; $('wPause').className = 'btn'; return; }
-  const go = () => { speak(work.ready ? (work.plan ? 'Trabajo iniciado. Sigue la línea azul.' : 'Trabajo iniciado.') : 'Continuamos', true); work.paused = false; work.ready = false; work.ses = { inicio: Date.now(), fin: Date.now(), pts: [] }; work.trab.sesiones.push(work.ses); work.tr.reset(); work.outs.push(null); $('wPause').textContent = '⏸ Pausar'; $('wPause').className = 'btn sec'; keepAwake(true); };
+  if (!work.paused) { work.paused = true; work.autoPaused = false; work.ses.fin = Date.now(); speak('En pausa', true); await saveWork(); $('wPause').textContent = '▶ Continuar'; $('wPause').className = 'btn'; return; }
+  const go = () => { speak(work.ready ? (work.plan ? 'Trabajo iniciado. Sigue la línea azul.' : 'Trabajo iniciado.') : 'Continuamos', true); work.paused = false; work.ready = false; work.autoPaused = false; work.lastMove = Date.now();
+    setActivo({ tipo: 'trabajo', fincaId: cur.id, trabId: work.trab.id, t: Date.now() }); work.ses = { inicio: Date.now(), fin: Date.now(), pts: [] }; work.trab.sesiones.push(work.ses); work.tr.reset(); work.outs.push(null); $('wPause').textContent = '⏸ Pausar'; $('wPause').className = 'btn sec'; keepAwake(true); };
   if (!lastPos || gpsAge() > 10) return toast('Esperando señal GPS: el indicador de arriba a la izquierda debe estar en verde.', 4000);
   if (lastPos.acc > S.umbralPrecision) return confirmSheet(`La precisión actual es ±${fmt(lastPos.acc, 0)} m. ¿Empezar igualmente?`, 'Empezar', go);
   go();
@@ -2563,6 +2620,7 @@ async function endWork(estado) {
   w.trab.resumen = resumenTrab(w.trab, w);
   clearInterval(w.tRender); clearInterval(w.tSave);
   if (w.trab.sesiones.length) await DB.tPut(w.trab); else await DB.tDel(w.trab.id);
+  setActivo(null);
   work = null; keepAwake(false); followPos = false; document.body.classList.remove('hc'); try { speechSynthesis.cancel(); } catch { }
   $('pWork').classList.add('hidden'); $('bLoc').classList.remove('hidden'); showMain();
   trabCache = null; drawFinca();
@@ -2906,7 +2964,7 @@ const CAT_COLS = {
   aperos: ['nombre', 'labor', 'ancho_m', 'longitud_m', 'enganche', 'distancia_gps_m', 'desplazamiento_m', 'solape_m', 'velocidad_kmh', 'consumo_lh', 'potencia_cv', 'tdf_rpm', 'notas'],
   velocidades: ['labor', 'vegetacion', 'velocidad_kmh', 'notas']
 };
-const ORDER = ['fincas', 'tractores', 'aperos', 'velocidades', 'ajustes', 'trabajos'];
+const ORDER = ['fincas', 'tractores', 'aperos', 'velocidades', 'ajustes', 'fotos', 'trabajos'];
 const iso = ms => new Date(ms || Date.now()).toISOString();
 const strip = o => { const c = { ...o }; delete c._sync; return c; };
 const Remote = {
@@ -2947,7 +3005,10 @@ const Sync = {
       const items = (await DB.gAll('outbox')).sort((a, b) => ORDER.indexOf(a.table) - ORDER.indexOf(b.table) || a.t - b.t);
       for (const it of items) {
         try { await this.push(it); }
-        catch (e) { if (e && (e.code === '23503' || e.code === '42501')) console.warn('descartado', it, e); else throw e; }
+        catch (e) {
+          if (it.table === 'fotos') { this.fotosErr = e.message; continue; }          // tabla de fotos aún no creada: se reintenta más tarde
+          if (e && (e.code === '23503' || e.code === '42501')) console.warn('descartado', it, e); else throw e;
+        }
         const cur_ = await DB.gGet('outbox', it.key); if (cur_ && cur_.t === it.t) await DB.gDel('outbox', it.key);
       }
       this.state = 'ok'; this.err = ''; this.last = Date.now();
@@ -2964,6 +3025,7 @@ const Sync = {
       await Remote.upsert('ajustes', { user_id: this.user.id, data: { settings: SB, repostajes: await DB.kvGet('repostajes'), filtros: await DB.kvGet('filtros'), capas: await DB.kvGet('capas') }, updated_at: iso(mod) }, 'user_id');
       return;
     }
+    if (T === 'fotos') { const x = await DB.gGet('fotos', it.id); if (!x) return; await Remote.upsert('fotos', { id: x.id, finca_id: x.fincaId, caption: x.caption, lat: x.lat, lon: x.lon, img: x.img, fecha: iso(x.fecha), updated_at: iso(x.mod) }); x._sync = x.mod; await DB.gPut('fotos', x); return; }
     const o = await DB.gGet(T, it.id); if (!o) return;
     const row = { id: o.id, updated_at: iso(o.mod) }; CAT_COLS[T].forEach(k => row[k] = o[k] ?? null);
     await Remote.upsert(T, row); o._sync = o.mod; await DB.gPut(T, o);
@@ -2990,6 +3052,14 @@ const Sync = {
         const rset = new Set(rem.map(r => r.id));
         for (const l of loc) if (!rset.has(l.id) && !pend.has(T + ':' + l.id)) { if (l._sync) await DB.gDel(T, l.id); else await this.mark(T, l.id, 'up'); }
       }
+      try {   // fotos: primero id+fecha, luego solo las que faltan
+        const rem = await Remote.list('fotos', 'id,updated_at'), loc = await DB.gAll('fotos'), lmap = new Map(loc.map(o => [o.id, o])), need = [];
+        for (const r of rem) { const l = lmap.get(r.id), rm = Date.parse(r.updated_at); if (!pend.has('fotos:' + r.id) && (!l || rm > (l.mod || 0))) need.push(r.id); }
+        for (const r of await Remote.getIn('fotos', need)) { const rm = Date.parse(r.updated_at); await DB.gPut('fotos', { id: r.id, fincaId: r.finca_id, caption: r.caption, lat: r.lat, lon: r.lon, img: r.img, fecha: Date.parse(r.fecha), mod: rm, _sync: rm }); }
+        const rset = new Set(rem.map(r => r.id));
+        for (const l of loc) if (!rset.has(l.id) && !pend.has('fotos:' + l.id)) { if (l._sync) await DB.gDel('fotos', l.id); else await this.mark('fotos', l.id, 'up'); }
+        this.fotosErr = '';
+      } catch (e) { this.fotosErr = e.message; }
       const aj = await Remote.list('ajustes');
       if (aj[0]) {
         const rm = Date.parse(aj[0].updated_at), lm = (await DB.kvGet('ajustesMod')) || 0;
@@ -3033,7 +3103,7 @@ async function doLogin() {
     Sync.user = ses.user; SB.offline = false; await DB.raw.kvPut('settings', SB);
     $('vLogin').classList.add('hidden');
     toast('Sesión iniciada. Sincronizando…');
-    await Sync.pull(); showList();
+    await Sync.pull(); await showList(); comprobarActivo();
   } catch (e) { $('lErr').textContent = 'No se pudo entrar: ' + (e.message || e); }
   finally { $('lGo').disabled = false; }
 }
@@ -3045,8 +3115,10 @@ async function diagnostico() {
   let ses = null; try { ses = await Remote.session(); } catch (e) { }
   ok('Sesión iniciada', ses ? true : 'no hay sesión: inicia sesión');
   if (ses) {
-    for (const t of ['fincas', 'trabajos', 'tractores', 'aperos', 'velocidades', 'ajustes']) {
-      try { const { error, count } = await Remote.c.from(t).select('*', { count: 'exact', head: true }); ok(`Tabla ${t}${error ? '' : ' (' + count + ' filas)'}`, error ? (/does not exist|schema cache/i.test(error.message) ? 'no existe: ejecuta supabase_limpfinc.sql' : error.message) : true); }
+    for (const t of ['fincas', 'trabajos', 'tractores', 'aperos', 'velocidades', 'ajustes', 'fotos']) {
+      try {
+        const { error, count } = await Remote.c.from(t).select('*', { count: 'exact', head: true });
+        ok(`Tabla ${t}${error ? '' : ' (' + count + ' filas)'}`, error ? (/does not exist|schema cache|find the table/i.test(error.message) ? (t === 'fotos' ? 'no existe: ejecuta supabase_limpfinc_v110.sql' : 'no existe: ejecuta supabase_limpfinc.sql') : error.message) : true); }
       catch (e) { ok('Tabla ' + t, e.message); }
     }
     try { await Remote.upsert('ajustes', { user_id: ses.user.id, data: { settings: SB }, updated_at: iso(Date.now()) }, 'user_id'); ok('Escritura de prueba', true); }
@@ -3060,7 +3132,7 @@ async function diagnostico() {
   if ($('dgFix')) $('dgFix').onclick = async () => {
     for (const f of await DB.all()) await DB.gPut('outbox', { key: 'fincas:' + f.id, table: 'fincas', id: f.id, op: 'up', t: Date.now() });
     for (const t of await DB.tAll()) await DB.gPut('outbox', { key: 'trabajos:' + t.id, table: 'trabajos', id: t.id, op: 'up', t: Date.now() });
-    for (const T of ['tractores', 'aperos', 'velocidades']) for (const o of await DB.gAll(T)) await DB.gPut('outbox', { key: T + ':' + o.id, table: T, id: o.id, op: 'up', t: Date.now() });
+    for (const T of ['tractores', 'aperos', 'velocidades', 'fotos']) for (const o of await DB.gAll(T)) await DB.gPut('outbox', { key: T + ':' + o.id, table: T, id: o.id, op: 'up', t: Date.now() });
     await Sync.flush(); diagnostico();
   };
   if ($('dgIn')) $('dgIn').onclick = () => { closeSheet(); loginView(); };
@@ -3083,6 +3155,180 @@ function cuentaSheet() {
       if ($('kOut')) $('kOut').onclick = () => confirmSheet('¿Cerrar sesión? Los datos de este dispositivo se mantienen.', 'Cerrar sesión', async () => { await Remote.logout(); Sync.user = null; Sync.paint(); loginView(); });
       if ($('kIn')) $('kIn').onclick = () => { closeSheet(); loginView(); };
     });
+}
+
+/* =========================================================
+   v1.1 — COMODIDAD: deshacer, recuperación, mapa general, tiempo, notas y fotos
+   ========================================================= */
+
+/* ---- Deshacer ---- */
+function toastUndo(msg, undo, ms = 6000) {
+  const t = document.createElement('div'); t.className = 'toast undo';
+  t.innerHTML = `<span>${esc(msg)}</span><button>Deshacer</button>`;
+  document.body.appendChild(t);
+  const tm = setTimeout(() => t.remove(), ms);
+  t.querySelector('button').onclick = async () => { clearTimeout(tm); t.remove(); try { await undo(); toast('Deshecho'); } catch (e) { toast('No se pudo deshacer: ' + e.message); } };
+}
+async function borrarFinca(f) {
+  const trs = await DB.tByFinca(f.id), fts = (await DB.gAll('fotos')).filter(x => x.fincaId === f.id);
+  for (const t of trs) await DB.raw.tDel(t.id);
+  for (const x of fts) await DB.gDel('fotos', x.id);
+  await DB.del(f.id);                        // en Supabase, los trabajos y fotos se borran en cascada
+  try { const a = await DB.kvGet('activo'); if (a && a.fincaId === f.id) await DB.raw.kvPut('activo', null); } catch { }
+  if (cur && cur.id === f.id) { cur = null; stopGPS(); }
+  showList();
+  toastUndo(`«${f.nombre}» eliminada`, async () => {
+    const c = { ...f }; delete c._sync; await DB.put(c);
+    for (const t of trs) { const x = { ...t }; delete x._sync; await DB.tPut(x); }
+    for (const x of fts) { const y = { ...x }; delete y._sync; await DB.cPut('fotos', y); }
+    showList();
+  });
+}
+
+/* ---- Recuperar lo que estaba en marcha si la app se cerró ---- */
+async function setActivo(a) { try { await DB.raw.kvPut('activo', a); } catch { } }
+async function comprobarActivo() {
+  const a = await DB.kvGet('activo'); if (!a) return;
+  const f = await DB.get(a.fincaId); if (!f) return setActivo(null);
+  const min = Math.round((Date.now() - a.t) / 60000);
+  if (min > 72 * 60) return setActivo(null);
+  const cuando = min < 60 ? `hace ${min} min` : `hace ${Math.round(min / 60)} h`;
+  const que = a.tipo === 'trabajo' ? `un trabajo en «${esc(f.nombre)}»` : `la medición del ${a.rec.target === 'linde' ? 'linde' : 'exclusión'} de «${esc(f.nombre)}» (${a.rec.pts.length} puntos)`;
+  sheet(`<h3>⏯ Hay algo a medias</h3><div class="note" style="margin-bottom:10px">La app se cerró con ${que} en marcha (${cuando}).</div>
+    <button class="btn" id="raGo" style="margin-bottom:8px">▶ Continuar donde lo dejé</button>
+    <button class="btn sec" id="raNo">Descartar</button>`, () => {
+    $('raGo').onclick = async () => {
+      closeSheet(); await openFinca(f.id);
+      if (a.tipo === 'trabajo') {
+        const t = await DB.tGet(a.trabId);
+        if (!t) return setActivo(null);
+        await startWork(t); toast('Trabajo recuperado. Pulsa «▶ Continuar» para seguir.', 4500);
+      } else {
+        startRec(a.rec.target, a.rec.mode);
+        rec.pts = a.rec.pts; rec.state = 'pause'; rec.paused = true;
+        rec.line.setLatLngs(rec.pts.filter(q => q.corner || q.acc <= S.umbralPrecision).map(q => [q.lat, q.lon]));
+        paintRec(); updRecStats(); toast('Medición recuperada. Pulsa «▶ Continuar» para seguir.', 4500);
+      }
+    };
+    $('raNo').onclick = () => { setActivo(null); closeSheet(); };
+  });
+}
+
+/* ---- Mapa con todas las fincas ---- */
+async function estadoFincas() {
+  const trs = await DB.tAll(), out = {};
+  for (const t of trs) { const o = out[t.fincaId] = out[t.fincaId] || { abierto: false, ultima: 0, cob: null }; if (t.estado === 'abierto') o.abierto = true; const fin = t.fin || t.inicio; if (t.estado === 'cerrado' && fin > o.ultima) { o.ultima = fin; o.cob = t.resumen ? t.resumen.cobertura : null; } }
+  return out;
+}
+async function verMapaFincas() {
+  view = 'overview'; cur = null; applyS();
+  setHeader('‹ Lista', 'Mapa de fincas', '', showList, null);
+  ['vList', 'vSet', 'bNueva', 'vLogin'].forEach(i => $(i).classList.add('hidden'));
+  $('mapWrap').classList.remove('hidden'); $('tbMain').classList.add('hidden'); $('bLay').classList.add('hidden');
+  ['pRec', 'pTool', 'pWork'].forEach(i => $(i).classList.add('hidden'));
+  initMap(); setTimeout(() => map.invalidateSize(), 50);
+  ['finca', 'plan', 'real', 'desv', 'tmp', 'edit', 'fotos'].forEach(k => lyr[k] && lyr[k].clearLayers()); if (lyr.cov) { map.removeLayer(lyr.cov); lyr.cov = null; }
+  lyr.over.clearLayers(); startGPS();
+  const fs = await DB.all(), est = await estadoFincas(), all = [];
+  const COL = { limpia: '#2e7d32', curso: '#ef6c00', plan: '#1565c0', pend: '#757575' };
+  let sin = 0;
+  fs.forEach(f => {
+    if (!f.linde) { sin++; return; }
+    const e = est[f.id] || {}, st = e.abierto ? 'curso' : e.ultima && (e.cob == null || e.cob >= 0.85) ? 'limpia' : f.plan ? 'plan' : 'pend';
+    const txt = { limpia: 'Limpia el ' + new Date(e.ultima).toLocaleDateString('es-ES'), curso: 'Trabajo en curso', plan: 'Con plan, sin limpiar', pend: 'Pendiente (sin plan)' }[st];
+    const pg = L.polygon(f.linde.coords, { color: COL[st], weight: 2.5, fillColor: COL[st], fillOpacity: .35 }).addTo(lyr.over);
+    pg.bindTooltip(esc(f.nombre), { permanent: true, direction: 'center', className: 'ovlab' });
+    pg.on('click', () => sheet(`<h3>${f.tipo === 'monte' ? '🌲' : '🌾'} ${esc(f.nombre)}</h3><div class="card">
+      <div class="kv"><span>Estado</span><span style="color:${COL[st]}">${txt}</span></div>
+      <div class="kv"><span>Superficie</span><span>${fmtArea(fincaAreas(f).neta)}</span></div>
+      ${f.plan ? `<div class="kv"><span>Plan</span><span>${fmtH(f.plan.stats.t.total / 3600)} · ${fmt(f.plan.stats.litros, 1)} L</span></div>` : ''}</div>
+      <div class="row"><button class="btn sec" id="ovT">🌦 Tiempo</button><button class="btn" id="ovO">Abrir</button></div>`, () => {
+      $('ovO').onclick = () => { closeSheet(); lyr.over.clearLayers(); openFinca(f.id); };
+      $('ovT').onclick = () => tiempoSheet(f);
+    }));
+    all.push(...f.linde.coords);
+  });
+  if (all.length) map.fitBounds(L.latLngBounds(all), { padding: [30, 30], maxZoom: 18, animate: false });
+  else if (lastPos) map.setView([lastPos.lat, lastPos.lon], 14);
+  toast(`🟩 limpia · 🟧 en curso · 🟦 con plan · ⬜ pendiente${sin ? ` · ${sin} sin linde` : ''}`, 5000);
+}
+
+/* ---- El tiempo (Open-Meteo, libre y sin clave) ---- */
+const WMO = c => c === 0 ? '☀️' : c <= 2 ? '🌤' : c === 3 ? '☁️' : c <= 48 ? '🌫' : c <= 57 ? '🌦' : c <= 67 ? '🌧' : c <= 77 ? '🌨' : c <= 82 ? '🌧' : c <= 86 ? '🌨' : '⛈';
+const tiempoCache = {};
+async function tiempoSheet(f) {
+  if (!f.linde) return toast('La finca no tiene linde: no se puede situar');
+  const c = f.linde.coords.reduce((a, p) => [a[0] + p[0] / f.linde.coords.length, a[1] + p[1] / f.linde.coords.length], [0, 0]);
+  sheet(`<h3>🌦 Tiempo · ${esc(f.nombre)}</h3><div id="tmB" class="card">Consultando previsión…</div>`);
+  try {
+    const k = c.map(v => v.toFixed(3)).join(',');
+    let d = tiempoCache[k] && Date.now() - tiempoCache[k].t < 3600000 ? tiempoCache[k].d : null;
+    if (!d) {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${c[0].toFixed(4)}&longitude=${c[1].toFixed(4)}&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max&timezone=Europe%2FMadrid&past_days=2&forecast_days=5`;
+      const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status);
+      d = (await r.json()).daily; tiempoCache[k] = { t: Date.now(), d };
+    }
+    const n = d.time.length, rows = [];
+    for (let i = 2; i < n; i++) {
+      const prev = (d.precipitation_sum[i - 1] || 0) + (d.precipitation_sum[i - 2] || 0), ll = d.precipitation_sum[i] || 0, pr = d.precipitation_probability_max[i] || 0, vi = d.wind_speed_10m_max[i] || 0, ra = d.wind_gusts_10m_max[i] || 0;
+      const v = ll >= 5 || pr >= 70 ? ['❌', 'Lluvia'] : ra >= 50 || vi >= 35 ? ['⚠️', 'Viento fuerte'] : prev >= 15 ? ['⚠️', 'Terreno húmedo'] : ll >= 1 || pr >= 40 ? ['🟡', 'Posible lluvia'] : ['✅', 'Apto'];
+      const fecha = new Date(d.time[i] + 'T12:00').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
+      rows.push(`<tr><th>${fecha}</th><td>${WMO(d.weather_code[i])}</td><td>${Math.round(d.temperature_2m_max[i])}°/${Math.round(d.temperature_2m_min[i])}°</td><td>${fmt(ll, 1)} mm<br><small>${pr} %</small></td><td>${Math.round(vi)} km/h<br><small>rachas ${Math.round(ra)}</small></td><td>${v[0]}<br><small>${v[1]}</small></td></tr>`);
+    }
+    const llPrev = (d.precipitation_sum[0] || 0) + (d.precipitation_sum[1] || 0);
+    $('tmB').outerHTML = `<div style="overflow-x:auto"><table class="cmp tmT"><tr><th>Día</th><th></th><th>Temp.</th><th>Lluvia</th><th>Viento</th><th>Desbroce</th></tr>${rows.join('')}</table></div>
+      <div class="note" style="margin-top:8px">Lluvia de los 2 últimos días: ${fmt(llPrev, 1)} mm. Criterio orientativo: ❌ ≥ 5 mm o probabilidad ≥ 70 %; ⚠️ rachas ≥ 50 km/h (chispas con piedras) o ≥ 15 mm en 48 h (terreno blando). Datos: Open-Meteo (CC BY 4.0).</div>`;
+  } catch (e) { const b = $('tmB'); if (b) b.textContent = 'No se pudo consultar el tiempo (¿sin conexión?): ' + e.message; }
+}
+
+/* ---- Notas y fotos de la finca ---- */
+async function fotosDe(fid) { return (await DB.gAll('fotos')).filter(x => x.fincaId === fid).sort((a, b) => b.fecha - a.fecha); }
+function redimensionar(file, max = 1280) {
+  return new Promise((res, rej) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => { const k = Math.min(1, max / Math.max(img.width, img.height)), cv = document.createElement('canvas'); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height); URL.revokeObjectURL(url); res(cv.toDataURL('image/jpeg', 0.72)); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('imagen no válida')); };
+    img.src = url;
+  });
+}
+async function notasSheet(f) {
+  const fts = await fotosDe(f.id);
+  sheet(`<h3>📝 Notas y fotos · ${esc(f.nombre)}</h3>
+    <label class="f">Notas (accesos, portilla, piedras, contacto…)</label>
+    <textarea class="inp" id="ntT" rows="4" style="resize:vertical">${esc(f.notas || '')}</textarea>
+    <button class="btn sec" id="ntS" style="margin:8px 0 4px">Guardar notas</button>
+    <div class="sgrp">Fotos (${fts.length})</div>
+    <div class="fgrid">${fts.map(x => `<button class="fth" data-id="${x.id}" style="background-image:url(${x.img})"><span>${esc(x.caption || '')}</span></button>`).join('')}
+      <label class="fth fadd">📷<span>Añadir</span><input type="file" id="ntF" accept="image/*" capture="environment" hidden></label></div>
+    <div class="note">Si el GPS está activo, la foto queda situada en el mapa (📷).</div>`,
+    sh => {
+      $('ntS').onclick = async () => { f.notas = $('ntT').value.trim(); await DB.put(f); if (cur && cur.id === f.id) cur.notas = f.notas; toast('Notas guardadas'); };
+      $('ntF').onchange = async e => {
+        const file = e.target.files[0]; if (!file) return;
+        try {
+          const img = await redimensionar(file);
+          const pos = lastPos && gpsAge() < 30 && lastPos.acc <= 30 ? lastPos : null;
+          const x = { id: uid(), fincaId: f.id, img, caption: '', lat: pos ? +pos.lat.toFixed(7) : null, lon: pos ? +pos.lon.toFixed(7) : null, fecha: Date.now() };
+          await DB.cPut('fotos', x); fotoSheet(f, x, true);
+        } catch (er) { toast('No se pudo añadir la foto: ' + er.message); }
+      };
+      sh.querySelectorAll('[data-id]').forEach(b => b.onclick = () => fotoSheet(f, fts.find(x => x.id === b.dataset.id)));
+    });
+}
+function fotoSheet(f, x, nueva) {
+  sheet(`<img src="${x.img}" style="width:100%;border-radius:10px;margin-bottom:8px">
+    <label class="f">Descripción</label><input class="inp" id="foC" value="${esc(x.caption || '')}" placeholder="p. ej. Piedra grande junto al regato">
+    <div class="note">${new Date(x.fecha).toLocaleString('es-ES')}${x.lat ? ' · situada en el mapa' : ' · sin posición'}</div>
+    <div class="row" style="margin-top:10px"><button class="btn err" id="foD">Eliminar</button>${x.lat && view === 'map' ? '<button class="btn sec" id="foM">Ver en mapa</button>' : ''}<button class="btn" id="foOk">${nueva ? 'Guardar' : 'Hecho'}</button></div>`,
+    () => {
+      $('foOk').onclick = async () => { const c = $('foC').value.trim(); if (c !== (x.caption || '')) { x.caption = c; await DB.cPut('fotos', x); } notasSheet(f); if (view === 'map') drawFotos(); };
+      $('foD').onclick = async () => { await DB.cDel('fotos', x.id); notasSheet(f); if (view === 'map') drawFotos(); toastUndo('Foto eliminada', async () => { const y = { ...x }; delete y._sync; await DB.cPut('fotos', y); if (view === 'map') drawFotos(); }); };
+      if ($('foM')) $('foM').onclick = () => { closeSheet(); map.setView([x.lat, x.lon], 19); };
+    });
+}
+async function drawFotos() {
+  if (!lyr.fotos) return; lyr.fotos.clearLayers(); if (!cur) return;
+  for (const x of await fotosDe(cur.id)) if (x.lat) L.marker([x.lat, x.lon], { icon: L.divIcon({ className: '', html: '<div class="fpin">📷</div>', iconSize: [26, 26], iconAnchor: [13, 13] }) }).on('click', () => fotoSheet(cur, x)).addTo(lyr.fotos);
 }
 
 /* ---------- Panel de herramienta genérico ---------- */
@@ -3116,9 +3362,9 @@ $('tInfo').onclick = () => { if (!busy()) infoSheet(); };
   $('lOff').onclick = async () => { SB.offline = true; await DB.raw.kvPut('settings', SB); await seedCat(); applyS(); showList(); };
   let ses = null;
   try { ses = await Remote.session(); } catch (e) { }
-  if (ses) { Sync.user = ses.user; Sync.paint(); showList(); Sync.pull().then(() => { if (view === 'list') showList(); }); }
+  if (ses) { Sync.user = ses.user; Sync.paint(); await showList(); comprobarActivo(); Sync.pull().then(() => { if (view === 'list' && !document.querySelector('.sheet')) showList(); }); }
   else if (!SB.offline && window.supabase) { loginView(); }
-  else { await seedCat(); applyS(); showList(); }
+  else { await seedCat(); applyS(); await showList(); comprobarActivo(); }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('sw.js').then(r => { r.update().catch(() => {}); }).catch(() => {});

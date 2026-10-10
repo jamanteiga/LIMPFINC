@@ -77,11 +77,25 @@ create table if not exists public.ajustes (
   updated_at  timestamptz not null default now()
 );
 
+-- Fotos de las fincas (v1.1). Imagen JPEG reducida en base64.
+create table if not exists public.fotos (
+  id          text primary key,
+  user_id     uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  finca_id    text not null references public.fincas(id) on delete cascade,
+  caption     text,
+  lat         double precision,
+  lon         double precision,
+  img         text not null,
+  fecha       timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+create index if not exists fotos_finca_idx on public.fotos(finca_id);
+
 -- Seguridad: cada usuario solo accede a sus filas
 do $$
 declare t text;
 begin
-  foreach t in array array['fincas','trabajos','tractores','aperos','velocidades','ajustes'] loop
+  foreach t in array array['fincas','trabajos','tractores','aperos','velocidades','ajustes','fotos'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists "propietario" on public.%I', t);
     execute format('create policy "propietario" on public.%I for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid())', t);
