@@ -607,3 +607,14 @@ Al tocarlo se abre «Cuenta y sincronización».
 - Si el nombre ya existe: Crear copia / Reemplazar / Omitir.
 - Tractor y apero inexistentes se sustituyen por los predeterminados.
 - Exportar finca: `<nombre>.limpfinc.json`, también desde ⋯ y desde Exportar dentro de la finca.
+
+## 16. Implementación v1.2.1 — SIGPAC, importar desde «Nueva finca», velocidad 3 km/h
+
+- «Nueva finca» ofrece, además de escribir el nombre: 📥 Importar finca desde archivo y 🗺 Desde SIGPAC / referencia catastral.
+- Paso de medición y menú Linde: añadidos 🗺 Desde SIGPAC y 📥 Desde archivo (solo el contorno).
+- SIGPAC: servicio abierto del FEGA (`sigpac-hubcloud.es/ogcapi/collections/recintos/items`), filtrando por provincia, municipio, agregado, zona, polígono, parcela y recinto.
+  - La referencia catastral rústica (14 o 20 caracteres) rellena los campos; se deben revisar en zonas de concentración parcelaria.
+  - Se listan los recintos con su uso y su superficie. Viales, edificaciones, agua e improductivo salen desmarcados.
+  - Los recintos marcados se unen (Clipper, cierre de rendijas de 5 cm); los huecos pasan a exclusiones. Si no son contiguos, se usa la parte mayor.
+  - Se guarda `finca.sigpac` y `linde.metodo = 'sigpac'`. El mapa base sigue siendo OpenStreetMap.
+- Migración: una velocidad general, de finca o de apero de desbroce de 2,5 km/h pasa a 3 km/h (y se recalcula el plan). Se aplica al arrancar y tras cada sincronización.
