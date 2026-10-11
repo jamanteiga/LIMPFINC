@@ -176,7 +176,7 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
   <div class="card" style="margin-top:20px">
     <h3>Iniciar sesión</h3>
     <div class="note" style="margin-bottom:8px">Tus fincas, trabajos, tractores y aperos se guardan en tu Supabase y se sincronizan entre dispositivos.</div>
-    <label class="f">Email</label><input class="inp" id="lMail" type="email" autocomplete="username" autocapitalize="off">
+    <label class="f">Usuario o email</label><input class="inp" id="lMail" type="text" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="jamanteiga">
     <label class="f">Contraseña</label><input class="inp" id="lPass" type="password" autocomplete="current-password">
     <button class="btn" id="lGo" style="margin-top:14px">Entrar</button>
     <div class="note" id="lErr" style="color:var(--err);margin-top:8px"></div>
@@ -246,11 +246,11 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
 /* =========================================================
    LIMPFINC · F1 — Fincas, linde, exclusiones, área
    ========================================================= */
-const VERSION = '1.1.0';
+const VERSION = '1.1.2';
 
 /* ---------- Ajustes por defecto ---------- */
 const DEF = {
-  voz:true, altoContraste:false, umbralAuto:true, autoPausa:120, ferrado:437, verFerrados:true,
+  voz:true, altoContraste:false, umbralAuto:true, autoPausa:120, ferrado:436, verFerrados:true,
   tractor:'New Holland TN95F', potencia:95,
   radioGiro:4.0, marchaAtras:true,
   aperoNombre:'Desbrozadora de cadenas', aperoAncho:1.70, offsetApero:2.0,
@@ -3095,7 +3095,8 @@ function loginView(msg) {
   $('lErr').textContent = msg || '';
 }
 async function doLogin() {
-  const email = $('lMail').value.trim(), pass = $('lPass').value;
+  let email = $('lMail').value.trim().toLowerCase(); const pass = $('lPass').value;
+  if (email && !email.includes('@')) email += '@estructura.app.invalid';   // mismo usuario que en ESTRUCTURA: basta con el nombre
   if (!email || !pass) return ($('lErr').textContent = 'Indica email y contraseña');
   $('lGo').disabled = true; $('lErr').textContent = 'Entrando…';
   try {
@@ -3355,6 +3356,7 @@ $('tInfo').onclick = () => { if (!busy()) infoSheet(); };
     await DB.open();
     const s = await DB.kvGet('settings'); if (s) SB = { ...DEF, ...s };
     if (SB.mapaBase && !['OpenStreetMap', 'OpenTopoMap'].includes(SB.mapaBase)) SB.mapaBase = 'OpenStreetMap';
+    if (SB.ferrado === 437) { SB.ferrado = 436; await DB.kvPut('settings', SB); }   // ferrado de Abegondo
     const c = await DB.kvGet('capas'); if (c) CFG = { ...CFG_DEF, ...c };
     await loadCat(); applyS();
   } catch (e) { toast('Error de almacenamiento: ' + e.message, 5000); }
