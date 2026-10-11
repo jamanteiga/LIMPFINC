@@ -53,7 +53,11 @@ main{position:fixed;top:calc(var(--safe-t) + 52px);left:0;right:0;bottom:0;overf
 .tmT td,.tmT th{text-align:center;font-weight:600}.tmT small{font-weight:400;color:var(--sub)}
 .lastc{display:flex;align-items:center;gap:10px;background:var(--pri);color:#fff;font-weight:600;width:100%;text-align:left}
 .lastc small{display:block;font-weight:400;opacity:.85}
-.fmore{background:#f1f3f5;border-radius:18px;width:38px;height:38px;font-size:20px;color:#555;flex:none}
+.fcard{padding:0;overflow:hidden}.fcard .finca{padding:14px;cursor:pointer}
+.facts{display:flex;border-top:1px solid var(--line)}
+.facts button{flex:1;background:none;padding:10px 2px;font-size:13px;color:var(--pri);font-weight:600;border-right:1px solid var(--line)}
+.facts button:last-child{border-right:0}.facts button.rojo{color:var(--err)}
+.facts .fmore{flex:0 0 46px;font-size:18px;color:#555}
 .warnc{background:#fff3e0;color:#e65100;font-size:14px}
 .fab{position:fixed;right:18px;bottom:calc(var(--safe-b) + 18px);z-index:900;background:var(--pri);color:#fff;
   border-radius:28px;padding:14px 20px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.2)}
@@ -169,6 +173,7 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
   <div id="fincaList"></div>
 </div></main>
 <button class="fab" id="bNueva">＋ Nueva finca</button>
+<input type="file" id="fImpF" accept=".json,.geojson,application/json,application/geo+json" class="hidden">
 
 <!-- AJUSTES -->
 <main id="vSet" class="hidden"><div class="view" id="setBody"></div></main>
@@ -246,7 +251,7 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
 /* =========================================================
    LIMPFINC · F1 — Fincas, linde, exclusiones, área
    ========================================================= */
-const VERSION = '1.1.2';
+const VERSION = '1.2.1';
 
 /* ---------- Ajustes por defecto ---------- */
 const DEF = {
@@ -575,26 +580,35 @@ async function showList() {
     : Sync.state === 'err' ? `<div class="card warnc">⚠️ Error al guardar en Supabase: ${esc(Sync.err)} <button class="lnk" id="lDg" style="display:inline;margin:0">Diagnóstico</button></div>`
     : pend ? `<div class="card warnc" style="background:#e3f2fd;color:#0d47a1">☁️ ${pend} cambio(s) pendiente(s) de subir…</div>` : '';
   const ver = `<div class="note" style="text-align:center;margin-top:14px">LIMPFINC v${VERSION} · ${Sync.user ? '☁️ ' + esc(Sync.user.email) + (Sync.last ? ' · sincronizado ' + new Date(Sync.last).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : '') : '📱 solo este dispositivo'}</div>`;
-  if (!fs.length) { el.innerHTML = nube + `<div class="empty">No hay fincas.<br>Pulsa «Nueva finca» para empezar.</div>` + ver; bindNube(); return; }
+  if (!fs.length) { el.innerHTML = nube + `<div class="empty">No hay fincas.<br>Pulsa «Nueva finca» para empezar<br>o importa una desde un archivo.</div><button class="btn sec" id="lImp">📥 Importar finca (.json, GeoJSON)</button>` + ver; bindNube(); return; }
   const ult = await DB.kvGet('ultima'), fu = fs.find(f => f.id === ult);
   const top = (fu ? `<button class="card lastc" id="lLast"><span style="font-size:24px">▶</span><span>Continuar con ${esc(fu.nombre)}<small>${fu.linde ? fmtArea(fincaAreas(fu).neta) : 'sin linde'}${fu.plan ? ' · plan ' + fmtH(fu.plan.stats.t.total / 3600) : ''}</small></span></button>` : '')
-    + `<button class="btn sec" id="lMap" style="margin-bottom:10px">🗺 Ver todas las fincas en el mapa</button>`;
+    + `<div class="row" style="margin-bottom:10px"><button class="btn sec" id="lMap">🗺 Mapa de fincas</button><button class="btn sec" id="lImp">📥 Importar finca</button></div>`;
   el.innerHTML = nube + top + (fs.length > 4 ? `<input class="inp" id="fBus" placeholder="🔍 Buscar finca…" style="margin-bottom:10px">` : '') + fs.map(f => {
     const a = fincaAreas(f), c = f.config || {};
-    return `<div class="card finca" data-id="${f.id}" data-n="${esc(normName(f.nombre))}">
+    return `<div class="card fcard" data-n="${esc(normName(f.nombre))}"><div class="finca" data-id="${f.id}">
       <div class="ic">${f.tipo === 'monte' ? '🌲' : '🌾'}</div>
       <div style="flex:1;min-width:0"><div class="t">${esc(f.nombre)}</div>
       <div class="s">${f.tipo === 'monte' ? 'Monte' : 'Abierta'} · ${f.linde ? fmtArea(a.neta) : 'sin linde'} · ${fmt(+c.velocidad || SB.velocidad || 3, 1)} km/h${f.plan ? '<br>Plan ' + fmtH(f.plan.stats.t.total / 3600) + ' · ' + fmt(f.plan.stats.litros, 1) + ' L' : ''}${Sync.user && !f._sync ? ' · <span style="color:var(--warn)">sin subir</span>' : ''}</div></div>
-      <button class="fmore" data-m="${f.id}" aria-label="Opciones">⋯</button></div>`;
+      <div style="color:#c7c7cc;font-size:22px">›</div></div>
+      <div class="facts"><button data-a="edit" data-f="${f.id}">✎ Editar</button><button data-a="copy" data-f="${f.id}">⧉ Copiar</button><button data-a="exp" data-f="${f.id}">📤 Exportar</button><button data-a="del" data-f="${f.id}" class="rojo">🗑 Eliminar</button><button class="fmore" data-m="${f.id}" aria-label="Más opciones">⋯</button></div></div>`;
   }).join('') + ver;
   el.querySelectorAll('.finca').forEach(c => c.onclick = e => { if (e.target.closest('.fmore')) return; openFinca(c.dataset.id); });
   el.querySelectorAll('.fmore').forEach(b => b.onclick = () => fincaAcciones(fs.find(f => f.id === b.dataset.m)));
+  el.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
+    const f = fs.find(x => x.id === b.dataset.f); if (!f) return;
+    if (b.dataset.a === 'edit') { cur = f; applyS(); fincaForm(f, true); }
+    else if (b.dataset.a === 'copy') copiarFinca(f);
+    else if (b.dataset.a === 'exp') exportarFincaJSON(f);
+    else if (b.dataset.a === 'del') confirmSheet(`¿Eliminar «${esc(f.nombre)}» y todos sus trabajos?`, 'Eliminar', () => borrarFinca(f), true);
+  });
   if ($('lLast')) $('lLast').onclick = () => openFinca(fu.id);
   $('lMap').onclick = verMapaFincas;
-  if ($('fBus')) $('fBus').oninput = e => { const q = normName(e.target.value); el.querySelectorAll('.finca').forEach(c => c.classList.toggle('hidden', !!q && !c.dataset.n.includes(q))); };
+  if ($('fBus')) $('fBus').oninput = e => { const q = normName(e.target.value); el.querySelectorAll('.fcard').forEach(c => c.classList.toggle('hidden', !!q && !c.dataset.n.includes(q))); };
   bindNube();
 }
 function bindNube() {
+  if ($('lImp')) $('lImp').onclick = () => $('fImpF').click();
   if ($('lRe')) $('lRe').onclick = () => location.reload();
   if ($('lIn')) $('lIn').onclick = () => loginView();
   if ($('lDg')) $('lDg').onclick = diagnostico;
@@ -606,6 +620,7 @@ function fincaAcciones(f) {
     <button class="opt" id="aEdit">✎ Editar (nombre, tipo, tractor, apero, velocidad)</button>
     ${f.linde ? '<button class="opt" id="aRec">🔄 Recalcular plan (velocidad y parámetros)</button>' : ''}
     <button class="opt" id="aNot">📝 Notas y fotos</button>
+    <button class="opt" id="aExp">📤 Exportar finca (.json para importar)</button>
     ${f.linde ? '<button class="opt" id="aTie">🌦 Tiempo (5 días)</button>' : ''}
     <button class="opt" id="aCopy">⧉ Copiar finca<small>Duplica linde, exclusiones, árboles, plan y configuración (sin trabajos).</small></button>
     <button class="opt" id="aDel" style="color:var(--err)">🗑 Eliminar</button>`,
@@ -616,6 +631,7 @@ function fincaAcciones(f) {
       $('aCopy').onclick = () => copiarFinca(f);
       $('aDel').onclick = () => confirmSheet(`¿Eliminar «${esc(f.nombre)}» y todos sus trabajos?`, 'Eliminar', () => borrarFinca(f), true);
       $('aNot').onclick = () => notasSheet(f);
+      $('aExp').onclick = () => { closeSheet(); exportarFincaJSON(f); };
       if ($('aTie')) $('aTie').onclick = () => tiempoSheet(f);
     });
 }
@@ -642,6 +658,7 @@ function setHeader(left, title, right, onL, onR) {
 }
 
 $('bNueva').onclick = nuevaFinca;
+$('fImpF').onchange = async e => { const file = e.target.files[0]; e.target.value = ''; if (file) importarFincas(file); };
 
 const normName = n => n.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
 async function findByName(nombre, exceptId) { const k = normName(nombre); return (await DB.all()).find(f => normName(f.nombre) === k && f.id !== exceptId); }
@@ -650,8 +667,17 @@ async function findByName(nombre, exceptId) { const k = normName(nombre); return
 function nuevaFinca() {
   sheet(`<h3>Nueva finca</h3>
     <label class="f">Nombre de la finca</label><input class="inp" id="nNom" placeholder="p. ej. Leira do Souto" autocomplete="off">
-    <button class="btn" id="nOk" style="margin-top:14px">Continuar</button>`,
+    <button class="btn" id="nOk" style="margin-top:14px">Continuar</button>
+    <div class="note" style="margin:16px 0 6px;text-align:center">o bien</div>
+    <button class="opt" id="nImp">📥 Importar finca desde archivo<small>.json de LIMPFINC, copia de seguridad o GeoJSON</small></button>
+    <button class="opt" id="nSig">🗺 Desde SIGPAC / referencia catastral<small>Descarga el linde oficial de la parcela</small></button>`,
     () => {
+      $('nImp').onclick = () => { closeSheet(); $('fImpF').click(); };
+      $('nSig').onclick = async () => {
+        const nombre = $('nNom').value.trim();
+        if (nombre) { const ex = await findByName(nombre); if (ex) { closeSheet(); toast(`«${ex.nombre}» ya existe: se abre`); openFinca(ex.id); return; } }
+        sigpacSheet({ nombre });
+      };
       const go = async () => {
         const nombre = $('nNom').value.trim(); if (!nombre) return toast('Indica un nombre');
         const ex = await findByName(nombre);
@@ -687,6 +713,8 @@ function nuevaFincaMedir(nombre) {
     <label class="f">Medición del linde</label>
     <button class="opt" id="nPie">🚶 A pie<small>Recorre el linde con el iPhone. Máxima precisión.</small></button>
     <button class="opt" id="nTrac">🚜 Con tractor<small>Recorre el interior junto al linde; se corrige hacia fuera.</small></button>
+    <button class="opt" id="nSigM">🗺 Desde SIGPAC / referencia catastral<small>Linde oficial de la parcela, sin recorrerla.</small></button>
+    <button class="opt" id="nFile">📥 Linde desde archivo<small>.json o GeoJSON con el contorno.</small></button>
     <button class="opt" id="nLuego" style="color:var(--sub)">Más tarde<small>Crear la finca sin medir.</small></button>`,
     () => {
       leer = cfgBind(cfg0, 'abierta');
@@ -695,7 +723,9 @@ function nuevaFincaMedir(nombre) {
         const now = Date.now(), nf = { id: uid(), nombre, tipo: v.tipo, config: v.cfg, notas: '', creada: now, mod: now, linde: null, exclusiones: [] };
         await DB.put(nf); closeSheet(); await openFinca(nf.id);
         if (modo === 'pie') startRec('linde', 'pie'); else if (modo === 'tractor') tractorSetup();
+        else if (modo === 'sigpac') sigpacSheet({ actual: true }); else if (modo === 'file') lindeArchivo();
       };
+      $('nSigM').onclick = () => crear('sigpac'); $('nFile').onclick = () => crear('file');
       $('nPie').onclick = () => crear('pie'); $('nTrac').onclick = () => crear('tractor'); $('nLuego').onclick = () => crear(null);
     });
 }
@@ -1001,12 +1031,16 @@ function lindeMenu() {
   sheet(`<h3>Linde de la finca</h3>
     <button class="opt" id="oPie">🚶 Medir a pie<small>Recorre el linde con el iPhone. Máxima precisión.</small></button>
     <button class="opt" id="oTrac">🚜 Medir con tractor<small>Recorre el interior junto al linde. Se corrige ${fmt(S.anchoTractor / 2 + S.holguraLinde, 2)} m hacia fuera.</small></button>
-    <button class="opt" id="oDraw">✍️ Dibujar sobre el mapa<small>Toca los vértices sobre la ortofoto.</small></button>
+    <button class="opt" id="oDraw">✍️ Dibujar sobre el mapa<small>Toca los vértices sobre el mapa.</small></button>
+    <button class="opt" id="oSig">🗺 Desde SIGPAC / referencia catastral<small>Descarga el linde oficial de la parcela.</small></button>
+    <button class="opt" id="oFile">📥 Desde archivo<small>.json o GeoJSON con el contorno.</small></button>
     ${cur.linde ? '<button class="opt" id="oDel" style="color:var(--err)">🗑 Borrar linde</button>' : ''}`,
     () => {
       $('oPie').onclick = () => { closeSheet(); startRec('linde', 'pie'); };
       $('oTrac').onclick = () => { closeSheet(); tractorSetup(); };
       $('oDraw').onclick = () => { closeSheet(); startDraw('linde'); };
+      $('oSig').onclick = () => sigpacSheet({ actual: true });
+      $('oFile').onclick = () => { closeSheet(); lindeArchivo(); };
       if ($('oDel')) $('oDel').onclick = () => confirmSheet('¿Borrar el linde?', 'Borrar', async () => { cur.linde = null; await saveCur(); drawFinca(); }, true);
     });
 }
@@ -2128,6 +2162,7 @@ async function exportSheet() {
     <button class="opt" id="xDxf">📐 DXF (AutoCAD)<small>ETRS89 / UTM, capas separadas.</small></button>
     <button class="opt" id="xKml">🌍 KML (QGIS, gvSIG, visores GIS)</button>
     <button class="opt" id="xGpx">🛰 GPX</button>
+    <button class="opt" id="xJson">📦 JSON de LIMPFINC<small>Para importar la finca en otro móvil o guardarla.</small></button>
     <button class="opt" id="xGeo">🧩 GeoJSON</button>
     ${t ? '<button class="opt" id="xCsv">📄 CSV de puntos GPS del trabajo</button>' : ''}`,
     () => {
@@ -2135,6 +2170,7 @@ async function exportSheet() {
       $('xKml').onclick = async () => download(safeName(cur.nombre) + '.kml', buildKML(await exportData()), 'application/vnd.google-earth.kml+xml');
       $('xGpx').onclick = async () => download(safeName(cur.nombre) + '.gpx', buildGPX(await exportData()), 'application/gpx+xml');
       $('xGeo').onclick = exportGeoJSON;
+      $('xJson').onclick = () => exportarFincaJSON(cur);
       if ($('xCsv')) $('xCsv').onclick = () => {
         let s = 'sesion;fecha_hora;lat;lon;precision_m;apero\n';
         t.sesiones.forEach((x, i) => x.pts.forEach(p => { s += `${i + 1};${new Date(p[3]).toISOString()};${p[0]};${p[1]};${String(p[2]).replace('.', ',')};${p[4] ? 'trabajo' : 'levantado'}\n`; }));
@@ -3073,7 +3109,7 @@ const Sync = {
       } else await this.mark('ajustes', 'me', 'up');
       this.state = 'ok'; this.err = ''; this.last = Date.now();
     } catch (e) { this.state = 'err'; this.err = (e && e.message) || String(e); }
-    finally { this.busy = false; this.count(); }
+    finally { this.busy = false; this.count(); await migrarVelocidad(); }
     await loadCat(); await seedCat(); applyS();
     await this.flush();
   }
@@ -3332,6 +3368,212 @@ async function drawFotos() {
   for (const x of await fotosDe(cur.id)) if (x.lat) L.marker([x.lat, x.lon], { icon: L.divIcon({ className: '', html: '<div class="fpin">📷</div>', iconSize: [26, 26], iconAnchor: [13, 13] }) }).on('click', () => fotoSheet(cur, x)).addTo(lyr.fotos);
 }
 
+
+/* =========================================================
+   IMPORTAR / EXPORTAR FINCAS (.json LIMPFINC, copia de seguridad, GeoJSON)
+   ========================================================= */
+async function exportarFincaJSON(f) {
+  const trabajos = (await DB.tByFinca(f.id)).map(strip), fotos = (await DB.gAll('fotos')).filter(x => x.fincaId === f.id).map(strip);
+  const d = { app: 'LIMPFINC', tipo: 'finca', version: VERSION, fecha: new Date().toISOString(), finca: strip(f), trabajos, fotos };
+  download(safeName(f.nombre) + '.limpfinc.json', JSON.stringify(d), 'application/json');
+  toast('Finca exportada: ' + f.nombre + '.limpfinc.json');
+}
+// convierte cualquier formato admitido en una lista de {finca, trabajos, fotos}
+function leerImport(d, nombreArchivo) {
+  const base = (nombreArchivo || 'Finca').replace(/\.(limpfinc\.)?(geo)?json$/i, '');
+  const out = [];
+  const ll = c => { // admite [lat,lon] o [lon,lat]
+    const [a, b] = c; return a > 27 && a < 72 && b > -32 && b < 45 ? [+a, +b] : [+b, +a];
+  };
+  const anillo = r => { const pts = r.map(c => [+c[1], +c[0]]); if (pts.length > 1 && pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1]) pts.pop(); return pts; };
+  const nuevaF = (nombre, coords, excl, extra) => ({ id: uid(), nombre, tipo: 'abierta', creada: Date.now(), exclusiones: (excl || []).map((e, i) => ({ id: uid(), nombre: 'Exclusión ' + (i + 1), coords: e, metodo: 'importado' })), linde: coords && coords.length >= 3 ? { coords, metodo: 'importado' } : null, notas: '', ...(extra || {}) });
+  if (d && d.app === 'LIMPFINC' && d.tipo === 'finca' && d.finca) out.push({ finca: d.finca, trabajos: d.trabajos || [], fotos: d.fotos || [] });
+  else if (d && d.app === 'LIMPFINC' && Array.isArray(d.fincas)) d.fincas.forEach(f => out.push({ finca: f, trabajos: (d.trabajos || []).filter(t => t.fincaId === f.id), fotos: [] }));
+  else if (d && (d.type === 'FeatureCollection' || d.type === 'Feature' || d.type === 'Polygon' || d.type === 'MultiPolygon')) {
+    const feats = d.type === 'FeatureCollection' ? d.features : d.type === 'Feature' ? [d] : [{ type: 'Feature', properties: {}, geometry: d }];
+    let n = 0;
+    for (const ft of feats) {
+      const g = ft && ft.geometry, pr = (ft && ft.properties) || {};
+      if (!g) continue;
+      if (pr.tipo && pr.tipo !== 'linde') continue;          // exportaciones de LIMPFINC: solo el linde
+      const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : g.type === 'LineString' ? [[g.coordinates]] : [];
+      for (const pc of polys) {
+        n++;
+        const nombre = pr.nombre || pr.name || pr.NOMBRE || pr.Name || pr.label || (feats.length > 1 || polys.length > 1 ? `${base} ${n}` : base);
+        out.push({ finca: nuevaF(String(nombre), anillo(pc[0]), pc.slice(1).map(anillo)), trabajos: [], fotos: [] });
+      }
+    }
+  }
+  else if (Array.isArray(d) && d.length && (d[0].linde || d[0].nombre)) d.forEach(f => out.push({ finca: f.id ? f : { ...f, id: uid() }, trabajos: [], fotos: [] }));
+  else if (d && (d.linde || d.coords || d.coordinates)) {
+    const c = d.linde && d.linde.coords ? d.linde.coords : (d.coords || d.coordinates);
+    out.push({ finca: d.id && d.linde ? d : nuevaF(d.nombre || d.name || base, c.map(ll), null, { tipo: d.tipo === 'monte' ? 'monte' : 'abierta' }), trabajos: [], fotos: [] });
+  }
+  else if (Array.isArray(d) && d.length >= 3 && Array.isArray(d[0])) out.push({ finca: nuevaF(base, d.map(ll)), trabajos: [], fotos: [] });
+  return out.filter(x => x.finca && x.finca.nombre);
+}
+async function importarFincas(file) {
+  let items;
+  try { items = leerImport(JSON.parse(await file.text()), file.name); }
+  catch (e) { return toast('El archivo no es un JSON válido', 4000); }
+  if (!items.length) return toast('No se encontró ninguna finca en el archivo (admite .json de LIMPFINC, copia de seguridad o GeoJSON con polígonos)', 6000);
+  const existentes = await DB.all();
+  const choca = it => existentes.find(f => normName(f.nombre) === normName(it.finca.nombre));
+  const nCh = items.filter(choca).length;
+  let modo = 'copia';
+  sheet(`<h3>📥 Importar ${items.length === 1 ? 'finca' : items.length + ' fincas'}</h3>
+    <div class="card">${items.map(it => { const f = it.finca; return `<div class="kv"><span>${f.tipo === 'monte' ? '🌲' : '🌾'} ${esc(f.nombre)}${choca(it) ? ' <b style="color:var(--warn)">· ya existe</b>' : ''}</span><span>${f.linde ? fmtArea(Geo.areaLL(f.linde.coords)) : 'sin linde'}${it.trabajos.length ? ' · ' + it.trabajos.length + ' trab.' : ''}</span></div>`; }).join('')}</div>
+    ${nCh ? `<label class="f">Si ya existe una finca con el mismo nombre</label>
+      <div class="seg" id="imM"><button data-v="copia">Crear copia</button><button data-v="reemplazar">Reemplazar</button><button data-v="omitir">Omitir</button></div>` : ''}
+    <button class="btn" id="imOk" style="margin-top:12px">Importar</button>`,
+    () => {
+      if ($('imM')) { const seg = $('imM'), paint = () => seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === modo)); seg.querySelectorAll('button').forEach(b => b.onclick = () => { modo = b.dataset.v; paint(); }); paint(); }
+      $('imOk').onclick = async () => {
+        let nOk = 0, nOm = 0;
+        for (const it of items) {
+          const f = JSON.parse(JSON.stringify(it.finca)); delete f._sync;
+          const ex = choca(it);
+          if (ex && modo === 'omitir') { nOm++; continue; }
+          if (ex && modo === 'reemplazar') { f.id = ex.id; }
+          else {
+            if (ex) { let nm = f.nombre + ' (importada)', k = 2; while (existentes.some(x => normName(x.nombre) === normName(nm))) nm = `${f.nombre} (importada ${k++})`; f.nombre = nm; }
+            if (existentes.some(x => x.id === f.id) || !f.id) f.id = uid();
+          }
+          if (!f.config) f.config = { tractorId: SB.tractorDef, aperoId: SB.aperoDef, velocidad: SB.velocidad || 3, vegetacion: 'media' };
+          if (!getTr(f.config.tractorId) || !CAT.tractores.some(t => t.id === f.config.tractorId)) f.config.tractorId = SB.tractorDef;
+          if (!CAT.aperos.some(a => a.id === f.config.aperoId)) f.config.aperoId = SB.aperoDef;
+          f.exclusiones = f.exclusiones || [];
+          await DB.put(f); existentes.push(f); nOk++;
+          for (const t of it.trabajos) { const x = { ...t, fincaId: f.id }; delete x._sync; if (!(ex && modo === 'reemplazar')) x.id = uid(); await DB.tPut(x); }
+          for (const ph of it.fotos) { const x = { ...ph, fincaId: f.id }; delete x._sync; if (!(ex && modo === 'reemplazar')) x.id = uid(); await DB.cPut('fotos', x); }
+        }
+        closeSheet(); toast(`${nOk} finca(s) importada(s)${nOm ? ` · ${nOm} omitida(s)` : ''}`, 3500); showList();
+      };
+    });
+}
+
+/* =========================================================
+   SIGPAC (FEGA, datos abiertos) — linde oficial por códigos o referencia catastral
+   ========================================================= */
+const SIGPAC_API = 'https://sigpac-hubcloud.es/ogcapi/collections/recintos/items';
+const USOS = { TA: 'Tierra arable', PS: 'Pastizal', PR: 'Pasto arbustivo', PA: 'Pasto con arbolado', FO: 'Forestal', FY: 'Frutales', FS: 'Frutos secos', VI: 'Viñedo', OV: 'Olivar', TH: 'Huerta', IV: 'Invernadero', CA: 'Viales', ED: 'Edificaciones', ZU: 'Zona urbana', AG: 'Agua', IM: 'Improductivo', ZC: 'Zona concentrada', CI: 'Cítricos', FL: 'Frutos secos y olivar', ZV: 'Zona censurada', MT: 'Matorral' };
+const USOS_NO = ['CA', 'ED', 'ZU', 'AG', 'IM', 'ZV'];
+function refcatSigpac(r) {   // 15001A50100103 → provincia 15, municipio 1, polígono 501, parcela 103
+  const m = String(r || '').toUpperCase().replace(/[\s-]/g, '').match(/^(\d{2})(\d{3})([A-Z])(\d{3})(\d{5})/);
+  return m ? { provincia: +m[1], municipio: +m[2], poligono: +m[4], parcela: +m[5] } : null;
+}
+function sigpacSheet(o) {
+  const u = SB.sigpacUlt || { provincia: 15, municipio: 1, agregado: 0, zona: 0 };
+  const fld = (id, lab, v) => `<div><label class="f">${lab}</label><input class="inp" id="${id}" inputmode="numeric" value="${v ?? ''}"></div>`;
+  sheet(`<h3>🗺 Linde desde SIGPAC</h3>
+    ${o.actual ? '' : `<label class="f">Nombre de la finca</label><input class="inp" id="sgNom" value="${esc(o.nombre || '')}" placeholder="vacío = «Pol. X Parc. Y»">`}
+    <label class="f">Referencia catastral (opcional)</label>
+    <input class="inp" id="sgRef" placeholder="p. ej. 15001A50100103" autocomplete="off" autocapitalize="characters">
+    <div class="note">Rellena sola provincia, municipio, polígono y parcela. Revísalos: en zonas de concentración parcelaria SIGPAC puede usar otros números.</div>
+    <div class="row">${fld('sgPr', 'Provincia', u.provincia)}${fld('sgMu', 'Municipio', u.municipio)}</div>
+    <div class="row">${fld('sgAg', 'Agregado', u.agregado)}${fld('sgZo', 'Zona', u.zona)}</div>
+    <div class="row">${fld('sgPo', 'Polígono', '')}${fld('sgPa', 'Parcela', '')}</div>
+    <div class="row">${fld('sgRe', 'Recinto (vacío = todos)', '')}<div></div></div>
+    <button class="btn" id="sgGo" style="margin-top:12px">Buscar en SIGPAC</button>
+    <div id="sgRes"></div>`,
+    () => {
+      $('sgRef').oninput = () => { const r = refcatSigpac($('sgRef').value); if (r) { $('sgPr').value = r.provincia; $('sgMu').value = r.municipio; $('sgPo').value = r.poligono; $('sgPa').value = r.parcela; $('sgAg').value = 0; $('sgZo').value = 0; } };
+      $('sgGo').onclick = async () => {
+        const q = {}; for (const [k, id] of [['provincia', 'sgPr'], ['municipio', 'sgMu'], ['agregado', 'sgAg'], ['zona', 'sgZo'], ['poligono', 'sgPo'], ['parcela', 'sgPa'], ['recinto', 'sgRe']]) { const v = $(id).value.trim(); if (v !== '') q[k] = parseInt(v, 10); }
+        if (!(q.provincia && q.municipio != null && q.poligono && q.parcela)) return toast('Indica provincia, municipio, polígono y parcela');
+        $('sgGo').disabled = true; $('sgGo').textContent = 'Consultando SIGPAC…'; $('sgRes').innerHTML = '';
+        let feats;
+        try { feats = await sigpacBuscar(q); }
+        catch (e) { $('sgRes').innerHTML = `<div class="note" style="color:var(--err)">No se pudo consultar SIGPAC (${esc(e.message)}). Comprueba la conexión. Alternativa: descarga el recinto en GeoJSON desde el visor SIGPAC y usa «📥 Desde archivo».</div>`; return; }
+        finally { $('sgGo').disabled = false; $('sgGo').textContent = 'Buscar en SIGPAC'; }
+        if (!feats.length) { $('sgRes').innerHTML = '<div class="note" style="color:var(--warn)">SIGPAC no tiene ningún recinto con esos códigos. Revisa municipio, agregado, zona, polígono y parcela.</div>'; return; }
+        SB.sigpacUlt = { provincia: q.provincia, municipio: q.municipio, agregado: q.agregado || 0, zona: q.zona || 0 }; DB.kvPut('settings', SB);
+        const rec = feats.map(f => { const p = f.properties || {}, rings = (f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates).map(pc => pc.map(r => r.map(c => [+c[1], +c[0]]))); return { n: p.recinto, uso: p.uso_sigpac || '', rings, area: rings.reduce((s, pc) => s + Geo.areaLL(pc[0]) - pc.slice(1).reduce((a, h) => a + Geo.areaLL(h), 0), 0) }; }).sort((a, b) => a.n - b.n);
+        $('sgRes').innerHTML = `<label class="f">Recintos encontrados (${rec.length})</label><div class="card">${rec.map((r, i) => `<label class="kv" style="cursor:pointer"><span><input type="checkbox" data-i="${i}" ${USOS_NO.includes(r.uso) ? '' : 'checked'}> Recinto ${r.n} · ${esc(USOS[r.uso] || r.uso || '—')}</span><span>${fmtArea(r.area)}</span></label>`).join('')}</div>
+          <div class="note" id="sgTot"></div><button class="btn" id="sgOk" style="margin-top:10px">${o.actual ? 'Usar como linde' : 'Crear finca'}</button>`;
+        const sel = () => [...document.querySelectorAll('#sgRes input[type=checkbox]')].filter(x => x.checked).map(x => rec[+x.dataset.i]);
+        const tot = () => { const s = sel(); $('sgTot').textContent = s.length ? `Seleccionado: ${fmtArea(s.reduce((a, r) => a + r.area, 0))}` : 'Marca al menos un recinto'; };
+        document.querySelectorAll('#sgRes input[type=checkbox]').forEach(x => x.onchange = tot); tot();
+        $('sgOk').onclick = async () => {
+          const s = sel(); if (!s.length) return toast('Marca al menos un recinto');
+          const u2 = sigpacUnir(s); if (!u2) return toast('No se pudo formar el contorno');
+          if (u2.partes > 1) toast(`Los recintos no son contiguos: se usa la parte mayor (${u2.partes} partes)`, 5000);
+          const info = { ...q, recintos: s.map(r => r.n) };
+          const nombreRef = `Pol. ${q.poligono} Parc. ${q.parcela}`;
+          if (o.actual) {
+            closeSheet(); cur.sigpac = info;
+            await commitPolygon('linde', u2.coords, { metodo: 'sigpac', sigpac: info });
+            for (const h of u2.huecos) await commitPolygon('excl', h, { metodo: 'sigpac' });
+            return;
+          }
+          let nombre = ($('sgNom').value || '').trim() || nombreRef;
+          if (await findByName(nombre)) { let k = 2; while (await findByName(`${nombre} (${k})`)) k++; nombre = `${nombre} (${k})`; }
+          const now = Date.now(), cfg = { tractorId: SB.tractorDef || (CAT.tractores[0] || {}).id, aperoId: SB.aperoDef || (CAT.aperos[0] || {}).id, vegetacion: 'media', velocidad: SB.velocidad || 3 };
+          const nf = { id: uid(), nombre, tipo: 'abierta', config: cfg, notas: '', creada: now, mod: now, sigpac: info,
+            linde: { coords: u2.coords, metodo: 'sigpac', sigpac: info, fecha: now },
+            exclusiones: u2.huecos.map((h, i) => ({ id: uid(), nombre: 'Exclusión ' + (i + 1), coords: h, metodo: 'sigpac', fecha: now })) };
+          await DB.put(nf); closeSheet(); await openFinca(nf.id); setTimeout(fitFinca, 80);
+          toast(`Finca «${nombre}» creada desde SIGPAC · ${fmtArea(Geo.areaLL(u2.coords))}`, 4000);
+          setTimeout(() => fincaForm(nf), 900);   // revisar tipo, tractor, apero y velocidad
+        };
+      };
+    });
+}
+async function sigpacBuscar(q) {
+  const ps = new URLSearchParams({ f: 'json', limit: '500' }); for (const k in q) ps.set(k, q[k]);
+  const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 25000);
+  try {
+    const r = await fetch(SIGPAC_API + '?' + ps, { signal: ctl.signal, headers: { Accept: 'application/geo+json, application/json' } });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    // el servicio no filtra por agregado/zona en todas las versiones: se filtra aquí también
+    return (d.features || []).filter(f => { const p = f.properties || {}; return f.geometry && ['provincia', 'municipio', 'agregado', 'zona', 'poligono', 'parcela', 'recinto'].every(k => q[k] == null || p[k] == null || +p[k] === +q[k]); });
+  } catch (e) { throw new Error(e.name === 'AbortError' ? 'sin respuesta' : e.message); }
+  finally { clearTimeout(to); }
+}
+function sigpacUnir(rec) {   // une recintos contiguos → {coords, huecos, partes}
+  const C = window.ClipperLib, all = rec.flatMap(r => r.rings.map(pc => pc[0])), P = Geo.projFor(all.flat()), SC = 1000;
+  const toC = ll => Geo.toXY(ll, P).map(p => ({ X: Math.round(p[0] * SC), Y: Math.round(p[1] * SC) }));
+  const c = new C.Clipper(); for (const r of rec) for (const pc of r.rings) { c.AddPath(toC(pc[0]), C.PolyType.ptSubject, true); }
+  const u = new C.Paths(); c.Execute(C.ClipType.ctUnion, u, C.PolyFillType.pftNonZero, C.PolyFillType.pftNonZero);
+  // cierra rendijas de menos de 10 cm entre recintos vecinos
+  const co = new C.ClipperOffset(2, 20); co.AddPaths(u, C.JoinType.jtMiter, C.EndType.etClosedPolygon); const a = new C.Paths(); co.Execute(a, 0.05 * SC);
+  const co2 = new C.ClipperOffset(2, 20); co2.AddPaths(a, C.JoinType.jtMiter, C.EndType.etClosedPolygon); const b = new C.Paths(); co2.Execute(b, -0.05 * SC);
+  const fr = pa => Geo.toLL(Geo.mergeClose(pa.map(q => [q.X / SC, q.Y / SC]), 0.05), P).map(p => [+p[0].toFixed(8), +p[1].toFixed(8)]);
+  const outs = b.filter(pa => C.Clipper.Orientation(pa)).sort((x, y) => Math.abs(C.Clipper.Area(y)) - Math.abs(C.Clipper.Area(x)));
+  if (!outs.length) return null;
+  const holes = b.filter(pa => !C.Clipper.Orientation(pa) && Math.abs(C.Clipper.Area(pa)) / SC / SC > 4 && C.Clipper.PointInPolygon(pa[0], outs[0]) === 1);
+  return { coords: fr(outs[0]), huecos: holes.map(fr), partes: outs.length };
+}
+async function lindeArchivo() {
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,.geojson,application/json,application/geo+json';
+  inp.onchange = async () => {
+    const file = inp.files[0]; if (!file) return;
+    let items; try { items = leerImport(JSON.parse(await file.text()), file.name); } catch (e) { return toast('El archivo no es un JSON válido', 4000); }
+    const it = items.find(x => x.finca.linde && x.finca.linde.coords && x.finca.linde.coords.length >= 3);
+    if (!it) return toast('El archivo no contiene ningún contorno', 4000);
+    if (items.length > 1) toast('El archivo tiene varias fincas: se usa la primera', 4000);
+    await commitPolygon('linde', it.finca.linde.coords, { metodo: 'importado' });
+    for (const e of it.finca.exclusiones || []) if (e.coords && e.coords.length >= 3) await commitPolygon('excl', e.coords, { metodo: 'importado' });
+  };
+  inp.click();
+}
+// v1.2.1: la velocidad por defecto es 3 km/h (las versiones iniciales guardaban 2,5)
+async function migrarVelocidad() {
+  try {
+    let n = 0;
+    if (+SB.velocidad === 2.5 || !(+SB.velocidad > 0)) { SB.velocidad = 3; await DB.kvPut('settings', SB); applyS(); n++; }
+    for (const a of CAT.aperos) if (a.labor === 'desbroce' && +a.velocidad_kmh === 2.5) { a.velocidad_kmh = 3; await DB.cPut('aperos', a); n++; }
+    for (const f of await DB.all()) if (f.config && +f.config.velocidad === 2.5) {
+      f.config.velocidad = 3;
+      if (f.plan && f.linde) { try { f.plan = Planner.plan(f, effS(f), {}); } catch (e) { } }
+      await DB.put(f); n++;
+    }
+    if (n) { await loadCat(); applyS(); }
+    return n;
+  } catch (e) { return 0; }
+}
+
 /* ---------- Panel de herramienta genérico ---------- */
 function showTool(title, hint, btns) {
   $('tbMain').classList.add('hidden'); $('pRec').classList.add('hidden'); $('pTool').classList.remove('hidden');
@@ -3358,7 +3600,7 @@ $('tInfo').onclick = () => { if (!busy()) infoSheet(); };
     if (SB.mapaBase && !['OpenStreetMap', 'OpenTopoMap'].includes(SB.mapaBase)) SB.mapaBase = 'OpenStreetMap';
     if (SB.ferrado === 437) { SB.ferrado = 436; await DB.kvPut('settings', SB); }   // ferrado de Abegondo
     const c = await DB.kvGet('capas'); if (c) CFG = { ...CFG_DEF, ...c };
-    await loadCat(); applyS();
+    await loadCat(); applyS(); await migrarVelocidad();
   } catch (e) { toast('Error de almacenamiento: ' + e.message, 5000); }
   $('syncSt').onclick = () => Sync.state === 'err' ? diagnostico() : cuentaSheet(); $('lGo').onclick = doLogin; $('lPass').onkeydown = e => { if (e.key === 'Enter') doLogin(); };
   $('lOff').onclick = async () => { SB.offline = true; await DB.raw.kvPut('settings', SB); await seedCat(); applyS(); showList(); };
