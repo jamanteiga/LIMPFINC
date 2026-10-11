@@ -594,3 +594,16 @@ Al tocarlo se abre «Cuenta y sincronización».
 - Fotos tomadas con la cámara, reducidas a 1280 px (JPEG al 72 %), con descripción y posición GPS si hay señal.
 - Las fotos aparecen en el mapa (📷).
 - Se sincronizan con la tabla `fotos` de Supabase (ver `supabase_limpfinc_v110.sql`). Si la tabla no existe, el resto sigue sincronizando.
+
+## 15. Implementación v1.2.0 — Importar / exportar y acciones visibles
+
+- Cada tarjeta de la lista tiene botones directos: ✎ Editar · ⧉ Copiar · 📤 Exportar · 🗑 Eliminar (con deshacer) · ⋯ (resto de opciones).
+- Botón **📥 Importar finca** en la parte superior de la lista (también con la lista vacía).
+- Formatos admitidos al importar:
+  - `.limpfinc.json` de una finca (incluye trabajos y fotos).
+  - Copia de seguridad completa de LIMPFINC (`fincas[]`).
+  - GeoJSON (FeatureCollection, Feature, Polygon, MultiPolygon, LineString); los huecos pasan a exclusiones; nombre desde `nombre`/`name`.
+  - Lista de fincas, objeto `{nombre, coords}` o lista de coordenadas (detecta lat/lon o lon/lat).
+- Si el nombre ya existe: Crear copia / Reemplazar / Omitir.
+- Tractor y apero inexistentes se sustituyen por los predeterminados.
+- Exportar finca: `<nombre>.limpfinc.json`, también desde ⋯ y desde Exportar dentro de la finca.
