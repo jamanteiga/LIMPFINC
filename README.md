@@ -618,3 +618,15 @@ Al tocarlo se abre «Cuenta y sincronización».
   - Los recintos marcados se unen (Clipper, cierre de rendijas de 5 cm); los huecos pasan a exclusiones. Si no son contiguos, se usa la parte mayor.
   - Se guarda `finca.sigpac` y `linde.metodo = 'sigpac'`. El mapa base sigue siendo OpenStreetMap.
 - Migración: una velocidad general, de finca o de apero de desbroce de 2,5 km/h pasa a 3 km/h (y se recalcula el plan). Se aplica al arrancar y tras cada sincronización.
+
+## 17. Implementación v1.2.2 — Señalar la finca en el mapa SIGPAC
+
+- «🗺 Finca desde SIGPAC» tiene primero **👆 Señalar la finca en el mapa SIGPAC**.
+  - Abre un mapa a pantalla completa (OpenStreetMap u OpenTopoMap) con las parcelas SIGPAC dibujadas en naranja, a partir de zoom 16 (consulta `bbox`).
+  - Se centra en el GPS, en el linde de la finca o en la última vista usada.
+  - Al tocar una parcela se selecciona (verde) y al tocarla otra vez se quita; se pueden marcar varias.
+  - «Usar selección» descarga las parcelas completas y vuelve a LIMPFINC con la lista de recintos para crear la finca o fijar el linde.
+- El uso de cada recinto se obtiene de `recinfo` (el servicio OGC no lo trae).
+- `finca.sigpac.parcelas[]` guarda todas las parcelas y sus recintos.
+- Comprobado desde jamanteiga.github.io: los servicios SIGPAC permiten la consulta desde la app (CORS correcto).
+- Corregido: un aviso GPS sin mapa abierto (desde la lista) daba error.
