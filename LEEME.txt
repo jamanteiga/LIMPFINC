@@ -1,0 +1,26 @@
+TEST CELADOR SERGAS - PWA
+=========================
+
+PUBLICAR EN GITHUB PAGES
+1. Crea un repositorio y sube todos los archivos de esta carpeta a la raíz.
+2. Settings > Pages > Build and deployment > Source: "Deploy from a branch" > Branch: main, carpeta / (root) > Save.
+3. Abre la dirección https://USUARIO.github.io/REPOSITORIO/ (hace falta HTTPS para poder instalarla).
+
+INSTALAR
+- iPhone / iPad (Safari): Compartir > Añadir a pantalla de inicio.
+- Android (Chrome): menú de tres puntos > Instalar aplicación.
+- Windows 11 (Edge): menú ... > Aplicaciones > Instalar este sitio como aplicación.
+
+AMPLIAR EL BANCO DE PREGUNTAS
+- Las preguntas están en preguntas-1.js (temas 1 a 3), preguntas-2.js (temas 4 a 10) preguntas-3.js (nivel difícil, todos los temas) preguntas-4.js (ampliación), preguntas-5.js (difíciles, segunda tanda) y preguntas-6.js a preguntas-23.js (adaptadas de exámenes de otros servicios de salud) y preguntas-24.js (nivel técnico; usa TEC(...)).
+- Formato: B(tema, "T" o "P", "enunciado", "respuesta correcta", ["falsa 1","falsa 2","falsa 3"], "explicación");
+  T = teoría, P = supuesto práctico. La app baraja el orden de las opciones.
+  En preguntas-3.js se usa D(...) en lugar de B(...): mismo formato, marcada como difícil.
+- Añade las nuevas AL FINAL de su tema, para no cambiar los identificadores de las existentes
+  (las estadísticas guardadas dependen de ellos).
+- Después de cualquier cambio, sube el número de VERSION en sw.js (celador-v9 > celador-v10)
+  para que los dispositivos instalados descarguen la actualización.
+
+DATOS
+- Historial y estadísticas se guardan en cada dispositivo. Ajustes > Exportar / Importar copia
+  permite pasarlos de uno a otro.
