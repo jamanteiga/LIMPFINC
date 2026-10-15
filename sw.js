@@ -1,5 +1,5 @@
 // LIMPFINC service worker — app shell en caché; teselas siempre de red
-const CACHE = 'limpfinc-131';
+const CACHE = 'limpfinc-160';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
@@ -20,6 +20,7 @@ self.addEventListener('fetch', e => {
     e.respondWith(fetch(e.request).then(r => { const c = r.clone(); caches.open(CACHE).then(ca => ca.put(e.request, c)); return r; })
       .catch(() => caches.match(e.request).then(r => r || caches.match('./index.html'))));
   } else {
-    e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
+    // librerías de CDN (Leaflet, Clipper, Supabase, three.js): caché primero; lo que se descarga se guarda para usarlo sin cobertura
+    e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).then(res => { if (res.ok && /cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net/.test(u.hostname)) { const c = res.clone(); caches.open(CACHE).then(ca => ca.put(e.request, c)); } return res; })));
   }
 });
