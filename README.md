@@ -630,3 +630,18 @@ Al tocarlo se abre «Cuenta y sincronización».
 - `finca.sigpac.parcelas[]` guarda todas las parcelas y sus recintos.
 - Comprobado desde jamanteiga.github.io: los servicios SIGPAC permiten la consulta desde la app (CORS correcto).
 - Corregido: un aviso GPS sin mapa abierto (desde la lista) daba error.
+
+## 18. Implementación v1.3.0 — Punto inicial y punto final del trabajo
+
+- **Plan › Calcular plan**:
+  - **Punto de inicio**: Mi posición, Tocar en mapa o 📌 Anterior.
+  - **Punto final**: Libre, = Inicio, Tocar en mapa o 📌 Anterior.
+  - **Vueltas perimetrales**: Al principio o Al final.
+- Al tocar en el mapa se coloca la marca I o F; se puede corregir tocando de nuevo y se confirma con «Usar este punto».
+- Planificador:
+  - Al coste de cada secuencia se suma el traslado desde la última pasada hasta el punto final, por la cabecera.
+  - El 2-opt incluye ese tramo.
+  - Con punto final se prueban también los barridos en los dos sentidos y con las dos paridades.
+- Con cabeceras **al final**: primero las pasadas y después las vueltas de dentro hacia fuera; la última vuelta empieza y acaba en el vértice más cercano al punto final.
+- El plan guarda `inicio`, `fin` y `hlFinal`; «Recalcular» los conserva.
+- Prueba (finca de 1 ha, 5 vueltas): libre 142,5 min; fin en otro lado 143,2 min; fin = inicio 143,7 min; cabeceras al final +1 min.
