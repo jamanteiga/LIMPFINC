@@ -251,7 +251,7 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
 /* =========================================================
    LIMPFINC · F1 — Fincas, linde, exclusiones, área
    ========================================================= */
-const VERSION = '1.3.0';
+const VERSION = '1.3.1';
 
 /* ---------- Ajustes por defecto ---------- */
 const DEF = {
@@ -1859,7 +1859,7 @@ function planMenu() {
     </div>
     <button class="opt" id="pDet">📋 Ver detalle</button>
     <button class="opt" id="pRe2">🔄 Recalcular con otra velocidad / parámetros</button>
-    <button class="opt" id="pRe">🧭 Cambiar dirección o punto de inicio</button>
+    <button class="opt" id="pRe">🧭 Cambiar dirección, punto de inicio o final</button>
     ${cur.tipo === 'monte' ? '<button class="opt" id="pMal">🌲 Malla de árboles</button>' : ''}
     <button class="opt" id="pVis">${CFG.plan ? '🙈 Ocultar plan' : '👁 Mostrar plan'}</button>
     <button class="opt" id="pMis">${CFG.noAlc ? '⬜ Ocultar zonas no alcanzadas' : '🟧 Mostrar zonas no alcanzadas'}</button>
@@ -1916,16 +1916,45 @@ function planOptions() {
           if (lastPos && Geo.lenLL([[lastPos.lat, lastPos.lon], cur.linde.coords[0]]) < 2000) st = [lastPos.lat, lastPos.lon];
           else toast('Sin posición GPS cercana: se usa el primer vértice', 3000);
         } else if (o.start === 'prev') st = o.startLL;
-        const fase2 = async st => {
-          if (st) o.startLL = st;
-          const ir = async en => { o.endLL = en || o.endLL; cur.planOpt = o; await saveCur(); runPlan(o, st, en); };
-          if (o.end === 'map') pickPoint('Punto final', 'Toca en el mapa por dónde quieres <b>acabar</b> (salida del tractor).', '#c62828', 'F', ir, st);
-          else ir(o.end === 'ini' ? (st || cur.linde.coords[0]) : o.end === 'prev' ? o.endLL : null);
+        const ir = async (a, b) => {
+          if (a) o.startLL = a; if (b) o.endLL = b; cur.planOpt = o; await saveCur();
+          runPlan(o, a, o.end === 'ini' ? (a || cur.linde.coords[0]) : b);
         };
-        if (o.start === 'map') pickPoint('Punto de inicio', 'Toca en el mapa por dónde <b>entra</b> el tractor a la finca.', '#2e7d32', 'I', fase2);
-        else fase2(st);
+        if (o.start === 'map' || o.end === 'map') pickPoints(o, st, ir);
+        else ir(st, o.end === 'prev' ? o.endLL : null);
       };
     });
+}
+// pantalla única para colocar inicio (I) y final (F) antes de calcular; marcas arrastrables
+function pickPoints(o, st0, cb) {
+  const qI = o.start === 'map', qF = o.end === 'map';
+  let I = qI ? (o.startLL || null) : st0, F = qF ? (o.endLL || null) : null, modo = qI && !I ? 'I' : qF && !F ? 'F' : qI ? 'I' : 'F';
+  planRev = { picking: true }; lyr.tmp.clearLayers();
+  const ico = (c, l) => L.divIcon({ className: '', html: `<div class="pin" style="background:${c};width:30px;height:30px;line-height:30px;font-size:15px">${l}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] });
+  const mk = {};
+  const put = (k, ll) => {
+    if (k === 'I') I = ll; else F = ll;
+    if (mk[k]) mk[k].setLatLng(ll);
+    else { mk[k] = L.marker(ll, { draggable: k === 'I' ? qI : qF, icon: ico(k === 'I' ? '#2e7d32' : '#c62828', k), zIndexOffset: 2000 }).addTo(lyr.tmp); mk[k].on('dragend', e => { const p = e.target.getLatLng(); if (k === 'I') I = [+p.lat.toFixed(7), +p.lng.toFixed(7)]; else F = [+p.lat.toFixed(7), +p.lng.toFixed(7)]; panel(); }); }
+  };
+  if (I) put('I', I); if (F) put('F', F);
+  const listo = () => (!qI || I) && (!qF || F);
+  const fin = ok => { map.off('click', onTap); planRev = null; lyr.tmp.clearLayers(); if (ok) cb(I, F); else showMain(); };
+  function panel() {
+    const seg = qI && qF ? `<div class="seg" id="ppSeg" style="margin:6px 0"><button data-v="I" class="${modo === 'I' ? 'on' : ''}">🟢 Inicio ${I ? '✓' : ''}</button><button data-v="F" class="${modo === 'F' ? 'on' : ''}">🔴 Final ${F ? '✓' : ''}</button></div>` : '';
+    const txt = modo === 'I' ? 'Toca en el mapa por dónde <b>entra</b> el tractor (I).' : 'Toca en el mapa por dónde quieres <b>acabar</b> (F).';
+    showTool(qI && qF ? 'Inicio y final' : qI ? 'Punto de inicio' : 'Punto final', seg + txt + '<br><small>Puedes tocar de nuevo o arrastrar la marca para corregirla.</small>',
+      [['Cancelar', 'sec', () => fin(false)], ['Calcular plan', '', () => fin(true), !listo()]]);
+    if ($('ppSeg')) $('ppSeg').querySelectorAll('button').forEach(b => b.onclick = () => { modo = b.dataset.v; panel(); });
+  }
+  function onTap(e) {
+    const ll = [+e.latlng.lat.toFixed(7), +e.latlng.lng.toFixed(7)];
+    put(modo, ll);
+    if (modo === 'I' && qF && !F) modo = 'F';   // tras el inicio, pasa solo a colocar el final
+    panel();
+  }
+  map.on('click', onTap); panel();
+  if (!qI && I) toast('Inicio fijado (verde). Toca el mapa para colocar el final.', 3000);
 }
 // marca un punto en el mapa (se puede tocar varias veces para corregir y luego confirmar)
 function pickPoint(titulo, hint, color, letra, cb, otro) {
