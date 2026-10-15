@@ -251,7 +251,7 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
 /* =========================================================
    LIMPFINC · F1 — Fincas, linde, exclusiones, área
    ========================================================= */
-const VERSION = '1.2.2';
+const VERSION = '1.3.0';
 
 /* ---------- Ajustes por defecto ---------- */
 const DEF = {
@@ -1625,7 +1625,13 @@ const Planner = (() => {
       return { type: 'tras', L, t: L / vt + S.tManiobra };
     }
 
-    function solve(sw, startP) {
+    // traslado desde la salida de una pasada (o un punto) hasta el punto final, por la cabecera si se puede
+    function toEnd(E, endP) {
+      if (!endP) return { L: 0, xy: [] };
+      if (E.kind === 'hl' && trRing.L > 0) { const A = pjT(E.p), B = projRing(trRing, endP); const w_ = ringWalk(trRing, A, B, true); const L = A.d + w_.len + B.d; if (L < Geo.dist(E.p, endP) * 3) return { L, xy: [E.p, ...w_.pts, endP] }; }
+      return { L: Geo.dist(E.p, endP) * 1.2, xy: [E.p, endP] };
+    }
+    function solve(sw, startP, endP) {
       const segs = sw.segs, N = segs.length; if (!N) return { seq: [], cost: 0, ex: [], en: [] };
       const u = sw.u, mu = [-u[0], -u[1]], ex = [], en = [];
       segs.forEach((g, i) => {
@@ -1636,24 +1642,27 @@ const Planner = (() => {
       const M = 2 * N, C = new Float64Array(M * M), C0 = new Float64Array(M);
       for (let i = 0; i < M; i++) for (let j = 0; j < M; j++) C[i * M + j] = (i >> 1) === (j >> 1) ? 1e9 : trans(ex[i], en[j]).t;
       for (let j = 0; j < M; j++) C0[j] = Geo.dist(startP, en[j].p) / vt;
-      const cost = q => { let c = C0[q[0]]; for (let k = 1; k < q.length; k++) c += C[q[k - 1] * M + q[k]]; return c; };
+      const CE = new Float64Array(M); if (endP) for (let j = 0; j < M; j++) CE[j] = toEnd(ex[j], endP).L / vt;
+      const cost = q => { let c = C0[q[0]] + CE[q[q.length - 1]]; for (let k = 1; k < q.length; k++) c += C[q[k - 1] * M + q[k]]; return c; };
       function greedy() {
         const used = new Uint8Array(N), q = []; let cur = -1;
-        for (let k = 0; k < N; k++) { let best = -1, bc = Infinity; for (let j = 0; j < M; j++) { if (used[j >> 1]) continue; const c = cur < 0 ? C0[j] : C[cur * M + j]; if (c < bc) { bc = c; best = j; } } used[best >> 1] = 1; q.push(best); cur = best; }
+        for (let k = 0; k < N; k++) { let best = -1, bc = Infinity; for (let j = 0; j < M; j++) { if (used[j >> 1]) continue; const c = (cur < 0 ? C0[j] : C[cur * M + j]) + (k === N - 1 ? CE[j] : 0); if (c < bc) { bc = c; best = j; } } used[best >> 1] = 1; q.push(best); cur = best; }
         return q;
       }
-      function bous() {
+      // barrido en zigzag; con punto final se prueban los dos sentidos y las dos paridades
+      function bous(rev, par) {
         const idx = segs.map((g, i) => i).sort((a, b) => { const ta = (segs[a].a[0] * sw.n[0] + segs[a].a[1] * sw.n[1]), tb = (segs[b].a[0] * sw.n[0] + segs[b].a[1] * sw.n[1]); return ta - tb || (segs[a].a[0] * u[0] + segs[a].a[1] * u[1]) - (segs[b].a[0] * u[0] + segs[b].a[1] * u[1]); });
-        return idx.map((i, k) => 2 * i + (k & 1));
+        if (rev) idx.reverse();
+        return idx.map((i, k) => 2 * i + ((k + par) & 1));
       }
       function twoOpt(q, ms) {
         const n = q.length, tEnd = performance.now() + ms; let imp = true;
         while (imp && performance.now() < tEnd) {
           imp = false;
           for (let i = -1; i < n - 1; i++) for (let j = i + 1; j < n; j++) {
-            const a = i < 0 ? C0[q[i + 1]] : C[q[i] * M + q[i + 1]], b = j < n - 1 ? C[q[j] * M + q[j + 1]] : 0;
+            const a = i < 0 ? C0[q[i + 1]] : C[q[i] * M + q[i + 1]], b = j < n - 1 ? C[q[j] * M + q[j + 1]] : CE[q[j]];
             const fj = q[j] ^ 1, fi = q[i + 1] ^ 1;
-            const a2 = i < 0 ? C0[fj] : C[q[i] * M + fj], b2 = j < n - 1 ? C[fi * M + q[j + 1]] : 0;
+            const a2 = i < 0 ? C0[fj] : C[q[i] * M + fj], b2 = j < n - 1 ? C[fi * M + q[j + 1]] : CE[fi];
             if (a2 + b2 < a + b - 1e-6) {
               let x = i + 1, y = j; while (x < y) { const t = q[x]; q[x] = q[y] ^ 1; q[y] = t ^ 1; x++; y--; } if (x === y) q[x] ^= 1;
               imp = true;
@@ -1663,24 +1672,36 @@ const Planner = (() => {
         return q;
       }
       const budget = Math.max(150, 1200 / cands.length);
-      const sols = [twoOpt(greedy(), budget / 2), twoOpt(bous(), budget / 2)].map(q => ({ q, c: cost(q) })).sort((a, b) => a.c - b.c);
+      const ini = endP ? [greedy(), bous(0, 0), bous(0, 1), bous(1, 0), bous(1, 1)] : [greedy(), bous(0, 0)];
+      const sols = ini.map(q => twoOpt(q, budget / ini.length)).map(q => ({ q, c: cost(q) })).sort((a, b) => a.c - b.c);
       return { seq: sols[0].q, cost: sols[0].c, ex, en };
     }
 
     /* fase 1: vueltas perimetrales (espiral hacia dentro) */
     const lindeXY = fieldXY;
     let startP = opt.start ? P.fwd(opt.start[0], opt.start[1]) : lindeXY[0];
-    const pre = []; let cur = startP, nCorners = 0;
-    hl.forEach((pieces, k) => {
-      const left = pieces.slice();
-      while (left.length) {
-        let bi = 0, bd = Infinity; left.forEach((r, i) => r.forEach(q => { const d = Geo.dist(cur, q); if (d < bd) { bd = d; bi = i; } }));
-        const ring = left.splice(bi, 1)[0], loop = rotateTo(ring, cur);
-        pre.push({ type: k === 0 && pre.length === 0 ? 'tras' : (bd > 2.5 * we ? 'tras' : 'giro'), xy: [cur, loop[0]] });
-        pre.push({ type: 'trabajo', xy: loop, ring: true });
-        nCorners += corners(ring, true); cur = loop[0];
-      }
-    });
+    const endP = opt.end ? P.fwd(opt.end[0], opt.end[1]) : null;
+    const hlFinal = opt.hlFinal && hl.length > 0;
+    let nCorners = 0;
+    // vueltas perimetrales: al principio, de fuera a dentro; al final, de dentro a fuera acabando junto al punto final
+    function rings(from, order, endNear) {
+      const out = []; let c = from;
+      order.forEach((k, idx) => {
+        const left = hl[k].slice();
+        while (left.length) {
+          let bi = 0, bd = Infinity; left.forEach((r, i) => r.forEach(q => { const d = Geo.dist(c, q); if (d < bd) { bd = d; bi = i; } }));
+          const ring = left.splice(bi, 1)[0], ultimo = idx === order.length - 1 && !left.length;
+          const loop = rotateTo(ring, ultimo && endNear ? endNear : c);
+          const d0 = Geo.dist(c, loop[0]);
+          out.push({ type: out.length === 0 ? 'tras' : (d0 > 2.5 * we ? 'tras' : 'giro'), xy: [c, loop[0]] });
+          out.push({ type: 'trabajo', xy: loop, ring: true });
+          nCorners += corners(ring, true); c = loop[0];
+        }
+      });
+      return { parts: out, cur: c };
+    }
+    const pre = []; let cur = startP;
+    if (!hlFinal) { const r = rings(startP, hl.map((_, k) => k), null); pre.push(...r.parts); cur = r.cur; }
     /* fase 2: vueltas alrededor de exclusiones */
     const oleft = obsRings.filter(Boolean).map(r => r.xy);
     while (oleft.length) {
@@ -1691,7 +1712,7 @@ const Planner = (() => {
     /* fase 3: pasadas, se evalúan los candidatos */
     let best = null;
     for (const az of cands) {
-      const sw = az === 'rows' ? rowSwaths() : swaths(az), so = solve(sw, cur);
+      const sw = az === 'rows' ? rowSwaths() : swaths(az), so = solve(sw, cur, endP);
       if (!best || so.cost < best.so.cost) best = { sw, so, az: Math.round(sw.az) };
     }
     const { sw, so } = best, parts = pre.slice();
@@ -1744,6 +1765,11 @@ const Planner = (() => {
       parts.push({ type: 'trabajo', xy: [a, b], swath: true });
       arrows.push({ xy: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], az: (Math.atan2(b[0] - a[0], b[1] - a[1]) / D2R + 360) % 360 });
     });
+    // posición tras la última pasada
+    let fin = cur, finE = null;
+    if (so.seq.length) { const v = so.seq[so.seq.length - 1]; finE = so.ex[v]; fin = finE.p; }
+    if (hlFinal) { const r = rings(fin, hl.map((_, k) => k).reverse(), endP); parts.push(...r.parts); fin = r.cur; finE = { p: fin, kind: 'hl' }; }
+    if (endP && Geo.dist(fin, endP) > 0.5) { const t_ = toEnd(finE || { p: fin, kind: 'x' }, endP); cnt.tras++; parts.push({ type: 'tras', xy: t_.xy.length ? t_.xy : [fin, endP] }); }
 
     /* estadísticas */
     const L = { trabajo: 0, giro: 0, reversa: 0, tras: 0 };
@@ -1768,7 +1794,7 @@ const Planner = (() => {
 
     const toLL = xy => Geo.toLL(xy, P).map(q => [+q[0].toFixed(7), +q[1].toFixed(7)]);
     return {
-      fecha: Date.now(), geomKey: geomKey(f), az: best.az, nH: hl.length, nHauto, need, ms: Math.round(performance.now() - T0), warn,
+      fecha: Date.now(), geomKey: geomKey(f), az: best.az, nH: hl.length, inicio: opt.start || null, fin: opt.end || null, hlFinal: !!hlFinal, nHauto, need, ms: Math.round(performance.now() - T0), warn,
       params: { w, s, R, marchaAtras: !!S.marchaAtras, v: S.velocidad, consumo: S.consumo },
       parts: parts.filter(p => p.len > 0.05).map(p => ({ type: p.type, ll: toLL(p.xy), swath: !!p.swath })),
       arrows: arrows.map(a => ({ ll: toLL([a.xy])[0], az: Math.round(a.az) })),
@@ -1849,7 +1875,8 @@ function planMenu() {
 }
 
 function planOptions() {
-  const o = cur.planOpt || { dirMode: 'auto', az: 0, nHMode: 'auto', nH: 0, start: 'gps' };
+  const o = { dirMode: 'auto', az: 0, nHMode: 'auto', nH: 0, start: 'gps', end: 'libre', hl: 'ini', ...(cur.planOpt || {}) };
+  if (o.start === 'prev' && !o.startLL) o.start = 'gps'; if (o.end === 'prev' && !o.endLL) o.end = 'libre';
   const need = Planner.headlandNeed(S), we = S.aperoAncho - Math.min(S.solape, S.aperoAncho / 2);
   const nHauto = 1 + Math.ceil(Math.max(0, need - S.aperoAncho) / we);
   sheet(`<h3>Calcular plan</h3>
@@ -1861,43 +1888,61 @@ function planOptions() {
     <div class="seg" id="oNH"><button data-v="auto">Auto (${nHauto})</button><button data-v="man">Manual</button></div>
     <div class="srow ${o.nHMode === 'man' ? '' : 'hidden'}" id="oNHR"><span>Número de vueltas</span><input class="inp" id="oNHv" inputmode="numeric" value="${o.nH || nHauto}" style="width:90px;text-align:right"></div>
     <div class="note">Cabecera necesaria para girar: ${fmt(need, 1)} m → ${nHauto} vueltas de ${fmt(we, 2)} m.</div>
-    <label class="f">Punto de inicio</label>
-    <div class="seg" id="oSt"><button data-v="gps">Mi posición</button><button data-v="map">Elegir en mapa</button><button data-v="v0">1.er vértice</button></div>
+    <label class="f">Punto de inicio (entrada del tractor)</label>
+    <div class="seg" id="oSt"><button data-v="gps">Mi posición</button><button data-v="map">Tocar en mapa</button>${o.startLL ? '<button data-v="prev">📌 Anterior</button>' : '<button data-v="v0">1.er vértice</button>'}</div>
+    <label class="f">Punto final (salida del tractor)</label>
+    <div class="seg" id="oEn"><button data-v="libre">Libre</button><button data-v="ini">= Inicio</button><button data-v="map">Tocar en mapa</button>${o.endLL ? '<button data-v="prev">📌 Anterior</button>' : ''}</div>
+    <label class="f">Vueltas perimetrales</label>
+    <div class="seg" id="oHf"><button data-v="ini">Al principio</button><button data-v="fin">Al final</button></div>
+    <div class="note" id="oHfN"></div>
     <div class="card" style="margin-top:12px;font-size:13px;color:var(--sub)">
       Apero ${fmt(S.aperoAncho, 2)} m · solape ${fmt(S.solape, 2)} m · R giro ${fmt(S.radioGiro, 1)} m · marcha atrás ${S.marchaAtras ? 'sí' : 'no'} ·
       ${fmt(S.velocidad, 1)} km/h trabajo · ${fmt(S.velocidadGiro, 1)} km/h giro · ${fmt(S.consumo, 1)} L/h. <i>Se cambian en Ajustes.</i></div>
     <button class="btn" id="oGo">Calcular</button>`,
     () => {
-      const segs = { oDir: 'dirMode', oNH: 'nHMode', oSt: 'start' };
+      const segs = { oDir: 'dirMode', oNH: 'nHMode', oSt: 'start', oEn: 'end', oHf: 'hl' };
+      const nota = () => { $('oHfN').textContent = o.hl === 'fin' ? 'Primero las pasadas; las vueltas al linde al final, de dentro hacia fuera, acabando junto al punto final. Limpia las marcas de los giros.' : 'Primero las vueltas al linde (deja sitio limpio para girar); luego las pasadas.'; };
       for (const [id, key] of Object.entries(segs)) {
         const el = $(id); const paint = () => el.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === o[key]));
-        el.querySelectorAll('button').forEach(b => b.onclick = () => { o[key] = b.dataset.v; paint(); $('oAzR').classList.toggle('hidden', o.dirMode !== 'man'); $('oNHR').classList.toggle('hidden', o.nHMode !== 'man'); });
+        el.querySelectorAll('button').forEach(b => b.onclick = () => { o[key] = b.dataset.v; paint(); nota(); $('oAzR').classList.toggle('hidden', o.dirMode !== 'man'); $('oNHR').classList.toggle('hidden', o.nHMode !== 'man'); });
         paint();
       }
+      nota();
       $('oGo').onclick = async () => {
         o.az = parseFloat($('oAz').value.replace(',', '.')) || 0; o.nH = parseInt($('oNHv').value) || 0;
         cur.planOpt = o; await saveCur(); closeSheet();
-        if (o.start === 'map') { pickStart(o); return; }
         let st = null;
         if (o.start === 'gps') {
           if (lastPos && Geo.lenLL([[lastPos.lat, lastPos.lon], cur.linde.coords[0]]) < 2000) st = [lastPos.lat, lastPos.lon];
           else toast('Sin posición GPS cercana: se usa el primer vértice', 3000);
-        }
-        runPlan(o, st);
+        } else if (o.start === 'prev') st = o.startLL;
+        const fase2 = async st => {
+          if (st) o.startLL = st;
+          const ir = async en => { o.endLL = en || o.endLL; cur.planOpt = o; await saveCur(); runPlan(o, st, en); };
+          if (o.end === 'map') pickPoint('Punto final', 'Toca en el mapa por dónde quieres <b>acabar</b> (salida del tractor).', '#c62828', 'F', ir, st);
+          else ir(o.end === 'ini' ? (st || cur.linde.coords[0]) : o.end === 'prev' ? o.endLL : null);
+        };
+        if (o.start === 'map') pickPoint('Punto de inicio', 'Toca en el mapa por dónde <b>entra</b> el tractor a la finca.', '#2e7d32', 'I', fase2);
+        else fase2(st);
       };
     });
 }
-function pickStart(o) {
-  planRev = { picking: true };
-  showTool('Punto de inicio', 'Toca en el mapa el punto por donde entra el tractor a la finca.', [['Cancelar', 'sec', () => { map.off('click', onPick); planRev = null; showMain(); }]]);
-  function onPick(e) { map.off('click', onPick); planRev = null; runPlan(o, [e.latlng.lat, e.latlng.lng]); }
-  map.on('click', onPick);
+// marca un punto en el mapa (se puede tocar varias veces para corregir y luego confirmar)
+function pickPoint(titulo, hint, color, letra, cb, otro) {
+  planRev = { picking: true }; lyr.tmp.clearLayers();
+  const pin = (ll, c, l) => L.marker(ll, { interactive: false, icon: L.divIcon({ className: '', html: `<div class="pin" style="background:${c}">${l}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] }) }).addTo(lyr.tmp);
+  if (otro) pin(otro, '#2e7d32', 'I');
+  let ll = null, mk = null;
+  const fin = ok => { map.off('click', onPick); planRev = null; lyr.tmp.clearLayers(); if (ok) cb(ll); else showMain(); };
+  const btns = () => showTool(titulo, hint + (ll ? '<br>Puedes tocar otra vez para corregirlo.' : ''), [['Cancelar', 'sec', () => fin(false)], ['Usar este punto', '', () => fin(true), !ll]]);
+  function onPick(e) { ll = [+e.latlng.lat.toFixed(7), +e.latlng.lng.toFixed(7)]; if (mk) mk.setLatLng(ll); else mk = pin(ll, color, letra); btns(); }
+  map.on('click', onPick); btns();
 }
-function runPlan(o, start) {
+function runPlan(o, start, end) {
   const ov = document.createElement('div'); ov.className = 'busyOv'; ov.innerHTML = '<div>Calculando plan…<br><small>Optimizando dirección y orden de pasadas</small></div>'; document.body.appendChild(ov);
   setTimeout(() => {
     let pl;
-    try { pl = Planner.plan(cur, S, { az: o.dirMode === 'man' ? o.az : null, nH: o.nHMode === 'man' ? o.nH : 0, start }); }
+    try { pl = Planner.plan(cur, S, { az: o.dirMode === 'man' ? o.az : null, nH: o.nHMode === 'man' ? o.nH : 0, start, end, hlFinal: o.hl === 'fin' }); }
     catch (e) { console.error(e); pl = { error: 'Error en el cálculo: ' + e.message }; }
     ov.remove();
     if (pl.error) { toast(pl.error, 4000); showMain(); return; }
@@ -1938,8 +1983,8 @@ function recalcSheet(desdeLista) {
         const nh = n('rNH'), az = n('rAz');
         optN = { ...o, nHMode: nh ? 'man' : 'auto', nH: nh || 0, dirMode: az != null ? 'man' : 'auto', az: az != null ? az : o.az };
         const S1 = effS(f, cfgN);
-        const start = pl0 && pl0.parts[0] ? pl0.parts[0].ll[0] : null;
-        try { nuevo = Planner.plan(f, S1, { az: optN.dirMode === 'man' ? optN.az : null, nH: optN.nHMode === 'man' ? optN.nH : 0, start }); } catch (e) { nuevo = { error: e.message }; }
+        const start = pl0 ? (pl0.inicio || (pl0.parts[0] ? pl0.parts[0].ll[0] : null)) : null, end = pl0 ? pl0.fin : null;
+        try { nuevo = Planner.plan(f, S1, { az: optN.dirMode === 'man' ? optN.az : null, nH: optN.nHMode === 'man' ? optN.nH : 0, start, end, hlFinal: !!(pl0 && pl0.hlFinal) }); } catch (e) { nuevo = { error: e.message }; }
         if (nuevo.error) { $('rRes').innerHTML = `<div class="card warnc">${esc(nuevo.error)}</div>`; $('rOk').disabled = true; return; }
         const st = nuevo.stats, d = pl0 ? (st.t.total - pl0.stats.t.total) / 60 : null, dl = pl0 ? st.litros - pl0.stats.litros : null;
         const sg = v => (v > 0 ? '+' : '') + fmt(v, 1);
