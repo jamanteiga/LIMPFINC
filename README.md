@@ -645,3 +645,12 @@ Al tocarlo se abre «Cuenta y sincronización».
 - Con cabeceras **al final**: primero las pasadas y después las vueltas de dentro hacia fuera; la última vuelta empieza y acaba en el vértice más cercano al punto final.
 - El plan guarda `inicio`, `fin` y `hlFinal`; «Recalcular» los conserva.
 - Prueba (finca de 1 ha, 5 vueltas): libre 142,5 min; fin en otro lado 143,2 min; fin = inicio 143,7 min; cabeceras al final +1 min.
+
+## 19. Implementación v1.3.1 — Inicio y final en una sola pantalla
+
+- Si inicio o final están en «Tocar en mapa», se abre una sola pantalla «Inicio y final» antes de calcular:
+  - Selector 🟢 Inicio / 🔴 Final; tras colocar el inicio pasa solo a colocar el final.
+  - Las marcas I y F se pueden arrastrar y aparecen colocadas con los puntos de la vez anterior.
+  - «Calcular plan» se activa cuando están todos los puntos necesarios.
+- Con inicio = Mi posición y final en el mapa, solo se coloca F (la I se fija por GPS).
+- El menú del plan dice «🧭 Cambiar dirección, punto de inicio o final».
