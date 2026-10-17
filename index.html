@@ -253,7 +253,7 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
 /* =========================================================
    LIMPFINC · F1 — Fincas, linde, exclusiones, área
    ========================================================= */
-const VERSION = '1.9.0';
+const VERSION = '1.9.2';
 
 /* ---------- Ajustes por defecto ---------- */
 const DEF = {
@@ -266,7 +266,7 @@ const DEF = {
   umbralPrecision:8, holguraLinde:0.5,
   mallaX:3.5, mallaY:3.5, holguraTronco:0.30, diamTronco:500, promedioS:10,
   mapaBase:'OpenStreetMap',
-  velAbierta:3.5, velMonte:2.3, ladoArbol:'der', distArbol:0.9,
+  velAbierta:3.0, velMonte:2.3, ladoArbol:'der', distArbol:1.0,
   precioGasoil:1.10, precioHora:35, precioFerrado:0, titular:'', velCarretera:20, consumoTraslado:3, pendMax:25, ultimaCopia:0,
   consumoAuto:true, velocidadGiro:3.0, velocidadTraslado:5.0, tCambioSentido:4, tManiobra:20, tEsquina:15, margenObstaculo:0.30
 };
@@ -283,7 +283,7 @@ const SET_FIELDS = [
 ];
 
 /* ---------- IndexedDB ---------- */
-const velDef = tipo => tipo === 'monte' ? (+SB.velMonte || 2.3) : (+SB.velAbierta || 3.5);
+const velDef = tipo => tipo === 'monte' ? (+SB.velMonte || 2.3) : (+SB.velAbierta || 3);
 const DB = (() => {
   let db;
   const open = () => new Promise((res, rej) => {
@@ -1616,7 +1616,8 @@ const Planner = (() => {
       }
       const kMax = dmin >= hT + w ? Math.floor((dmin - hT - w) / we) + 1 : 0;
       nHm = Math.min(nH, kMax);
-      if (nHm < nHauto) warn.push(`Cabecera libre entre árboles y linde: ${fmt(Math.max(0, dmin - hT), 1)} m → ${nHm} de ${nHauto} vueltas necesarias. Los giros requerirán maniobras o salir de la finca.`);
+      if (dmin - hT < need) warn.push(`Los árboles exteriores están a ${fmt(Math.max(0, dmin - hT), 1)} m del linde y para girar dentro de la finca hacen falta ${fmt(need, 1)} m: las calles se trabajan hasta ${fmt(need, 1)} m del linde y ahí se gira. Revisa la distancia de los árboles exteriores.`);
+      else if (nHm < nHauto) warn.push(`Cabecera libre entre árboles y linde: ${fmt(Math.max(0, dmin - hT), 1)} m → ${nHm} de ${nHauto} vueltas necesarias. Los giros requerirán maniobras o salir de la finca.`);
     }
 
     // anillos de cabecera
@@ -1633,6 +1634,10 @@ const Planner = (() => {
     const marg = S.margenObstaculo;
     const obsInf = obs.length ? off(obs, w / 2 + marg, true) : [];
     const region = obsInf.length ? boolOp('diff', inner, obsInf) : inner;
+    // las pasadas acaban a la distancia necesaria para girar sin salirse del linde (apero + tractor + radio de giro)
+    const fieldGiro = off(field, -need);
+    const regionP = fieldGiro.length ? boolOp('int', region, fieldGiro) : region;
+    if (!fieldGiro.length) warn.push('La finca es demasiado estrecha para girar dentro: no hay sitio para las vueltas del tractor.');
     const obsRings = obs.map(o => { const ps = off([o], w / 2 + marg, true); if (!ps.length) return null; const big = ps.reduce((a, b) => areaP(a) >= areaP(b) ? a : b); return mkRing(Geo.ccw(frC(big))); });
     if (obs.length) {
       const hlZone = boolOp('diff', field, inner);
@@ -1668,7 +1673,11 @@ const Planner = (() => {
       const js = f.malla.arboles.map(a => a[3]), j0 = Math.min(...js), j1 = Math.max(...js);
       const hT = S.holguraTronco + radioT, c1 = hT + w / 2, c2 = sp - hT - w / 2, cs = [];
       if (c2 <= c1 + 0.05) { cs.push(sp / 2); warn.push('Calle más estrecha que apero + holguras: una pasada centrada por calle.'); }
-      else { const np = Math.ceil((c2 - c1) / we) + 1; for (let k = 0; k < np; k++) cs.push(c1 + k * (c2 - c1) / (np - 1)); }
+      else {
+        // dos pasadas por calle: una arrimada a cada hilera de árboles (se acepta el solape para dejarla bien limpia)
+        cs.push(c1, c2);
+        if (c2 - c1 > w + 0.02) warn.push(`Calle de ${fmt(sp, 2)} m: con dos pasadas arrimadas a los árboles queda en el centro una franja de ${fmt(c2 - c1 - w, 2)} m sin limpiar.`);
+      }
       const { tmin, tmax } = extent(u, n), ts = [];
       for (let j = j0; j < j1; j++) cs.forEach(c => ts.push(tA + j * sp + c));
       for (let t = tA + j0 * sp - c1; t > tmin - w / 2 + s; t -= we) ts.push(t);
@@ -1683,7 +1692,7 @@ const Planner = (() => {
       const { smin, smax } = extent(u, n);
       const lines = ts.map(t => [[u[0] * (smin - 5) + n[0] * t, u[1] * (smin - 5) + n[1] * t], [u[0] * (smax + 5) + n[0] * t, u[1] * (smax + 5) + n[1] * t]]);
       const segs = [];
-      for (const pl of clipLines(lines, region)) {
+      for (const pl of clipLines(lines, regionP)) {
         if (pl.length < 2) continue;
         let a = pl[0], b = pl[pl.length - 1];
         if ((b[0] - a[0]) * u[0] + (b[1] - a[1]) * u[1] < 0) [a, b] = [b, a];
@@ -1959,7 +1968,7 @@ const planStale = f => f.plan && f.plan.geomKey !== geomKey(f);
 function planMenu() {
   if (busy()) return;
   if (!cur.linde) return toast('Primero define el linde de la finca');
-  if (cur.tipo === 'monte' && !(cur.malla && cur.malla.arboles && cur.malla.arboles.length)) { toast('Define primero la malla de árboles'); return mallaMenu(); }
+  if (cur.tipo === 'monte' && !(cur.malla && cur.malla.arboles && cur.malla.arboles.length)) { toast('Marca primero los árboles (Arboleda)'); return mallaMenu(); }
   if (!window.ClipperLib) return toast('No se ha cargado la librería de geometría. Revisa la conexión.');
   const nEx = (cur.exclusiones || []).length, nEO = +cur.exclObj || 0;
   if (nEO > nEx && !planMenu._ok) {
@@ -1985,7 +1994,7 @@ function planMenu() {
     <button class="opt" id="pPre">💶 Presupuesto</button>
     <button class="opt" id="pRe2">🔄 Recalcular con otra velocidad / parámetros</button>
     <button class="opt" id="pRe">🧭 Cambiar dirección, punto de inicio o final</button>
-    ${cur.tipo === 'monte' ? '<button class="opt" id="pMal">🌲 Malla de árboles</button>' : ''}
+    ${cur.tipo === 'monte' ? '<button class="opt" id="pMal">🌳 Arboleda (marcar árboles)</button>' : ''}
     <button class="opt" id="pVis">${CFG.plan ? '🙈 Ocultar plan' : '👁 Mostrar plan'}</button>
     <button class="opt" id="pMis">${CFG.noAlc ? '⬜ Ocultar zonas no alcanzadas' : '🟧 Mostrar zonas no alcanzadas'}</button>
     <button class="opt" id="pDel" style="color:var(--err)">🗑 Borrar plan</button>`,
@@ -2162,7 +2171,7 @@ function recalcSheet(desdeLista) {
 // recalcula el plan con la configuración actual (tractor, apero, velocidad) y lo guarda
 async function recalcPlan() {
   if (!cur || !cur.linde) return toast('La finca no tiene linde');
-  if (cur.tipo === 'monte' && !(cur.malla && cur.malla.arboles && cur.malla.arboles.length)) return toast('Define primero la malla de árboles');
+  if (cur.tipo === 'monte' && !(cur.malla && cur.malla.arboles && cur.malla.arboles.length)) return toast('Marca primero los árboles (Arboleda)');
   applyS();
   const o = cur.planOpt || {}, start = cur.plan && cur.plan.parts[0] ? cur.plan.parts[0].ll[0] : null;
   let pl; try { pl = Planner.plan(cur, S, { az: o.dirMode === 'man' ? o.az : null, nH: o.nHMode === 'man' ? o.nH : 0, start }); } catch (e) { pl = { error: e.message }; }
@@ -2439,7 +2448,7 @@ function fincaMenu() {
   sheet(`<h3>${esc(cur.nombre)}</h3>
     <button class="opt" id="fmCap">🗂 Capas y filtros</button>
     <button class="opt" id="fmHis">🕘 Histórico de trabajos</button>
-    ${cur.tipo === 'monte' ? '<button class="opt" id="fmMal">🌲 Malla de árboles</button>' : ''}
+    ${cur.tipo === 'monte' ? '<button class="opt" id="fmMal">🌳 Arboleda (marcar árboles)</button>' : ''}
     <button class="opt" id="fmInc">📍 Incidencias${(cur.incidencias || []).filter(i => !i.resuelta).length ? ' (' + cur.incidencias.filter(i => !i.resuelta).length + ')' : ''}</button>
     <button class="opt" id="fmPre">💶 Presupuesto</button>
     <button class="opt" id="fmM3d">🏔 Mapa 3D del terreno<small>Con los puntos con altura registrados cada 2 s al trabajar.</small></button>
@@ -3153,33 +3162,22 @@ function mallaMenu() {
   if (busy()) return;
   if (!cur.linde) return toast('Primero define el linde de la finca');
   const M = cur.malla;
-  if (!M) return mallaMetodo();
-  const n = M.arboles.length, nf = M.arboles.filter(a => a[4]).length;
-  sheet(`<h3>Malla de árboles</h3>
+  if (!M || M.modo !== 'medidos') { closeSheet(); return mallaMedidos(); }
+  const n = M.arboles.length;
+  sheet(`<h3>🌳 Arboleda</h3>
     <div class="card">
-      <div class="kv"><span>Árboles</span><span>${n - nf}${nf ? ' (+' + nf + ' faltas)' : ''}</span></div>
-      <div class="kv"><span>Separación en fila (medida)</span><span>${fmt(M.sepFila, 2)} m</span></div>
-      <div class="kv"><span>Separación entre filas (medida)</span><span>${fmt(M.sepFilas, 2)} m</span></div>
-      <div class="kv"><span>Ajuste</span><span>${M.modo === 'medidos' ? `${M.medidos.length} árboles marcados · ±${fmt(M.rms || 0, 2)} m · ${Math.round(M.az)}°` : M.modo === 'diseno' ? 'Diseño teórico (árbol ficticio)' : M.modo === 'borde' ? `Árboles de borde (${M.bordes.length}) · ±${fmt(M.rms || 0, 2)} m` : M.nominal ? 'Nominal ' + fmt(S.mallaX, 1) + ' × ' + fmt(S.mallaY, 1) : 'Medido A–B–C'}</span></div>
-      <div class="kv"><span>Diámetro de tronco</span><span>${M.diam || S.diamTronco} mm</span></div>
+      <div class="kv"><span>Árboles</span><span>${n}</span></div>
+      <div class="kv"><span>Patrón</span><span>${Math.round(M.sFila * 1000)} × ${Math.round(M.sFilas * 1000)} mm · ${Math.round(M.az)}°</span></div>
+      <div class="kv"><span>Diámetro</span><span>${M.diam} mm</span></div>
+      <div class="kv"><span>Árboles marcados</span><span>${M.medidos.length} · ±${fmt(M.rms || 0, 2)} m</span></div>
     </div>
-    <button class="opt" id="mPat">✎ Modificar patrón y diámetro<small>${M.modo === 'medidos' ? 'Separaciones, distancia al linde y diámetro; se reajusta con los árboles marcados. También puedes añadir más árboles.' : M.modo === 'diseno' ? 'Separaciones, orientación, distancia al linde, diámetro y árbol de referencia.' : M.modo === 'borde' ? 'Separaciones (exactas) y diámetro; se reajusta con los árboles del borde.' : 'Diámetro del tronco.'}</small></button>
-    ${M.modo === 'diseno' ? '<button class="opt" id="mMed">🌳 Pasar a malla real (marcar árboles del borde)<small>Para un cálculo más real del trabajo.</small></button>' : ''}
-    <button class="opt" id="mDia" style="display:none">⌀ Cambiar diámetro de tronco</button>
-    <button class="opt" id="mCor">🎯 Corregir con el trabajo real<small>Ajusta giro y posición de la malla con las pasadas ya hechas entre filas.</small></button>
-    <button class="opt" id="mFal">✖️ Marcar / desmarcar faltas<small>Árboles que no existen. No cambian las calles.</small></button>
-    <button class="opt" id="mRe">🔄 Redefinir malla</button>
-    <button class="opt" id="mDel" style="color:var(--err)">🗑 Borrar malla</button>`,
+    <button class="opt" id="mMas">🌳 Marcar más árboles</button>
+    <button class="opt" id="mPat">✎ Cambiar patrón, diámetro o distancia al linde</button>
+    <button class="opt" id="mDel" style="color:var(--err)">🗑 Borrar arboleda</button>`,
     () => {
-      $('mFal').onclick = () => { closeSheet(); faltasMode(); }; $('mCor').onclick = () => corregirMallaSheet(cur);
-      $('mRe').onclick = () => { closeSheet(); mallaMetodo(); };
-      $('mPat').onclick = () => M.modo === 'medidos' ? medidosFin(M.medidos.map(b => [b[0], b[1]]), M) : M.modo === 'diseno' ? mallaDiseno(M) : M.modo === 'borde' ? patronBorde(M) : $('mDia').onclick();
-      if ($('mMed')) $('mMed').onclick = () => { closeSheet(); mallaBorde(); };
-      $('mDia').onclick = () => sheet(`<h3>Diámetro de tronco</h3><div class="srow"><span>Diámetro medio (mm)</span><input class="inp" id="dmV" inputmode="numeric" value="${M.diam || S.diamTronco}" style="width:100px;text-align:right"></div>
-        <div class="note">Se suma a la holgura (${fmt(S.holguraTronco, 2)} m) para separar el apero del tronco.</div><button class="btn" id="dmOk" style="margin-top:10px">Guardar</button>`, () => {
-          $('dmOk').onclick = async () => { const v = parseInt($('dmV').value); if (!(v > 0 && v < 3000)) return toast('Diámetro no válido'); M.diam = v; await saveCur(); closeSheet(); drawFinca(); toast('Diámetro guardado' + (cur.plan ? ': recalcula el plan' : '')); };
-        });
-      $('mDel').onclick = () => confirmSheet('¿Borrar la malla de árboles?', 'Borrar', async () => { cur.malla = null; await saveCur(); drawFinca(); }, true);
+      $('mMas').onclick = () => { closeSheet(); mallaMedidos(); };
+      $('mPat').onclick = () => medidosFin(M.medidos.map(b => [b[0], b[1]]), M);
+      $('mDel').onclick = () => confirmSheet('¿Borrar la arboleda y los árboles marcados?', 'Borrar', async () => { cur.malla = null; await saveCur(); drawFinca(); }, true);
     });
 }
 /* ---- Diseño teórico: árbol de referencia (ficticio) + patrón ---- */
@@ -3328,14 +3326,14 @@ function mallaMedidos() {
 function medPanel() {
   const W = medW; lyr.tmp.clearLayers();
   W.pts.forEach((p, i) => L.marker(p, { interactive: false, icon: L.divIcon({ className: '', html: `<div class="pin" style="background:#0277bd">${i + 1}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] }) }).addTo(lyr.tmp));
-  const lado = SB.ladoArbol === 'izq' ? 'izq' : 'der', dist = +SB.distArbol || 0.9;
-  showTool(`Árboles marcados · ${W.pts.length}`, `<div class="srow" style="margin:0 0 6px"><span>Árbol a mi</span><span style="display:flex;gap:6px;align-items:center"><span class="seg" id="mdLd" style="margin:0;white-space:nowrap"><button data-v="izq" class="${lado === 'izq' ? 'on' : ''}" style="padding:6px 8px">◀ Izq</button><button data-v="der" class="${lado === 'der' ? 'on' : ''}" style="padding:6px 8px">Der ▶</button></span><button class="btn sec" id="mdDm" style="width:38px;padding:6px 0">−</button><b id="mdDv" style="min-width:42px;text-align:center">${fmt(dist, 2)} m</b><button class="btn sec" id="mdDp" style="width:38px;padding:6px 0">＋</button></span></div>
-     Camina (o avanza) junto a los árboles y pulsa <b>🌳 Árbol</b> justo al pasar a su altura: se guarda ${fmt(dist, 2)} m a tu ${lado === 'der' ? 'derecha' : 'izquierda'} según el sentido de avance. ${W.pts.length < 2 ? 'Empieza por <b>dos árboles de la misma fila</b>.' : 'Sigue por el perímetro (mejor 8 o más).'} <button class="lnk" id="mdFx" style="display:inline;margin:0">o parado junto al tronco (${SB.promedioS || 10} s)</button>`,
-    [['✕', 'sec', medCancel], ['↶', 'sec', () => { if (W.avg) return; W.pts.pop(); medPanel(); }, !W.pts.length],
-     ['🌳 Árbol', '', medPaso], ['Terminar', '', () => { map.off('click', medClick); medidosFin(W.pts, cur.malla && cur.malla.modo === 'medidos' ? cur.malla : null); }, W.pts.length < 3]]);
-  $('mdLd').querySelectorAll('button').forEach(b => b.onclick = () => { SB.ladoArbol = b.dataset.v; DB.kvPut('settings', SB); medPanel(); });
-  const st = d => { SB.distArbol = Math.max(0, Math.min(3, Math.round(((+SB.distArbol || 0.9) + d) * 20) / 20)); DB.kvPut('settings', SB); medPanel(); };
-  $('mdDm').onclick = () => st(-0.05); $('mdDp').onclick = () => st(0.05); $('mdFx').onclick = medGPS;
+  const dist = +SB.distArbol || 1.0;
+  showTool(`🌳 Árboles marcados: ${W.pts.length}`, `Pulsa <b>MARCAR ÁRBOL</b> al pasar a la altura de cada árbol: se guarda a <b>${fmt(dist, 2)} m a tu derecha</b> (sentido de avance). Marca exteriores e interiores, los que quieras.
+     <div class="srow" style="margin:6px 0 0"><span>Distancia a tu derecha</span><span style="display:flex;gap:6px;align-items:center"><button class="btn sec" id="mdDm" style="width:40px;padding:6px 0">−</button><b style="min-width:52px;text-align:center">${Math.round(dist * 1000)} mm</b><button class="btn sec" id="mdDp" style="width:40px;padding:6px 0">＋</button></span></div>`,
+    [['↶', 'sec', () => { if (W.avg) return; W.pts.pop(); medPanel(); }, !W.pts.length], ['🌳 MARCAR ÁRBOL', '', medPaso], ['Terminar', 'sec', () => { map.off('click', medClick); medidosFin(W.pts, cur.malla && cur.malla.modo === 'medidos' ? cur.malla : null); }, W.pts.length < 3]]);
+  const st = d => { SB.distArbol = Math.max(0, Math.min(3, Math.round(((+SB.distArbol || 1.0) + d) * 20) / 20)); DB.kvPut('settings', SB); medPanel(); };
+  $('mdDm').onclick = () => st(-0.05); $('mdDp').onclick = () => st(0.05);
+  const bM = [...document.querySelectorAll('#toolBtns button')].find(b => /MARCAR/.test(b.textContent)); if (bM) bM.style.cssText += ';flex:2.2;font-size:19px;font-weight:700;min-height:64px';
+  const cancel = document.createElement('button'); cancel.className = 'lnk'; cancel.textContent = 'Cancelar'; cancel.style.cssText = 'margin:6px 0 0'; cancel.onclick = medCancel; $('toolHint').appendChild(cancel);
   const r = rumboAvance(); if (W.pts.length || r) $('toolTitle').textContent += r ? ' · rumbo ✓' : ' · camina para fijar el rumbo';
 }
 // árbol al pasar: posición GPS actual desplazada al lado indicado, perpendicular al sentido de avance
@@ -3343,7 +3341,7 @@ function medPaso() {
   if (!lastPos || gpsAge() > 4) return toast('Sin posición GPS reciente');
   if (lastPos.acc > Math.max(S.umbralPrecision || 8, 8)) return toast(`GPS poco preciso (±${fmt(lastPos.acc, 1)} m): espera un momento`);
   const r = rumboAvance(); if (!r) return toast('Camina unos pasos para saber el sentido de avance', 3500);
-  const d = +SB.distArbol || 0.9, sg = SB.ladoArbol === 'izq' ? -1 : 1, P = Geo.proj(lastPos.lat, lastPos.lon);
+  const d = +SB.distArbol || 1.0, sg = 1, P = Geo.proj(lastPos.lat, lastPos.lon);   // siempre a la derecha del avance
   const q = P.inv(sg * r.u[1] * d, -sg * r.u[0] * d);   // derecha del avance = (uy, −ux)
   medW.pts.push([+q[0].toFixed(8), +q[1].toFixed(8)]); speak('Árbol ' + medW.pts.length);
   toast(`🌳 Árbol ${medW.pts.length} (±${fmt(lastPos.acc, 1)} m)`, 1200); medPanel();
@@ -3360,76 +3358,61 @@ function medGPS() {
 }
 function medidosFin(pts, M0) {
   const num = v => String(+(+v).toFixed(2)).replace('.', ',');
-  sheet(`<h3>Patrón desde ${pts.length} árboles</h3>
-    <div class="srow"><span>Separación entre árboles en la fila (m)</span><input class="inp" id="mdY" inputmode="decimal" value="${num(M0 ? M0.sFila : S.mallaY)}" style="width:90px;text-align:right"></div>
-    <div class="srow"><span>Separación entre filas (m)</span><input class="inp" id="mdX" inputmode="decimal" value="${num(M0 ? M0.sFilas : S.mallaX)}" style="width:90px;text-align:right"></div>
-    <div class="srow"><span>Las separaciones son exactas</span><input type="checkbox" id="mdE" ${!M0 || M0.exacta ? 'checked' : ''} style="width:auto"></div>
-    <div class="note">Con pocos árboles marcados conviene dejarlas como exactas. Si no las conoces y marcas 6 o más, desmárcalo y la app las calcula (rango 0,85–1,25 ×).</div>
-    <label class="f">Orientación de las filas</label>
-    <div class="seg" id="mdO"><button data-v="f12">Árboles 1 y 2 en la misma fila</button><button data-v="lin">Paralela a un lado del linde</button><button data-v="lib">Libre</button></div>
-    <div class="note" id="mdON"></div>
-    <div class="srow"><span>Ángulo entre filas y columnas (°)</span><input class="inp" id="mdA" inputmode="decimal" value="${num(M0 ? M0.ang || 90 : 90)}" style="width:90px;text-align:right"></div>
-    <div class="srow"><span>Distancia mínima de los árboles al linde (m)</span><input class="inp" id="mdM" inputmode="decimal" value="${num(M0 ? M0.margen : 1.5)}" style="width:90px;text-align:right"></div>
-    <div class="srow"><span>Diámetro medio del tronco (mm)</span><input class="inp" id="mdD" inputmode="numeric" value="${M0 ? M0.diam : S.diamTronco || 500}" style="width:90px;text-align:right"></div>
+  const P = Geo.projFor(cur.linde.coords), xy = pts.map(p => P.fwd(p[0], p[1])), lin = Geo.toXY(cur.linde.coords, P);
+  // distancia de cada árbol marcado al linde: los exteriores marcan hasta dónde llega la arboleda
+  const dLin = q => { let m = Infinity; for (let i = 0; i < lin.length; i++) { const a = lin[i], b = lin[(i + 1) % lin.length], dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1e-12; let u = ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / L2; u = Math.max(0, Math.min(1, u)); m = Math.min(m, Math.hypot(q[0] - a[0] - u * dx, q[1] - a[1] - u * dy)); } return m; };
+  const dMin = Math.min(...xy.map(dLin)), sF0 = M0 ? M0.sFila : S.mallaY, sFs0 = M0 ? M0.sFilas : S.mallaX;
+  const mAuto = Math.max(0, dMin - 0.4 * Math.min(sF0, sFs0));
+  sheet(`<h3>🌳 Arboleda desde ${pts.length} árboles</h3>
+    <div class="srow"><span>Patrón: separación en la fila (mm)</span><input class="inp" id="mdY" inputmode="numeric" value="${Math.round(sF0 * 1000)}" style="width:100px;text-align:right"></div>
+    <div class="srow"><span>Patrón: separación entre filas (mm)</span><input class="inp" id="mdX" inputmode="numeric" value="${Math.round(sFs0 * 1000)}" style="width:100px;text-align:right"></div>
+    <div class="srow"><span>Diámetro del árbol (mm)</span><input class="inp" id="mdD" inputmode="numeric" value="${M0 ? M0.diam : S.diamTronco || 500}" style="width:100px;text-align:right"></div>
+    <div class="srow"><span>Árboles hasta (m del linde)</span><input class="inp" id="mdM" inputmode="decimal" value="${num(M0 && M0.margen != null ? M0.margen : mAuto)}" style="width:100px;text-align:right"></div>
+    <div class="note">El árbol marcado más próximo al linde está a ${num(dMin)} m. La arboleda llega hasta ahí (no se ponen árboles más cerca del linde).</div>
     <div id="mdR"></div>
-    <div class="row" style="margin-top:12px"><button class="btn sec" id="mdV">‹ Marcar más</button><button class="btn sec" id="mdC">Calcular</button><button class="btn" id="mdOk" disabled>Generar</button></div>`,
+    <div class="row" style="margin-top:12px"><button class="btn sec" id="mdV">‹ Marcar más</button><button class="btn" id="mdOk" disabled>Generar arboleda</button></div>`,
     () => {
-      let res = null, dirM = (M0 && M0.dirM) || 'f12';
-      const P = Geo.projFor(cur.linde.coords), xy = pts.map(p => P.fwd(p[0], p[1]));
+      let res = null, tm = null;
       const n = id => parseFloat(($(id).value || '').replace(',', '.'));
-      const NOTA = { f12: 'Lo más fiable: los dos primeros árboles marcados son de la MISMA fila (cuanto más separados, mejor). Fija el rumbo; el resto solo ajusta la posición.', lin: 'Las filas son paralelas a uno de los tres lados más largos del linde (±3°).', lib: 'Sin pistas: hacen falta 6 o más árboles bien repartidos.' };
-      const segO = () => { $('mdO').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === dirM)); $('mdON').textContent = NOTA[dirM]; };
-      $('mdO').querySelectorAll('button').forEach(b => b.onclick = () => { dirM = b.dataset.v; segO(); $('mdC').click(); }); segO();
-      const dirsDe = () => {
-        if (dirM === 'f12') { const v = [xy[1][0] - xy[0][0], xy[1][1] - xy[0][1]], L = Math.hypot(...v); return [[((Math.atan2(v[0], v[1]) / D2R) % 180 + 180) % 180, Math.max(0.3, Math.min(5, Math.atan(1.2 / Math.max(L, 1)) / D2R * 1.5))]]; }
-        if (dirM === 'lin') { const lx = Geo.toXY(cur.linde.coords, P); return lx.map((p, i) => { const q = lx[(i + 1) % lx.length]; return [Geo.dist(p, q), ((Math.atan2(q[0] - p[0], q[1] - p[1]) / D2R) % 180 + 180) % 180]; }).sort((a, b) => b[0] - a[0]).slice(0, 3).flatMap(([, az]) => [[az, 3], [(az + 90) % 180, 3]]); }
-        return null;
-      };
       $('mdV').onclick = () => { closeSheet(); if (!medW) medW = { pts: pts.slice(), avg: null }; map.on('click', medClick); medPanel(); };
-      $('mdC').onclick = () => {
-        const sF = n('mdY'), sFs = n('mdX'), mg = n('mdM'), dm = n('mdD'), ang = n('mdA') || 90;
-        if (!(sF > 0.5 && sFs > 0.5 && mg >= 0 && dm > 0 && dm < 3000 && ang >= 30 && ang <= 150)) return toast('Valores no válidos');
-        const r = fitMedidos(xy, sF, sFs, $('mdE').checked, ang, dirsDe());
+      const calc = () => {
+        const sF = n('mdY') / 1000, sFs = n('mdX') / 1000, mg = n('mdM'), dm = n('mdD');
+        if (!(sF > 0.5 && sFs > 0.5 && mg >= 0 && dm > 0 && dm < 3000)) { $('mdR').innerHTML = '<div class="card warnc">Valores no válidos</div>'; $('mdOk').disabled = true; return; }
+        // orientación: libre y, como alternativa, paralela a los lados del linde; se queda la que mejor encaja
+        const lx = lin.map((p, i) => { const q = lin[(i + 1) % lin.length]; return [Geo.dist(p, q), ((Math.atan2(q[0] - p[0], q[1] - p[1]) / D2R) % 180 + 180) % 180]; }).sort((a, b) => b[0] - a[0]).slice(0, 4).flatMap(([, az]) => [[az, 4], [(az + 90) % 180, 4]]);
+        const rL = fitMedidos(xy, sF, sFs, true, 90, lx), rF = fitMedidos(xy, sF, sFs, true, 90, null);
+        const r = rL.error ? rF : rF.error ? rL : (rL.rms <= rF.rms * 1.15 ? rL : rF);
         if (r.error) { $('mdR').innerHTML = `<div class="card warnc">${esc(r.error)}</div>`; $('mdOk').disabled = true; return; }
         const ll = q => P.inv(q[0], q[1]).map(v => +v.toFixed(8));
         const malla = { modo: 'medidos', A: ll(r.O), B: ll([r.O[0] + r.A[0], r.O[1] + r.A[1]]), C: ll([r.O[0] + r.B[0], r.O[1] + r.B[1]]), nAB: 2, nAC: 2, nominal: false,
-          medidos: pts.map((p, i) => [p[0], p[1], r.idx[i][0], r.idx[i][1]]), sFila: sF, sFilas: sFs, exacta: $('mdE').checked, ang, dirM, margen: mg, diam: Math.round(dm), rms: r.rms, az: +r.az.toFixed(2), faltas: (M0 && M0.faltas) || [] };
+          medidos: pts.map((p, i) => [p[0], p[1], r.idx[i][0], r.idx[i][1]]), sFila: sF, sFilas: sFs, exacta: true, ang: 90, margen: mg, diam: Math.round(dm), rms: r.rms, az: +r.az.toFixed(2), faltas: (M0 && M0.faltas) || [] };
         const g = genArboles({ ...cur, malla });
         if (g.error) { $('mdR').innerHTML = `<div class="card warnc">${esc(g.error)}</div>`; $('mdOk').disabled = true; return; }
         res = { ...malla, arboles: g.arboles, sepFila: g.sepFila, sepFilas: g.sepFilas };
         const mal = r.ambiguo || r.rms > Math.min(sF, sFs) * 0.25;
         $('mdR').innerHTML = `<div class="card" style="background:${mal ? '#fff3e0' : '#e8f5e9'}">
-          <div class="kv"><span><b>Árboles generados en el linde</b></span><span><b>${g.arboles.length}</b></span></div>
+          <div class="kv"><span><b>Árboles en la finca</b></span><span><b>${g.arboles.length}</b></span></div>
           <div class="kv"><span>Rumbo de las filas</span><span>${Math.round(r.az)}°</span></div>
-          <div class="kv"><span>Separación en fila · entre filas</span><span>${fmt(r.sepFila, 2)} · ${fmt(r.sepFilas, 2)} m</span></div>
-          <div class="kv"><span>Error de los árboles marcados</span><span>±${fmt(r.rms, 2)} m (máx ${fmt(r.maxRes, 2)})</span></div>
-          <div class="kv"><span>Marcados en</span><span>${r.filas} filas · ${r.cols} columnas</span></div>
-          ${r.ambiguo ? '<div style="color:var(--warn);margin-top:4px">⚠️ Resultado poco seguro: marca más árboles, separados y en filas y columnas distintas, o fija las separaciones como exactas.</div>' : ''}
-          ${!r.ambiguo && r.rms > Math.min(sF, sFs) * 0.25 ? '<div style="color:var(--warn);margin-top:4px">⚠️ Error alto: revisa algún árbol mal marcado o las separaciones.</div>' : ''}</div>`;
+          <div class="kv"><span>Desviación de tus árboles marcados</span><span>±${fmt(r.rms, 2)} m</span></div>
+          ${mal ? '<div style="color:var(--warn);margin-top:4px">⚠️ Encaje poco seguro: marca más árboles, separados y en filas distintas (exteriores e interiores).</div>' : ''}</div>`;
         $('mdOk').disabled = false;
         lyr.tmp.clearLayers(); drawArboles({ malla: res }, lyr.tmp);
       };
+      ['mdY', 'mdX', 'mdD', 'mdM'].forEach(id => $(id).oninput = () => { clearTimeout(tm); tm = setTimeout(calc, 400); });
       $('mdOk').onclick = async () => {
         if (!res) return;
         if (cur.tipo !== 'monte') { cur.tipo = 'monte'; if (cur.config && Math.abs(+cur.config.velocidad - velDef('abierta')) < 1e-6) cur.config.velocidad = velDef('monte'); }
-        cur.malla = res; await saveCur(); closeSheet(); medW = null; lyr.tmp.clearLayers(); showMain(); drawFinca();
-        sheet(`<h3>🌳 Arboleda generada</h3><div class="card"><div class="kv"><span>Árboles</span><span><b>${res.arboles.length}</b></span></div><div class="kv"><span>Marcados con GPS</span><span>${pts.length} (círculos azules)</span></div></div>
-          <div class="note">Cambia separaciones, diámetro o añade árboles en <b>Malla › ✎ Modificar patrón</b>. Marca las faltas en <b>Malla › ✖️ Faltas</b>.</div>
-          <button class="btn" id="mdPl" style="margin-top:10px">🧭 ${cur.plan ? 'Recalcular' : 'Calcular'} trayectorias</button>`, () => { $('mdPl').onclick = () => { closeSheet(); if (cur.plan) { lyr.plan.clearLayers(); planOptions(); } else planMenu(); }; });
+        cur.malla = res; S.mallaY = res.sFila; S.mallaX = res.sFilas; S.diamTronco = res.diam; await saveSB(); await saveCur(); closeSheet(); medW = null; lyr.tmp.clearLayers(); showMain(); drawFinca();
+        sheet(`<h3>🌳 Arboleda generada</h3><div class="card"><div class="kv"><span>Árboles</span><span><b>${res.arboles.length}</b></span></div><div class="kv"><span>Marcados por ti</span><span>${pts.length} (círculos azules)</span></div></div>
+          <button class="btn" id="mdPl" style="margin-top:10px">🧭 ${cur.plan ? 'Recalcular' : 'Calcular'} plan de trabajo</button>`, () => { $('mdPl').onclick = () => { closeSheet(); if (cur.plan) { lyr.plan.clearLayers(); planOptions(); } else planMenu(); }; });
       };
-      $('mdC').click();
+      calc();
     });
 }
 // tras traer o medir el linde de un monte sin malla: proponer la malla
 function guiaMalla() {
   if (!cur || cur.tipo !== 'monte' || !cur.linde || cur.malla) return false;
-  setTimeout(() => sheet(`<h3>🌲 Arboleda de la finca</h3><div class="note">Para calcular las trayectorias entre árboles hace falta la malla.</div>
-    <button class="opt" id="gmM">📍 Marcar varios árboles con GPS<small>En cualquier orden y sitio. La app saca el patrón y lo extiende a todo el linde.</small></button>
-    <button class="opt" id="gmD">🧪 Diseño teórico (árbol ficticio)<small>Rápido, sin ir a la finca: patrón + árbol de referencia.</small></button>
-    <button class="opt" id="gmB">🌳 Marcar árboles del borde<small>Esquinas, curvas e intermedios: cálculo más real.</small></button>
-    <button class="opt" id="gmL" style="color:var(--sub)">Más tarde</button>`, () => {
-      $('gmM').onclick = () => { closeSheet(); mallaMedidos(); }; $('gmD').onclick = () => mallaDiseno(); $('gmB').onclick = () => { closeSheet(); mallaBorde(); }; $('gmL').onclick = closeSheet;
-    }), 700);
+  setTimeout(() => { closeSheet(); toast('🌳 Marca árboles: pulsa MARCAR ÁRBOL al pasar junto a cada uno', 4000); mallaMedidos(); }, 700);
   return true;
 }
 function mallaMetodo() {
@@ -4197,14 +4180,13 @@ async function sigpacResultado(o, feats) {
     <div class="note" id="sgTot"></div>
     ${o.actual ? '' : `<label class="f">Tipo de finca</label><div class="seg" id="sgTipo"><button data-v="abierta" class="on">🌾 Abierta</button><button data-v="monte">🌲 Arbolada / plantación</button></div>
       <div id="sgAb">${exclStepHTML('sgExN', 0)}<div class="note">Tras crearla te guía para medir cada exclusión (a pie, punto + radio o dibujando).</div></div>
-      <div id="sgMo" class="hidden"><label class="f">Arboleda</label><div class="seg" id="sgMal"><button data-v="gps" class="on">📍 Marcar árboles con GPS</button><button data-v="dis">🧪 Diseño teórico</button></div>
-      <div class="note" id="sgMalN">Marcas varios árboles reales en la finca y la app genera el patrón dentro del linde de SIGPAC.</div></div>`}
+      <div id="sgMo" class="hidden"><div class="note">Al crearla marcarás árboles con el botón 🌳 MARCAR ÁRBOL (a 1 m a tu derecha) y la app genera la arboleda dentro del linde.</div></div>`}
     <button class="btn" id="sgOk" style="margin-top:10px">${o.actual ? 'Usar como linde de la finca' : 'Crear finca'}</button>`,
     () => {
       let tipoN = 'abierta', malN = 'gps', leerEx = () => 0;
       if ($('sgTipo')) {
         $('sgTipo').querySelectorAll('button').forEach(b => b.onclick = () => { tipoN = b.dataset.v; $('sgTipo').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); $('sgAb').classList.toggle('hidden', tipoN !== 'abierta'); $('sgMo').classList.toggle('hidden', tipoN !== 'monte'); });
-        $('sgMal').querySelectorAll('button').forEach(b => b.onclick = () => { malN = b.dataset.v; $('sgMal').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); $('sgMalN').textContent = malN === 'gps' ? 'Marcas varios árboles reales en la finca y la app genera el patrón dentro del linde de SIGPAC.' : 'Sin ir a la finca: patrón + árbol de referencia ficticio.'; });
+
         leerEx = exclStepBind('sgExN');
       }
       const cbs = [...document.querySelectorAll('.sheet input[type=checkbox]')];
@@ -4233,7 +4215,7 @@ async function sigpacResultado(o, feats) {
           exclusiones: u2.huecos.map((h, i) => ({ id: uid(), nombre: 'Exclusión ' + (i + 1), coords: h, metodo: 'sigpac', fecha: now })) };
         await DB.put(nf); closeSheet(); await openFinca(nf.id); setTimeout(fitFinca, 80);
         toast(`Finca «${nombre}» creada desde SIGPAC · ${fmtArea(Geo.areaLL(u2.coords))}`, 4000);
-        if (tipoN === 'monte') setTimeout(() => malN === 'gps' ? mallaMedidos() : mallaDiseno(), 900);   // arbolada: árboles con GPS o árbol ficticio
+        if (tipoN === 'monte') setTimeout(() => mallaMedidos(), 900);   // arbolada: árboles con GPS o árbol ficticio
         else if (exN > 0) guiaExcl(true);   // abierta: medir las exclusiones indicadas
         else setTimeout(() => fincaForm(nf), 900);   // revisar nombre, tipo, tractor, apero y velocidad
       };
@@ -4349,6 +4331,10 @@ async function migrarVelocidad() {
   try {
     let n = 0;
     if (+SB.velocidad === 2.5 || !(+SB.velocidad > 0)) { SB.velocidad = 3; await DB.kvPut('settings', SB); applyS(); n++; }
+    if (!SB.migVelTipo2) {   // v1.9.1: abierta 3 km/h, monte 2,3 km/h en TODAS las fincas; árbol a 1,0 m
+      SB.migVelTipo2 = Date.now(); SB.migVelTipo = SB.migVelTipo || Date.now(); if (+SB.velAbierta === 3.5) SB.velAbierta = 3; if (+SB.distArbol === 0.9) SB.distArbol = 1.0; SB.ladoArbol = 'der'; await DB.kvPut('settings', SB);
+      for (const f of await DB.all()) { if (!f.config) continue; const v = velDef(f.tipo); if (+f.config.velocidad !== v) { f.config.velocidad = v; if (f.plan && f.linde) { try { f.plan = Planner.plan(f, effS(f), { start: f.plan.inicio, end: f.plan.fin, hlFinal: f.plan.hlFinal }); } catch (e) { } } await DB.put(f); n++; } }
+    }
     if (!SB.migVelTipo) {   // v1.9: velocidad por defecto según el tipo (abierta 3,5 · monte 2,3 km/h)
       SB.migVelTipo = Date.now(); await DB.kvPut('settings', SB);
       for (const f of await DB.all()) if (f.config && +f.config.velocidad === 3) { f.config.velocidad = velDef(f.tipo); if (f.plan && f.linde) { try { f.plan = Planner.plan(f, effS(f), { start: f.plan.inicio, end: f.plan.fin, hlFinal: f.plan.hlFinal }); } catch (e) { } } await DB.put(f); n++; }
