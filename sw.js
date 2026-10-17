@@ -1,5 +1,8 @@
 // LIMPFINC service worker — app shell en caché; teselas siempre de red
-const CACHE = 'limpfinc-170';
+const CACHE = 'limpfinc-180';
+const TILES = 'limpfinc-teselas';
+let nPut = 0;
+async function recortar(ca) { if (++nPut % 50) return; const ks = await ca.keys(); for (let i = 0; i < ks.length - 3000; i++) await ca.delete(ks[i]); }
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
@@ -9,12 +12,18 @@ self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE && k !== TILES).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
-  if (/openstreetmap\.org|opentopomap\.org|supabase\.co|open-meteo\.com|sigpac-hubcloud\.es/.test(u.hostname)) return; // mapas: siempre red
+  if (/supabase\.co|open-meteo\.com|sigpac-hubcloud\.es/.test(u.hostname)) return; // datos: siempre red
+  if (/openstreetmap\.org|opentopomap\.org/.test(u.hostname)) {
+    // teselas: red primero; las ya vistas se guardan (máx. ~3000) para ver el mapa sin cobertura
+    e.respondWith(fetch(e.request).then(r => { if (r.ok) { const c = r.clone(); caches.open(TILES).then(ca => ca.put(e.request, c).then(() => recortar(ca))); } return r; })
+      .catch(() => caches.open(TILES).then(ca => ca.match(e.request)).then(r => r || Response.error())));
+    return;
+  }
   if (u.origin === location.origin) {
     // red primero (para recibir actualizaciones), caché si no hay red
     e.respondWith(fetch(e.request).then(r => { const c = r.clone(); caches.open(CACHE).then(ca => ca.put(e.request, c)); return r; })
