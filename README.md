@@ -763,3 +763,16 @@ Al tocarlo se abre «Cuenta y sincronización».
 - **Pendiente**: pendiente por celda del MDT (diferencias centrales). En Mapa 3D › ⛰, zonas por encima del umbral (Ajustes › Seguridad, 25 % por defecto). Durante el trabajo, aviso por voz al entrar (con histéresis).
 - **Copia de seguridad**: aviso en la lista si no hay copia en los últimos 7 días, con descarga directa.
 - **Mapa sin cobertura**: el service worker guarda las teselas vistas de OSM y OpenTopoMap (red primero, máximo ~3000, peticiones CORS).
+
+## 25. Implementación v1.9.0 — Árboles marcados al pasar, SIGPAC desde la posición GPS y velocidades por tipo
+
+- **Marcar árboles al pasar** (Malla › 📍 Varios árboles con GPS, o tras crear una finca arbolada):
+  - Botón **🌳 Árbol**: guarda la posición GPS actual desplazada a la **derecha** (o izquierda) del sentido de avance, a 0,90 m por defecto (ajustable de 0,05 en 0,05 m; normalmente 0,8–1,0 m).
+  - El sentido de avance sale de las últimas posiciones (≥ 2 m recorridos en ≤ 10 s; se recuerda 60 s). Si no hay rumbo, pide caminar unos pasos.
+  - Sigue disponible «parado junto al tronco» (GPS promediado) y tocar en el mapa.
+  - Patrón por defecto 3,5 × 3,5 m como separación exacta (editable). Orientación: árboles 1–2 en la misma fila. Se extiende a todo el linde de SIGPAC.
+  - Prueba: 33 árboles del perímetro marcados al pasar, GPS ±0,5 m → error por árbol marcado 0,41 m; arboleda generada (1121 árboles) con error medio 0,07 m y máximo 0,11 m.
+- **Nueva finca › 📍 Estoy en la finca: elegirla en el mapa SIGPAC**: el mapa SIGPAC se abre centrado en la posición GPS (zoom 18) y resalta en azul discontinuo la parcela donde estás. Se toca, «Usar selección», tipo (abierta → nº de exclusiones; arbolada → marcar árboles) y se crea.
+- **Velocidades por defecto**: finca abierta 3,5 km/h y monte/arbolada 2,3 km/h (⚙︎ › Trabajo).
+  - Al cambiar el tipo en la ficha se propone la del nuevo tipo si no se había cambiado a mano.
+  - Migración única: las fincas con la antigua velocidad general de 3 km/h pasan a la de su tipo y se recalcula el plan.
