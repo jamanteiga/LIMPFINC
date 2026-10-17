@@ -212,7 +212,7 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
     </div>
     <button class="btn big" id="wApero" style="margin-bottom:8px">🟢 APERO EN TRABAJO</button>
     <div class="row"><button class="btn big" id="wPause">▶ Iniciar</button><button class="btn big err" id="wEnd">■ Parar</button></div>
-    <div class="wtools"><button id="wInc" style="background:#fff3e0;font-weight:600">📍 Incidencia</button><button id="wVoz">🔊 Voz</button><button id="wHC">☀️ Contraste</button><span>GPS <b id="wAcc">–</b></span></div>
+    <div class="wtools"><button id="wPel" style="background:#c62828;color:#fff;font-weight:700">⚠️ Peligro</button><button id="wInc" style="background:#fff3e0;font-weight:600">📍 Incidencia</button><button id="wVoz">🔊 Voz</button><button id="wHC">☀️ Contraste</button><span>GPS <b id="wAcc">–</b></span></div>
   </div>
   <div class="tb" id="tbMain">
     <button id="tLinde"><b>⬠</b>Linde</button>
@@ -253,7 +253,7 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
 /* =========================================================
    LIMPFINC · F1 — Fincas, linde, exclusiones, área
    ========================================================= */
-const VERSION = '1.9.2';
+const VERSION = '2.0.0';
 
 /* ---------- Ajustes por defecto ---------- */
 const DEF = {
@@ -287,13 +287,13 @@ const velDef = tipo => tipo === 'monte' ? (+SB.velMonte || 2.3) : (+SB.velAbiert
 const DB = (() => {
   let db;
   const open = () => new Promise((res, rej) => {
-    const r = indexedDB.open('limpfinc', 4);
+    const r = indexedDB.open('limpfinc', 5);
     r.onupgradeneeded = e => {
       const d = e.target.result;
       if (!d.objectStoreNames.contains('fincas')) d.createObjectStore('fincas', { keyPath: 'id' });
       if (!d.objectStoreNames.contains('kv')) d.createObjectStore('kv');
       if (!d.objectStoreNames.contains('trabajos')) d.createObjectStore('trabajos', { keyPath: 'id' });
-      for (const st of ['tractores', 'aperos', 'velocidades', 'fotos']) if (!d.objectStoreNames.contains(st)) d.createObjectStore(st, { keyPath: 'id' });
+      for (const st of ['tractores', 'aperos', 'velocidades', 'fotos', 'planes']) if (!d.objectStoreNames.contains(st)) d.createObjectStore(st, { keyPath: 'id' });
       if (!d.objectStoreNames.contains('outbox')) d.createObjectStore('outbox', { keyPath: 'key' });
     };
     r.onsuccess = () => { db = r.result; res(); };
@@ -330,6 +330,9 @@ DB.tPut = async t => { t.mod = Date.now(); await DB.raw.tPut(t); Sync.mark('trab
 DB.tDel = async id => { await DB.raw.tDel(id); Sync.mark('trabajos', id, 'del'); };
 DB.kvPut = async (k, v) => { await DB.raw.kvPut(k, v); if (['settings', 'repostajes', 'filtros', 'capas'].includes(k)) { await DB.raw.kvPut('ajustesMod', Date.now()); Sync.mark('ajustes', 'me', 'up'); } };
 DB.cPut = async (st, o) => { o.mod = Date.now(); await DB.gPut(st, o); Sync.mark(st, o.id, 'up'); };
+DB.pByFinca = async fid => (await DB.gAll('planes')).filter(r => r.fincaId === fid).sort((a, b) => a.num - b.num);
+DB.pPut = async r => { r.mod = Date.now(); await DB.gPut('planes', r); Sync.mark('planes', r.id, 'up'); };
+DB.pDel = async id => { await DB.gDel('planes', id); Sync.mark('planes', id, 'del'); };
 DB.cDel = async (st, id) => { await DB.gDel(st, id); Sync.mark(st, id, 'del'); };
 
 /* ---------- Geometría (plano local métrico, WGS84) ---------- */
@@ -915,6 +918,7 @@ function initMap() {
 
 async function openFinca(id) {
   cur = await DB.get(id); if (!cur) return showList();
+  try { await cargarPlanes(cur); } catch (e) { planesCache = new Map(); }
   if (!cur.config) cur.config = { tractorId: SB.tractorDef, aperoId: SB.aperoDef, velocidad: velDef(cur.tipo), vegetacion: 'media' };
   DB.raw.kvPut('ultima', cur.id).catch(() => {});
   if (lyr.over) lyr.over.clearLayers();
@@ -945,7 +949,7 @@ function drawFinca(fit) {
     L.polygon(e.coords, { color: '#b71c1c', weight: 2, dashArray: '6 4', fillColor: '#757575', fillOpacity: .55 })
       .bindTooltip(esc(e.nombre), { sticky: true }).addTo(lyr.finca);
   });
-  drawTrabView(); drawFotos(); drawIncidencias(cur, lyr.finca);
+  drawTrabView(); drawFotos(); drawIncidencias(cur, lyr.finca); drawPeligros(cur, lyr.finca);
   if (fit) fitFinca();
 }
 // encuadra la finca en la parte visible del mapa (entre la cabecera y el panel inferior), en cualquier pantalla
@@ -1990,7 +1994,9 @@ function planMenu() {
       <div class="kv"><span>Combustible</span><span>${fmt(st.litros, 1)} L</span></div>
       <div class="kv"><span>Cobertura teórica</span><span>${fmt(st.area.cobertura * 100, 1)} %</span></div>
     </div>
+    <div class="note">${cur.plan.num ? esc(nomPlan({ num: cur.plan.num, nombre: (planesCache.get(cur.planId) || {}).nombre })) : ''}</div>
     <button class="opt" id="pDet">📋 Ver detalle</button>
+    <button class="opt" id="pLis">📚 Planes guardados</button>
     <button class="opt" id="pPre">💶 Presupuesto</button>
     <button class="opt" id="pRe2">🔄 Recalcular con otra velocidad / parámetros</button>
     <button class="opt" id="pRe">🧭 Cambiar dirección, punto de inicio o final</button>
@@ -1999,7 +2005,7 @@ function planMenu() {
     <button class="opt" id="pMis">${CFG.noAlc ? '⬜ Ocultar zonas no alcanzadas' : '🟧 Mostrar zonas no alcanzadas'}</button>
     <button class="opt" id="pDel" style="color:var(--err)">🗑 Borrar plan</button>`,
     () => {
-      $('pDet').onclick = () => planDetail(cur.plan); $('pPre').onclick = () => presupuestoSheet(cur);
+      $('pDet').onclick = () => planDetail(cur.plan); $('pLis').onclick = planesSheet; $('pPre').onclick = () => presupuestoSheet(cur);
       $('pRe').onclick = planOptions; $('pRe2').onclick = () => recalcSheet();
       $('pVis').onclick = () => { CFG.plan = !CFG.plan; saveCfg(); closeSheet(); drawFinca(); };
       $('pMis').onclick = () => { CFG.noAlc = !CFG.noAlc; saveCfg(); closeSheet(); drawFinca(); };
@@ -2161,7 +2167,7 @@ function recalcSheet(desdeLista) {
       };
       $('rOk').onclick = async () => {
         if (!nuevo || nuevo.error) return;
-        f.config = cfgN; f.planOpt = optN; f.plan = nuevo; cur = f; applyS();
+        f.config = cfgN; f.planOpt = optN; await guardarPlan(f, nuevo, 'recalculado'); cur = f; applyS();
         await saveCur(); closeSheet(); toast(`Plan guardado: ${fmtH(nuevo.stats.t.total / 3600)} · ${fmt(nuevo.stats.litros, 1)} L`, 3500);
         if (desdeLista || view === 'list') showList(); else drawFinca();
       };
@@ -2189,7 +2195,7 @@ function planReview(pl) {
     (pl.warn.length ? '<br>⚠️ ' + pl.warn.join('<br>⚠️ ') : ''),
     [['Descartar', 'sec', () => { planRev = null; lyr.tmp.clearLayers(); drawFinca(); showMain(); }],
      ['Detalle', 'sec', () => planDetail(pl)],
-     ['Guardar', '', async () => { cur.plan = pl; CFG.plan = true; saveCfg(); await saveCur(); planRev = null; lyr.tmp.clearLayers(); drawFinca(); showMain(); toast('Plan guardado'); }]]);
+     ['Guardar', '', async () => { const rec = await guardarPlan(cur, pl, 'calculado'); CFG.plan = true; saveCfg(); await saveCur(); toast(nomPlan(rec) + ' guardado'); planRev = null; lyr.tmp.clearLayers(); drawFinca(); showMain(); }]]);
 }
 function planDetail(pl) {
   const st = pl.stats, m = v => fmt(v, 0) + ' m', h = s => fmtH(s / 3600);
@@ -2241,7 +2247,7 @@ const CAPAS = [
   ['area', 'Área finca (linde)', '#a5d6a7'], ['excl', 'Exclusiones', '#757575'], ['arboles', 'Árboles', '#33691e'],
   ['plan', 'Trayectoria ideal', '#1565c0'], ['noAlc', 'Zonas no alcanzadas (plan)', '#ff9800'],
   ['real', 'Trayectoria real', '#7b1fa2'], ['desv', 'Desviaciones', '#d50000'],
-  ['limpia', 'Área real limpia', '#1b5e20'], ['solape', 'Solape (≥ 2 pasadas)', '#fdd835'], ['pendiente', 'Área pendiente', '#9e9e9e']
+  ['limpia', 'Área real limpia', '#1b5e20'], ['solape', 'Solape (≥ 2 pasadas)', '#fdd835'], ['pendiente', 'Zonas sin limpiar (rojo)', '#d32f2f']
 ];
 const PRESETS_DEF = [
   { nombre: 'Todo', cfg: { ...CFG_DEF, noAlc: true, pendiente: true } },
@@ -2306,14 +2312,25 @@ async function historicoSheet() {
     });
 }
 function trabOpts(t) {
-  sheet(`<h3>Trabajo del ${new Date(t.inicio).toLocaleDateString('es-ES')}</h3>
+  sheet(`<h3>${esc(nomRuta(t))}</h3><div class="note">${fFecha(t.inicio)}${planDeRuta(t) ? ' · ' + esc(planDeRuta(t).nombre) : ''}</div>
     <button class="opt" id="tVer">🗺 Ver en el mapa</button>
+    <button class="opt" id="tRoj">🔴 Ver zonas sin limpiar</button>
     <button class="opt" id="tRes">📋 Resumen</button>
+    <button class="opt" id="tAn">📊 Analizar frente al plan</button>
+    <button class="opt" id="tEd">✎ Nombre y nota</button>
+    <button class="opt" id="tCp">⧉ Copiar</button>
+    <button class="opt" id="tPdf">📄 Parte en PDF</button>
     ${t.estado === 'abierto' ? '<button class="opt" id="tCont">▶️ Continuar</button><button class="opt" id="tCer">✅ Marcar como finalizado</button>' : ''}
     <button class="opt" id="tDel" style="color:var(--err)">🗑 Eliminar</button>`,
     () => {
       $('tVer').onclick = () => { viewTrab = t.id; trabCache = null; closeSheet(); drawFinca(); };
       $('tRes').onclick = () => resumenSheet(t);
+      $('tRoj').onclick = () => verSinLimpiar(t);
+      $('tAn').onclick = () => analizarRutas([t]);
+      $('tPdf').onclick = () => pdfDoc(cur, t);
+      $('tCp').onclick = () => copiarRuta(t);
+      $('tEd').onclick = () => sheet(`<h3>✎ ${esc(nomRuta(t))}</h3><label class="f">Nombre</label><input class="inp" id="teN" value="${esc(nomRuta(t))}"><label class="f">Nota</label><input class="inp" id="teT" value="${esc(t.nota || '')}"><button class="btn" id="teOk" style="margin-top:10px">Guardar</button>`,
+        () => { $('teOk').onclick = async () => { t.nombre = $('teN').value.trim() || ('Ruta ' + t.num); t.nota = $('teT').value.trim(); await DB.tPut(t); closeSheet(); rutasSheet(); }; });
       if ($('tCont')) $('tCont').onclick = () => { closeSheet(); startWork(t); };
       if ($('tCer')) $('tCer').onclick = async () => { t.estado = 'cerrado'; t.resumen = resumenTrab(t, rebuildTrab(cur, t)); await DB.tPut(t); closeSheet(); toast('Trabajo finalizado'); };
       $('tDel').onclick = () => confirmSheet('¿Eliminar este trabajo y su recorrido?', 'Eliminar', async () => {
@@ -2447,7 +2464,9 @@ function fincaMenu() {
   if (busy()) return toast('Termina o cancela la operación en curso');
   sheet(`<h3>${esc(cur.nombre)}</h3>
     <button class="opt" id="fmCap">🗂 Capas y filtros</button>
-    <button class="opt" id="fmHis">🕘 Histórico de trabajos</button>
+    <button class="opt" id="fmPla">🧭 Planes guardados</button>
+    <button class="opt" id="fmHis">🛤 Rutas de trabajo (guardadas y análisis)</button>
+    <button class="opt" id="fmPel">⚠️ Peligros (piedras, árboles caídos…)${(cur.peligros || []).length ? ' (' + cur.peligros.length + ')' : ''}</button>
     ${cur.tipo === 'monte' ? '<button class="opt" id="fmMal">🌳 Arboleda (marcar árboles)</button>' : ''}
     <button class="opt" id="fmInc">📍 Incidencias${(cur.incidencias || []).filter(i => !i.resuelta).length ? ' (' + cur.incidencias.filter(i => !i.resuelta).length + ')' : ''}</button>
     <button class="opt" id="fmPre">💶 Presupuesto</button>
@@ -2462,7 +2481,7 @@ function fincaMenu() {
     <button class="opt" id="fmSw">📂 Cambiar de finca</button>
     <button class="opt" id="fmNew">＋ Nueva finca</button>`,
     () => {
-      $('fmCap').onclick = capasSheet; $('fmHis').onclick = historicoSheet; $('fmExp').onclick = exportSheet; $('fmM3d').onclick = () => mapa3DSheet(cur); $('fmInc').onclick = () => incidenciasLista(cur); $('fmPre').onclick = () => presupuestoSheet(cur);
+      $('fmCap').onclick = capasSheet; $('fmHis').onclick = rutasSheet; $('fmPla').onclick = planesSheet; $('fmPel').onclick = () => peligrosLista(cur); $('fmExp').onclick = exportSheet; $('fmM3d').onclick = () => mapa3DSheet(cur); $('fmInc').onclick = () => incidenciasLista(cur); $('fmPre').onclick = () => presupuestoSheet(cur);
       $('fmFuel').onclick = repostajeSheet; $('fmEd').onclick = () => fincaForm(cur);
       if ($('fmRe')) $('fmRe').onclick = () => recalcSheet();
       $('fmSw').onclick = fincaSwitcher; $('fmCp').onclick = () => copiarFinca(cur);
@@ -2499,6 +2518,12 @@ function Grid(f) {
   };
   fill(lin, 1); exs.forEach(e => fill(e, 0));
   let nMask = 0; for (let i = 0; i < N; i++) nMask += mask[i];
+  // troncos (diámetro/2 + holgura): no se pintan como «sin limpiar»
+  let treeM = null;
+  if (f.malla && f.malla.arboles && f.malla.arboles.length) {
+    treeM = new Uint8Array(N); const rr = (+(f.malla.diam || S.diamTronco || 500)) / 2000 + (S.holguraTronco || 0.3), n_ = Math.ceil(rr / cs);
+    f.malla.arboles.forEach(a => { const q = P.fwd(a[0], a[1]), c0 = Math.floor((q[0] - x0) / cs), r0 = Math.floor((q[1] - y0) / cs); for (let dr = -n_; dr <= n_; dr++) for (let dc = -n_; dc <= n_; dc++) { const r_ = r0 + dr, c_ = c0 + dc; if (r_ < 0 || c_ < 0 || r_ >= rows || c_ >= cols) continue; if (Math.hypot(x0 + (c_ + .5) * cs - q[0], y0 + (r_ + .5) * cs - q[1]) <= rr) treeM[r_ * cols + c_] = 1; } });
+  }
   const g = { P, x0, y0, cs, cols, rows, mask, cnt, nMask, nClean: 0, nOver: 0 };
   g.stamp = (a, b, w, t) => {
     const r = w / 2, r2 = r * r;
@@ -2528,7 +2553,7 @@ function Grid(f) {
       let col = null;
       if (v >= 2 && cfg.solape) col = [253, 216, 53, 185];
       else if (v >= 1 && cfg.limpia) col = [27, 94, 32, 150];
-      else if (v === 0 && mask[k] && cfg.pendiente) col = [110, 110, 110, 120];
+      else if (v === 0 && mask[k] && cfg.pendiente && !(treeM && treeM[k])) col = [229, 30, 30, 215];
       if (col) { d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = col[3]; }
     }
     ctx.putImageData(im, 0, 0); return cv.toDataURL();
@@ -2610,7 +2635,8 @@ function Tracker(g, plan, S, t0) {
 /* ---- Reconstrucción de un trabajo (rejilla + recorrido) ---- */
 function sesHoras(trab) { return trab.sesiones.reduce((s, x) => s + Math.max(0, (x.fin || x.inicio) - x.inicio), 0) / 3.6e6; }
 function rebuildTrab(f, trab) {
-  const g = Grid(f), plan = trab.planFecha && f.plan && f.plan.fecha === trab.planFecha ? f.plan : null;
+  const pRec = trab.planId && planesCache.get(trab.planId);
+  const g = Grid(f), plan = pRec ? pRec.plan : trab.planFecha && f.plan && f.plan.fecha === trab.planFecha ? f.plan : null;
   const S2 = effS(f, trab.cfg || f.config);
   const tr = Tracker(g, plan, S2, trab.inicio), outs = [];
   trab.sesiones.forEach(ses => { tr.reset(); outs.push(null); ses.pts.forEach(pt => { const r = tr.add(pt); if (r.cut) outs.push([r.cutLL, r.on, r.flag]); }); });
@@ -2672,7 +2698,12 @@ async function workMenu() {
 }
 async function startWork(trab) {
   const hasPlan = cur.plan && !planStale(cur);
-  if (!trab) trab = { id: uid(), fincaId: cur.id, inicio: Date.now(), estado: 'abierto', planFecha: hasPlan ? cur.plan.fecha : null, cfg: { ...(cur.config || {}) }, sesiones: [] };
+  if (!trab && cur.plan && !hasPlan) toast('⚠️ El plan está desactualizado (cambió el linde, una exclusión o un peligro): esta ruta se guarda sin plan. Recalcula el plan para compararla.', 6000);
+  if (!trab) {
+    if (hasPlan) await asegurarPlanGuardado(cur);
+    const num = (await DB.tByFinca(cur.id)).reduce((m, t) => Math.max(m, t.num || 0), 0) + 1;
+    trab = { id: uid(), fincaId: cur.id, num, nombre: 'Ruta ' + num, inicio: Date.now(), estado: 'abierto', planFecha: hasPlan ? cur.plan.fecha : null, planId: hasPlan ? cur.planId : null, cfg: { ...(cur.config || {}) }, sesiones: [] };
+  }
   const R = rebuildTrab(cur, trab);
   R.tr.reset(); R.outs.push(null);
   work = { trab, ...R, ses: null, on: true, paused: true, ready: true, last: null, spd: 0, guide: { info: R.plan ? planGuide(R.plan) : [], part: -1, warned: false, devSince: 0, devSay: 0 } };
@@ -2758,7 +2789,7 @@ function paintTools() {
   document.body.classList.toggle('hc', !!S.altoContraste);
 }
 $('wVoz').onclick = async () => { S.voz = !S.voz; paintTools(); if (S.voz) speak('Voz activada', true); else try { speechSynthesis.cancel(); } catch { } try { await saveSB(); } catch { } };
-$('wInc').onclick = () => incidenciaSheet();
+$('wInc').onclick = () => incidenciaSheet(); $('wPel').onclick = () => peligroSheet();
 $('wHC').onclick = async () => { S.altoContraste = !S.altoContraste; paintTools(); try { await saveSB(); } catch { } };
 let gpsWasOk = null;
 setInterval(() => {
@@ -2799,7 +2830,7 @@ function workPoint(p) {
     speak('Pausa automática. Parado', true); toast('⏸ Pausa automática (parado). Se reanuda al moverte.', 4000); saveWork();
   }
   updWorkUI(p);
-  prepararPendienteTrabajo(); avisoPendiente(p);
+  prepararPendienteTrabajo(); avisoPendiente(p); avisoPeligros(p);
 }
 function renderWork() {
   if (!work) return;
@@ -2874,18 +2905,19 @@ async function endWork(estado) {
   w.trab.sesiones.forEach(x => { const lp = x.pts[x.pts.length - 1]; if (lp) x.fin = Math.max(x.fin || 0, lp[3]); });
   w.trab.estado = estado; w.trab.fin = Date.now();
   w.trab.resumen = resumenTrab(w.trab, w);
+  if (w.plan) { const pr = w.trab.planId && planesCache.get(w.trab.planId); w.trab.planResumen = { nombre: pr ? nomPlan(pr) : 'Plan', t: w.plan.stats.t.total / 3600, litros: w.plan.stats.litros, L: w.plan.stats.L.total, fecha: w.plan.fecha }; }
   clearInterval(w.tRender); clearInterval(w.tSave);
   if (w.trab.sesiones.length) await DB.tPut(w.trab); else await DB.tDel(w.trab.id);
   setActivo(null);
   work = null; keepAwake(false); followPos = false; document.body.classList.remove('hc'); try { speechSynthesis.cancel(); } catch { }
   $('pWork').classList.add('hidden'); $('bLoc').classList.remove('hidden'); showMain();
   trabCache = null; drawFinca();
-  if (w.trab.sesiones.length) resumenSheet(w.trab);
+  if (w.trab.sesiones.length) { resumenSheet(w.trab); toast(`💾 ${nomRuta(w.trab)} guardada${w.trab.planResumen ? ' con ' + w.trab.planResumen.nombre : ''}`, 3500); }
 }
 function resumenSheet(trab) {
   const r = trab.resumen; if (!r) return;
   const m = v => v == null ? '–' : fmt(v, 0) + ' m', pc = v => v == null ? '–' : fmt(v * 100, 1) + ' %';
-  sheet(`<h3>Trabajo del ${new Date(trab.inicio).toLocaleDateString('es-ES')} ${trab.estado === 'abierto' ? '(abierto)' : ''}</h3>
+  sheet(`<h3>${esc(nomRuta(trab))} · ${new Date(trab.inicio).toLocaleDateString('es-ES')} ${trab.estado === 'abierto' ? '(abierta)' : ''}</h3>
     <div class="card"><h3>Superficie</h3>
       <div class="kv"><span>Objetivo (finca − exclusiones)</span><span>${fmtArea(r.objetivo)}</span></div>
       <div class="kv"><span>Limpia real</span><span style="color:var(--pri)">${fmtArea(r.limpia)}</span></div>
@@ -3660,7 +3692,7 @@ const CAT_COLS = {
   aperos: ['nombre', 'labor', 'ancho_m', 'longitud_m', 'enganche', 'distancia_gps_m', 'desplazamiento_m', 'solape_m', 'velocidad_kmh', 'consumo_lh', 'potencia_cv', 'tdf_rpm', 'notas'],
   velocidades: ['labor', 'vegetacion', 'velocidad_kmh', 'notas']
 };
-const ORDER = ['fincas', 'tractores', 'aperos', 'velocidades', 'ajustes', 'fotos', 'trabajos'];
+const ORDER = ['fincas', 'planes', 'tractores', 'aperos', 'velocidades', 'ajustes', 'fotos', 'trabajos'];
 const iso = ms => new Date(ms || Date.now()).toISOString();
 const strip = o => { const c = { ...o }; delete c._sync; return c; };
 const Remote = {
@@ -3702,7 +3734,8 @@ const Sync = {
       for (const it of items) {
         try { await this.push(it); }
         catch (e) {
-          if (it.table === 'fotos') { this.fotosErr = e.message; continue; }          // tabla de fotos aún no creada: se reintenta más tarde
+          if (it.table === 'fotos') { this.fotosErr = e.message; continue; }
+          if (it.table === 'planes') { this.planesErr = e.message; continue; }          // tabla de planes aún no creada (supabase_limpfinc_v200.sql)          // tabla de fotos aún no creada: se reintenta más tarde
           if (e && (e.code === '23503' || e.code === '42501')) console.warn('descartado', it, e); else throw e;
         }
         const cur_ = await DB.gGet('outbox', it.key); if (cur_ && cur_.t === it.t) await DB.gDel('outbox', it.key);
@@ -3721,6 +3754,7 @@ const Sync = {
       await Remote.upsert('ajustes', { user_id: this.user.id, data: { settings: SB, repostajes: await DB.kvGet('repostajes'), filtros: await DB.kvGet('filtros'), capas: await DB.kvGet('capas') }, updated_at: iso(mod) }, 'user_id');
       return;
     }
+    if (T === 'planes') { const x = await DB.gGet('planes', it.id); if (!x) return; await Remote.upsert('planes', { id: x.id, finca_id: x.fincaId, data: strip(x), updated_at: iso(x.mod) }); x._sync = x.mod; await DB.gPut('planes', x); this.planesErr = ''; return; }
     if (T === 'fotos') { const x = await DB.gGet('fotos', it.id); if (!x) return; await Remote.upsert('fotos', { id: x.id, finca_id: x.fincaId, caption: x.caption, lat: x.lat, lon: x.lon, img: x.img, fecha: iso(x.fecha), updated_at: iso(x.mod) }); x._sync = x.mod; await DB.gPut('fotos', x); return; }
     const o = await DB.gGet(T, it.id); if (!o) return;
     const row = { id: o.id, updated_at: iso(o.mod) }; CAT_COLS[T].forEach(k => row[k] = o[k] ?? null);
@@ -3748,6 +3782,14 @@ const Sync = {
         const rset = new Set(rem.map(r => r.id));
         for (const l of loc) if (!rset.has(l.id) && !pend.has(T + ':' + l.id)) { if (l._sync) await DB.gDel(T, l.id); else await this.mark(T, l.id, 'up'); }
       }
+      try {   // planes numerados
+        const rem = await Remote.list('planes', 'id,updated_at'), loc = await DB.gAll('planes'), lmap = new Map(loc.map(o => [o.id, o])), need = [];
+        for (const r of rem) { const l = lmap.get(r.id), rm = Date.parse(r.updated_at); if (!pend.has('planes:' + r.id) && (!l || rm > (l.mod || 0))) need.push(r.id); }
+        for (const r of await Remote.getIn('planes', need)) { const rm = Date.parse(r.updated_at); await DB.gPut('planes', { ...r.data, id: r.id, fincaId: r.finca_id, mod: rm, _sync: rm }); }
+        const rset = new Set(rem.map(r => r.id));
+        for (const l of loc) if (!rset.has(l.id) && !pend.has('planes:' + l.id)) { if (l._sync) await DB.gDel('planes', l.id); else await this.mark('planes', l.id, 'up'); }
+        this.planesErr = '';
+      } catch (e) { this.planesErr = e.message; }
       try {   // fotos: primero id+fecha, luego solo las que faltan
         const rem = await Remote.list('fotos', 'id,updated_at'), loc = await DB.gAll('fotos'), lmap = new Map(loc.map(o => [o.id, o])), need = [];
         for (const r of rem) { const l = lmap.get(r.id), rm = Date.parse(r.updated_at); if (!pend.has('fotos:' + r.id) && (!l || rm > (l.mod || 0))) need.push(r.id); }
@@ -3870,6 +3912,7 @@ async function borrarFinca(f) {
   const trs = await DB.tByFinca(f.id), fts = (await DB.gAll('fotos')).filter(x => x.fincaId === f.id);
   for (const t of trs) await DB.raw.tDel(t.id);
   for (const x of fts) await DB.gDel('fotos', x.id);
+  for (const x of await DB.pByFinca(f.id)) await DB.gDel('planes', x.id);
   await DB.del(f.id);                        // en Supabase, los trabajos y fotos se borran en cascada
   try { const a = await DB.kvGet('activo'); if (a && a.fincaId === f.id) await DB.raw.kvPut('activo', null); } catch { }
   if (cur && cur.id === f.id) { cur = null; stopGPS(); }
@@ -4700,8 +4743,8 @@ const INC = { falta: ['🌳', 'Falta árbol'], danado: ['🪵', 'Árbol dañado'
 function incidenciaSheet() {
   if (!cur) return;
   sheet(`<h3>📍 Incidencia aquí</h3>
-    <div class="incg">${Object.entries(INC).map(([k, [e, t]]) => `<button class="btn sec big" data-i="${k}" style="margin:0">${e}<br><small style="font-size:14px">${t}</small></button>`).join('')}</div>
-    <div class="note" style="margin-top:8px">Se guarda en la posición del apero (o la del GPS). «Obstáculo» crea además una exclusión de 1 m de radio; «Falta árbol» marca la falta en la malla.</div>`,
+    <div class="incg">${Object.entries(INC).filter(([k]) => k !== 'obst').map(([k, [e, t]]) => `<button class="btn sec big" data-i="${k}" style="margin:0">${e}<br><small style="font-size:14px">${t}</small></button>`).join('')}</div>
+    <div class="note" style="margin-top:8px">Se guarda en la posición del apero (o la del GPS). Para piedras, árboles caídos u obstáculos usa el botón rojo ⚠️ Peligro.</div>`,
     sh => sh.querySelectorAll('[data-i]').forEach(b => b.onclick = () => registrarIncidencia(b.dataset.i)));
 }
 async function registrarIncidencia(tipo, nota) {
@@ -4943,6 +4986,185 @@ function avisoPendiente(p) {
   const v = pendienteEn(work.pendM, [p.lat, p.lon]); if (v == null) return;
   if (v > S.pendMax && !work.enPend) { work.enPend = true; speak(`Atención: pendiente fuerte, ${Math.round(v)} por ciento`, true); toast(`⛰ Pendiente ${Math.round(v)} %`, 3000); }
   else if (v < S.pendMax * 0.8) work.enPend = false;
+}
+
+/* =========================================================
+   v2.0 — PLANES NUMERADOS, RUTAS DE TRABAJO NUMERADAS, ANÁLISIS Y PELIGROS
+   ========================================================= */
+let planesCache = new Map();
+async function cargarPlanes(f) { planesCache = new Map((await DB.pByFinca(f.id)).map(r => [r.id, r])); return planesCache; }
+async function guardarPlan(f, pl, origen) {
+  const recs = await DB.pByFinca(f.id), num = recs.reduce((m, r) => Math.max(m, r.num || 0), 0) + 1;
+  const rec = { id: uid(), fincaId: f.id, num, nombre: 'Plan ' + num, fecha: Date.now(), origen: origen || 'calculado', nota: '', plan: pl };
+  pl.id = rec.id; pl.num = num; f.plan = pl; f.planId = rec.id;
+  await DB.pPut(rec); if (cur === f) planesCache.set(rec.id, rec);
+  return rec;
+}
+async function asegurarPlanGuardado(f) {   // planes de versiones anteriores: pasan a ser «Plan 1»
+  if (!f.plan) return null;
+  if (f.planId && (planesCache.has(f.planId) || (await DB.pByFinca(f.id)).some(r => r.id === f.planId))) return f.planId;
+  const rec = await guardarPlan(f, f.plan, 'anterior'); await DB.put(f); return rec.id;
+}
+async function numerarRutas(f) {
+  const trs = (await DB.tByFinca(f.id)).sort((a, b) => a.inicio - b.inicio); let max = trs.reduce((m, t) => Math.max(m, t.num || 0), 0);
+  for (const t of trs) if (!t.num) { t.num = ++max; await DB.tPut(t); }
+  return trs.reverse();
+}
+const nomRuta = t => t.nombre || ('Ruta ' + (t.num || '?'));
+const nomPlan = r => r.nombre || ('Plan ' + r.num);
+const fFecha = ts => new Date(ts).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' });
+
+/* ---- Planes ---- */
+async function planesSheet() {
+  await asegurarPlanGuardado(cur); await cargarPlanes(cur);
+  const recs = [...planesCache.values()].sort((a, b) => b.num - a.num), trs = await numerarRutas(cur);
+  if (!recs.length) return sheet(`<h3>🧭 Planes · ${esc(cur.nombre)}</h3><div class="note">Aún no hay planes. Calcula uno en <b>Plan</b>.</div>`);
+  sheet(`<h3>🧭 Planes · ${esc(cur.nombre)}</h3>
+    <div class="note">Cada plan calculado o recalculado se guarda con su número. Las rutas de trabajo guardan el plan con el que se hicieron.</div>
+    ${recs.map(r => { const st = r.plan.stats, us = trs.filter(t => t.planId === r.id).map(nomRuta); return `<button class="opt" data-id="${r.id}">${r.id === cur.planId ? '✅ ' : ''}<b>${esc(nomPlan(r))}</b> · ${fFecha(r.fecha)}
+      <small>${fmtH(st.t.total / 3600)} · ${fmt(st.litros, 1)} L · ${st.nPasadas} pasadas · rumbo ${r.plan.az}° · ${fmt(r.plan.params.v, 1)} km/h${us.length ? ' · usado en ' + us.join(', ') : ''}${r.nota ? '<br>' + esc(r.nota) : ''}</small></button>`; }).join('')}
+    ${recs.length > 1 ? '<button class="btn sec" id="plCmp" style="margin-top:6px">📊 Comparar planes</button>' : ''}`,
+    sh => {
+      sh.querySelectorAll('[data-id]').forEach(b => b.onclick = () => planOptsSheet(planesCache.get(b.dataset.id)));
+      if ($('plCmp')) $('plCmp').onclick = () => compararPlanes(recs);
+    });
+}
+function planOptsSheet(r) {
+  sheet(`<h3>${esc(nomPlan(r))}</h3><div class="note">${fFecha(r.fecha)} · ${r.origen}</div>
+    ${r.id !== cur.planId ? '<button class="opt" id="poUse">✅ Usar este plan (verlo en el mapa y trabajar con él)</button>' : '<div class="card" style="background:#e8f5e9">✅ Es el plan activo de la finca</div>'}
+    <button class="opt" id="poDet">📋 Detalle</button>
+    <button class="opt" id="poEd">✎ Nombre y nota</button>
+    <button class="opt" id="poCp">⧉ Copiar (nuevo número)</button>
+    <button class="opt" id="poRe">🔄 Modificar: recalcular con otros parámetros</button>
+    <button class="opt" id="poDel" style="color:var(--err)">🗑 Eliminar</button>`,
+    () => {
+      if ($('poUse')) $('poUse').onclick = async () => { cur.plan = r.plan; cur.planId = r.id; await saveCur(); CFG.plan = true; closeSheet(); drawFinca(true); toast(nomPlan(r) + ' activo'); };
+      $('poDet').onclick = () => planDetail(r.plan);
+      $('poEd').onclick = () => sheet(`<h3>✎ ${esc(nomPlan(r))}</h3><label class="f">Nombre</label><input class="inp" id="peN" value="${esc(nomPlan(r))}"><label class="f">Nota</label><input class="inp" id="peT" value="${esc(r.nota || '')}"><button class="btn" id="peOk" style="margin-top:10px">Guardar</button>`,
+        () => { $('peOk').onclick = async () => { r.nombre = $('peN').value.trim() || ('Plan ' + r.num); r.nota = $('peT').value.trim(); await DB.pPut(r); closeSheet(); planesSheet(); }; });
+      $('poCp').onclick = async () => { const recs = await DB.pByFinca(cur.id), num = recs.reduce((m, x) => Math.max(m, x.num), 0) + 1; const c = { ...JSON.parse(JSON.stringify(r)), id: uid(), num, nombre: 'Plan ' + num + ' (copia de ' + nomPlan(r) + ')', fecha: Date.now(), origen: 'copia' }; delete c._sync; c.plan.id = c.id; c.plan.num = num; await DB.pPut(c); planesCache.set(c.id, c); toast(c.nombre + ' creado'); planesSheet(); };
+      $('poRe').onclick = async () => { if (r.id !== cur.planId) { cur.plan = r.plan; cur.planId = r.id; await saveCur(); } recalcSheet(); };
+      $('poDel').onclick = () => confirmSheet(`¿Eliminar ${esc(nomPlan(r))}? Las rutas hechas con él conservan su resumen.`, 'Eliminar', async () => {
+        await DB.pDel(r.id); planesCache.delete(r.id);
+        if (cur.planId === r.id) { cur.plan = null; cur.planId = null; await saveCur(); drawFinca(); }
+        toast(nomPlan(r) + ' eliminado'); planesSheet();
+      }, true);
+    });
+}
+function compararPlanes(recs) {
+  const rows = [['Fecha', r => new Date(r.fecha).toLocaleDateString('es-ES')], ['Tiempo', r => fmtH(r.plan.stats.t.total / 3600)], ['Litros', r => fmt(r.plan.stats.litros, 1)],
+    ['Pasadas', r => r.plan.stats.nPasadas], ['Giros U/K/Ω', r => `${r.plan.stats.giros.U}/${r.plan.stats.giros.K}/${r.plan.stats.giros.O}`], ['Recorrido', r => fmt(r.plan.stats.L.total, 0) + ' m'],
+    ['Cobertura teórica', r => fmt(r.plan.stats.area.cobertura * 100, 1) + ' %'], ['Rumbo', r => r.plan.az + '°'], ['Velocidad', r => fmt(r.plan.params.v, 1) + ' km/h']];
+  const best = recs.reduce((a, b) => b.plan.stats.t.total < a.plan.stats.t.total ? b : a);
+  sheet(`<h3>📊 Comparar planes</h3><div style="overflow-x:auto"><table class="cmp"><tr><th></th>${recs.map(r => `<th>${esc(nomPlan(r))}${r === best ? ' ⭐' : ''}</th>`).join('')}</tr>
+    ${rows.map(([n, f]) => `<tr><th>${n}</th>${recs.map(r => `<td>${f(r)}</td>`).join('')}</tr>`).join('')}</table></div><div class="note">⭐ el plan más rápido.</div>`);
+}
+
+/* ---- Rutas de trabajo ---- */
+async function rutasSheet() {
+  await cargarPlanes(cur); const trs = await numerarRutas(cur);
+  if (!trs.length) return toast('Aún no hay rutas de trabajo en esta finca');
+  for (const t of trs) if (!t.resumen) t.resumen = resumenTrab(t, rebuildTrab(cur, t));
+  const pc = v => v == null ? '–' : fmt(v * 100, 0) + ' %';
+  sheet(`<h3>🛤 Rutas de trabajo · ${esc(cur.nombre)}</h3>
+    ${trs.map(t => { const pr = planDeRuta(t); return `<button class="opt" data-id="${t.id}"><b>${esc(nomRuta(t))}</b> · ${fFecha(t.inicio)} ${t.estado === 'abierto' ? '<b style="color:var(--warn)">· abierta</b>' : ''}
+      <small>${pr ? esc(pr.nombre) + ' · ' : 'sin plan · '}${fmtH(t.resumen.horas)} · ${fmtArea(t.resumen.limpia)} · cobertura ${pc(t.resumen.cobertura)} · ${fmt(t.resumen.litros, 1)} L${t.nota ? '<br>' + esc(t.nota) : ''}</small></button>`; }).join('')}
+    <button class="btn" id="rtAn" style="margin-top:6px">📊 Analizar rutas frente al plan</button>`,
+    sh => { sh.querySelectorAll('[data-id]').forEach(b => b.onclick = () => trabOpts(trs.find(t => t.id === b.dataset.id))); $('rtAn').onclick = () => analizarRutas(trs); });
+}
+function planDeRuta(t) {
+  const r = t.planId && planesCache.get(t.planId);
+  if (r) return { nombre: nomPlan(r), plan: r.plan };
+  if (t.planResumen) return { nombre: t.planResumen.nombre + ' (eliminado)', resumen: t.planResumen };
+  return null;
+}
+// lo que el plan habría necesitado para limpiar la misma superficie que la ruta (proporcional a la cobertura)
+function planEquiv(t) {
+  const r = t.resumen, pr = planDeRuta(t); if (!pr) return null;
+  const T = pr.plan ? pr.plan.stats.t.total / 3600 : pr.resumen.t, Lt = pr.plan ? pr.plan.stats.litros : pr.resumen.litros, Lm = pr.plan ? pr.plan.stats.L.total : pr.resumen.L, c = Math.min(1, r.cobertura || 0);
+  return { t: T * c, litros: Lt * c, L: Lm * c, tTot: T, litrosTot: Lt };
+}
+function etaRuta(t) { const q = planEquiv(t); return q && t.resumen.L > 0 ? q.L / t.resumen.L : null; }
+function efectividad(t) {   // cobertura × cumplimiento del tiempo del plan (máx. 1) × η (para la superficie limpiada)
+  const r = t.resumen, q = planEquiv(t), ft = q && r.horas > 0 ? Math.min(1, q.t / r.horas) : 1, e = etaRuta(t), eta = e == null ? 1 : Math.min(1, e);
+  return r.cobertura * ft * eta;
+}
+function analizarRutas(trs) {
+  const pr = t => planDeRuta(t), pT = t => { const q = planEquiv(t); return q ? q.t : null; }, pL = t => { const q = planEquiv(t); return q ? q.litros : null; };
+  const pc = v => v == null ? '–' : fmt(v * 100, 1) + ' %', dif = (a, b) => a == null || b == null ? '' : ` <small style="color:${a <= b ? '#2e7d32' : '#c62828'}">(${a > b ? '+' : ''}${fmt((a - b) / b * 100, 0)} %)</small>`;
+  const rows = [
+    ['Plan', t => pr(t) ? esc(pr(t).nombre) : '–'], ['Fecha', t => new Date(t.inicio).toLocaleDateString('es-ES')],
+    ['Tiempo real', t => fmtH(t.resumen.horas) + dif(t.resumen.horas, pT(t))], ['Tiempo plan (misma superficie)', t => pT(t) == null ? '–' : fmtH(pT(t))],
+    ['Gasóleo real', t => fmt(t.resumen.litros, 1) + ' L' + dif(t.resumen.litros, pL(t))], ['Gasóleo plan (misma superficie)', t => pL(t) == null ? '–' : fmt(pL(t), 1) + ' L'],
+    ['Cobertura', t => pc(t.resumen.cobertura)], ['Sin limpiar', t => fmtArea(t.resumen.pendiente)],
+    ['η recorrido (plan / real)', t => pc(etaRuta(t))], ['Desviación media', t => t.resumen.devMed == null ? '–' : fmt(t.resumen.devMed, 2) + ' m'],
+    ['Solape', t => pc(t.resumen.solapePct)], ['<b>Efectividad</b>', t => `<b>${pc(efectividad(t))}</b>`]];
+  const best = trs.reduce((a, b) => efectividad(b) > efectividad(a) ? b : a);
+  sheet(`<h3>📊 Análisis de rutas</h3><div style="overflow-x:auto"><table class="cmp"><tr><th></th>${trs.map(t => `<th>${esc(nomRuta(t))}${t === best ? ' ⭐' : ''}</th>`).join('')}</tr>
+    ${rows.map(([n, f]) => `<tr><th>${n}</th>${trs.map(t => `<td>${f(t)}</td>`).join('')}</tr>`).join('')}</table></div>
+    <div class="note">⭐ <b>${esc(nomRuta(best))}</b> fue la más efectiva. Efectividad = cobertura × cumplimiento del tiempo del plan × η. En verde/rojo, la diferencia con el plan.</div>
+    <button class="btn sec" id="anRo" style="margin-top:8px">🔴 Ver zonas sin limpiar de ${esc(nomRuta(best))}</button>`,
+    () => { $('anRo').onclick = () => verSinLimpiar(best); });
+}
+function verSinLimpiar(t) {
+  viewTrab = t.id; trabCache = null; CFG.pendiente = true; CFG.limpia = true; CFG.real = true; CFG.area = false; saveCfg(); closeSheet(); drawFinca(true);
+  const r = t.resumen || {}; toast(`🔴 ${nomRuta(t)}: en rojo lo que no pasó la desbrozadora (${fmtArea(r.pendiente || 0)})`, 5000);
+}
+async function copiarRuta(t) {
+  const trs = await DB.tByFinca(cur.id), num = trs.reduce((m, x) => Math.max(m, x.num || 0), 0) + 1;
+  const c = { ...JSON.parse(JSON.stringify(t)), id: uid(), num, nombre: 'Ruta ' + num + ' (copia de ' + nomRuta(t) + ')' }; delete c._sync; c.estado = 'cerrado';
+  await DB.tPut(c); toast(c.nombre + ' creada'); rutasSheet();
+}
+
+/* ---- Peligros: piedras grandes, árboles caídos y obstáculos peligrosos (quedan en la finca) ---- */
+const PEL = { piedra: ['🪨', 'Piedra grande', 1.0], arbol: ['🪵', 'Árbol caído / tronco', 2.0], otro: ['⚠️', 'Obstáculo peligroso', 1.5] };
+function peligroSheet() {
+  if (!cur) return;
+  sheet(`<h3>⚠️ Peligro aquí</h3>
+    <div class="incg">${Object.entries(PEL).map(([k, [e, t]]) => `<button class="btn big" data-p="${k}" style="margin:0;background:#c62828">${e}<br><small style="font-size:14px">${t}</small></button>`).join('')}</div>
+    <div class="note" style="margin-top:8px">Se guarda en la posición del apero y queda en la finca: se esquiva en los planes y avisa por voz al acercarte. Se puede eliminar cuando quieras en ⋯ › ⚠️ Peligros.</div>`,
+    sh => sh.querySelectorAll('[data-p]').forEach(b => b.onclick = () => registrarPeligro(b.dataset.p)));
+}
+function circuloLL(ll, r) { const P = Geo.projFor([ll]), c = P.fwd(ll[0], ll[1]), xy = []; for (let k = 0; k < 16; k++) { const a = k / 16 * 2 * Math.PI; xy.push([c[0] + r * Math.cos(a), c[1] + r * Math.sin(a)]); } return Geo.toLL(xy, P).map(q => [+q[0].toFixed(8), +q[1].toFixed(8)]); }
+async function registrarPeligro(tipo) {
+  const ll = work && work.last && work.last.cutLL ? work.last.cutLL : lastPos ? [lastPos.lat, lastPos.lon] : null;
+  if (!ll) return toast('Sin posición GPS');
+  const f = cur, r = PEL[tipo][2], p = { id: uid(), tipo, ll: [+ll[0].toFixed(7), +ll[1].toFixed(7)], radio: r, fecha: Date.now(), nota: '', trabId: work ? work.trab.id : null };
+  f.exclusiones = f.exclusiones || []; const ex = { id: uid(), nombre: PEL[tipo][1], coords: circuloLL(p.ll, r), metodo: 'peligro', centro: p.ll, radio: r, fecha: Date.now() };
+  f.exclusiones.push(ex); p.exclId = ex.id; f.peligros = [...(f.peligros || []), p];
+  await saveCur(); closeSheet(); drawFinca();
+  speak(PEL[tipo][1] + ' anotado', true); toast(`${PEL[tipo][0]} ${PEL[tipo][1]} guardado en la finca`);
+}
+function drawPeligros(f, layer) {
+  (f.peligros || []).forEach(p => L.marker(p.ll, { zIndexOffset: 900, icon: L.divIcon({ className: '', html: `<div class="incpin" style="background:#ffebee;border:2px solid #c62828">${PEL[p.tipo][0]}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] }) })
+    .on('click', () => peligroOpts(f, p.id)).addTo(layer));
+}
+function peligroOpts(f, id) {
+  const p = (f.peligros || []).find(x => x.id === id); if (!p) return;
+  sheet(`<h3>${PEL[p.tipo][0]} ${PEL[p.tipo][1]}</h3><div class="note">${fFecha(p.fecha)}</div>
+    <div class="srow"><span>Radio a esquivar (m)</span><input class="inp" id="pgR" inputmode="decimal" value="${String(p.radio).replace('.', ',')}" style="width:90px;text-align:right"></div>
+    <label class="f">Nota</label><input class="inp" id="pgN" value="${esc(p.nota || '')}">
+    <div class="row" style="margin-top:12px"><button class="btn err" id="pgD">Eliminar</button><button class="btn" id="pgS">Guardar</button></div>`,
+    () => {
+      $('pgS').onclick = async () => { const r = parseFloat($('pgR').value.replace(',', '.')); if (!(r > 0 && r < 30)) return toast('Radio no válido'); p.radio = r; p.nota = $('pgN').value.trim(); const ex = (f.exclusiones || []).find(e => e.id === p.exclId); if (ex) { ex.coords = circuloLL(p.ll, r); ex.radio = r; } await saveCur(); closeSheet(); drawFinca(); toast('Guardado' + (f.plan ? ' · recalcula el plan' : '')); };
+      $('pgD').onclick = () => confirmSheet(`¿Eliminar ${PEL[p.tipo][1].toLowerCase()}?`, 'Eliminar', async () => { f.peligros = f.peligros.filter(x => x.id !== id); f.exclusiones = (f.exclusiones || []).filter(e => e.id !== p.exclId); await saveCur(); drawFinca(); toast('Eliminado' + (f.plan ? ' · recalcula el plan' : '')); }, true);
+    });
+}
+function peligrosLista(f) {
+  const L_ = (f.peligros || []).slice().sort((a, b) => b.fecha - a.fecha);
+  sheet(`<h3>⚠️ Peligros · ${esc(f.nombre)}</h3>
+    ${L_.length ? L_.map(p => `<button class="opt" data-id="${p.id}">${PEL[p.tipo][0]} ${PEL[p.tipo][1]}<small>${new Date(p.fecha).toLocaleDateString('es-ES')} · radio ${fmt(p.radio, 1)} m${p.nota ? ' · ' + esc(p.nota) : ''}</small></button>`).join('') : '<div class="note">Sin peligros. Se anotan durante el trabajo con el botón ⚠️.</div>'}
+    <button class="btn sec" id="pgA" style="margin-top:8px">＋ Anotar aquí (posición GPS)</button>`,
+    sh => { sh.querySelectorAll('[data-id]').forEach(b => b.onclick = () => { closeSheet(); const p = f.peligros.find(x => x.id === b.dataset.id); if (map) map.setView(p.ll, Math.max(map.getZoom(), 19)); peligroOpts(f, p.id); }); $('pgA').onclick = peligroSheet; });
+}
+function avisoPeligros(p) {
+  if (!work || !cur || !(cur.peligros || []).length) return;
+  if (work.tPel && p.t - work.tPel < 2000) return; work.tPel = p.t; work.pelDicho = work.pelDicho || {};
+  const P = Geo.proj(p.lat, p.lon);
+  for (const q of cur.peligros) {
+    const a = P.fwd(q.ll[0], q.ll[1]), d = Math.hypot(a[0], a[1]) - q.radio;
+    if (d < 12 && (!work.pelDicho[q.id] || p.t - work.pelDicho[q.id] > 60000)) { work.pelDicho[q.id] = p.t; speak(`Atención: ${PEL[q.tipo][1].toLowerCase()} a ${Math.max(1, Math.round(d))} metros`, true); toast(`${PEL[q.tipo][0]} ${PEL[q.tipo][1]} a ${Math.max(1, Math.round(d))} m`, 3000); break; }
+  }
 }
 
 /* ---------- Panel de herramienta genérico ---------- */
