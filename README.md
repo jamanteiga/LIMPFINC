@@ -654,3 +654,112 @@ Al tocarlo se abre «Cuenta y sincronización».
   - «Calcular plan» se activa cuando están todos los puntos necesarios.
 - Con inicio = Mi posición y final en el mapa, solo se coloca F (la I se fija por GPS).
 - El menú del plan dice «🧭 Cambiar dirección, punto de inicio o final».
+
+## 20. Implementación v1.4.0 — Varias exclusiones indicadas al principio
+
+- Alta de finca: selector «Exclusiones dentro de la finca» (− n +), guardado en `finca.exclObj`. También en «Editar finca» y en el menú de exclusiones (con «Medidas n de N»).
+- Guía:
+  - Tras medir o dibujar el linde, y tras cada exclusión, aparece «Exclusión k de N» con las opciones Rodear a pie, Dibujar, Más tarde y No hay más.
+  - Al completar todas: «✅ Exclusiones completas».
+  - También se lanza tras traer el linde de SIGPAC o de archivo.
+- Plan: si faltan exclusiones avisa «Faltan exclusiones», con las opciones Medir la siguiente, Calcular igualmente y No hay más.
+- El planificador ya admitía varias exclusiones: vuelta alrededor de cada una, rodeos y traslados.
+
+## 21. Implementación v1.5.0 — Malla desde árboles de borde, mapa 3D, cortacésped y precisión
+
+### Malla de árboles desde el borde
+- Malla › 🌳 Árboles del borde: se marcan en orden alrededor de la plantación (a pie o en tractor), indicando si cada árbol es 🔴 esquina o 🟡 intermedio. Se marca con GPS promediado (segundos configurables, 10 por defecto) o tocando el mapa.
+- Ajuste:
+  - Las dos direcciones de las filas salen de un histograma, ponderado por longitud, de los tramos entre árboles consecutivos.
+  - Se busca la retícula rígida que mejor encaja: giro ±2,5° y separación de 0,85 a 1,25 × la orientativa. El error se normaliza por el tamaño de celda.
+  - Después se hace un ajuste fino por mínimos cuadrados (p = O + i·A + j·B).
+  - Se generan todos los nudos dentro del polígono de los árboles de borde, en índices enteros.
+- Opción «separaciones exactas»: solo se ajustan giro y origen, lo que da más robustez con GPS ruidoso.
+- Se muestran los árboles generados, las separaciones reales, el error medio y los árboles por lado (para comprobar en campo).
+- Diámetro de tronco (por defecto 500 mm, editable por finca y en Ajustes): holgura efectiva = diámetro/2 + holgura al tronco.
+- Pruebas (polígono de 5 lados, 595 árboles, 16 marcados):
+  - Ruido ±0,5 m: exacto.
+  - Ruido ±1 m: exacto (error medio por árbol 0,2–0,3 m).
+  - Ruido ≥ ±1,5 m: no fiable.
+
+### Mapa 3D del terreno
+- Durante el trabajo se guarda un punto [lat, lon, altura, prec. H, prec. V, t] cada 2 s en `sesion.p3d`, separado de la trayectoria.
+- MDT por celdas: unas 5 lecturas por celda (1–10 m), media ponderada 1/σ², rechazo de atípicos (MAD), relleno IDW dentro del linde y suavizado 3×3.
+- Curvas de nivel por marching squares; equidistancia automática (0,25–5 m) y maestras cada 5.
+- Visualización: sobre el mapa (colores hipsométricos y curvas) y visor 3D (three.js r128, MIT) con exageración ×1/×2/×5/×10, puntos GPS opcionales, giro con un dedo y zoom con dos.
+- Ajuste de cotas: con un punto de cota conocida (GPS promediado 15 s) o con corrección manual (`finca.cota.offset`).
+- Exportación:
+  - KML (Google Earth / My Maps / TopoGPS / QGIS)
+  - GPX
+  - GeoJSON 3D
+  - DXF 3D UTM (POINT, 3DFACE TIN, POLYLINE 3D)
+  - XYZ UTM
+  - CSV de puntos
+- Prueba: ruido vertical σ ≈ 1 m → modelo RMS 0,2 m (con error aleatorio; el sesgo del GPS no se elimina promediando).
+
+### Cortacésped y fincas pequeñas
+- Labor «Corte de césped» (velocidades 6/5/3,5 km/h).
+- Plantillas en el catálogo:
+  - Tractores: tractor cortacésped (ancho 1,2 m, R 0,9 m) y cortacésped a pie.
+  - Aperos: cortacésped 1,07 m y 0,53 m, y desbrozadora de martillos.
+- Exclusión «📍 Punto + radio»: GPS promediado o toque, radio ajustable y círculo de 16 lados; se encadenan muchas seguidas. También aparece en la guía de exclusiones.
+- Linde: la tolerancia de simplificación se adapta al tamaño (1 m en fincas grandes, hasta 0,3 m en jardines), igual que la captura de esquinas.
+- Prueba: jardín de 30×20 m con 8 obstáculos, cortacésped de 1,07 m → 23 pasadas, 8 rodeos, cobertura 98 %.
+- El service worker guarda en caché las librerías de CDN (incluida three.js) para usarlas sin cobertura.
+
+## 22. Implementación v1.6.0 — Arboleda de diseño (árbol ficticio), esquinas redondeadas y patrón editable
+
+- Malla › 🧪 **Diseño teórico (árbol ficticio)**:
+  - Datos: separación en fila y entre filas, orientación (paralela al lado más largo o rumbo manual), ángulo entre filas y columnas, distancia mínima al linde, diámetro de tronco y árbol de referencia (automático en la esquina del lado largo, tocando el mapa o el actual).
+  - Genera los nudos dentro del linde retranqueado (Clipper) y fuera de las exclusiones.
+  - Dibuja los troncos con su diámetro y la referencia como círculo morado discontinuo.
+  - Botón «Calcular / Recalcular trayectorias de diseño».
+  - `malla.modo = 'diseno'`.
+- SIGPAC › «Tipo de finca: Abierta / Arbolada»: si es arbolada, tras crearla se abre directamente el diseño con árbol ficticio. También tras medir o importar el linde de un monte sin malla (guía «Arboleda de la finca»).
+- Árboles del borde: ya no se exigen esquinas (bordes redondeados); se marcan los árboles de la curva como intermedios. Prueba con esquinas redondeadas (619 árboles), ruido ±0,6 m: 1 de cada 2 del borde → 611 generados, error 0,06 m; 1 de cada 4 → 601, error 0,12 m.
+- Malla › ✎ **Modificar patrón y diámetro**:
+  - Diseño: todos los parámetros y la referencia.
+  - Borde: separaciones (exactas) y diámetro, reajustando con los árboles marcados.
+  - Diseño → «Pasar a malla real» marcando árboles del borde.
+- El plan queda «desactualizado» si cambia la arboleda (la clave de geometría incluye la malla).
+
+## 23. Implementación v1.7.0 — SIGPAC + exclusiones / SIGPAC + árboles marcados con GPS
+
+- SIGPAC › resultado de recintos:
+  - **Abierta**: selector «Exclusiones dentro de la finca». Al crearla arranca la guía «Exclusión 1 de N» (a pie, punto + radio o dibujo). Los huecos de SIGPAC cuentan como exclusiones.
+  - **Arbolada**: «📍 Marcar árboles con GPS» (por defecto) o «🧪 Diseño teórico».
+- Malla › 📍 **Varios árboles con GPS + linde** (`malla.modo = 'medidos'`):
+  - Se marcan árboles reales en cualquier orden: GPS promediado o toque en el mapa. Los dos primeros, de la misma fila y lo más separados posible.
+  - Ajuste (`fitMedidos`): búsqueda de rumbo (paso según la extensión), origen por media circular de las coordenadas fraccionarias y, si no son exactas, separaciones de 0,85 a 1,25 ×. Refinado y mínimos cuadrados con 6 o más árboles. Aviso de ambigüedad.
+  - Orientación: árboles 1–2 en la misma fila (rumbo fijado ± tolerancia), paralela a un lado del linde (±3°) o libre.
+  - El patrón se extiende a todo el linde retranqueado (distancia mínima configurable) y fuera de las exclusiones. Los árboles marcados se ven en azul.
+  - Pruebas (separación exacta, árboles 1–2 en la misma fila):
+    - 3 árboles con ruido ±0,5 m → 10/10 correctos (error medio 0,22 m).
+    - 5 árboles con ±1 m → 9/10 (0,39 m).
+    - 8 árboles con ±1,5 m → 3/10.
+    - Con separación desconocida, árboles dispersos y ±1 m: poco fiable → usar separación exacta o árboles del borde.
+  - Prueba en la interfaz (SIGPAC, 6 árboles, ±0,6 m): 1031 árboles, error medio 0,40 m frente a la plantación real.
+- Malla › ✎ Modificar patrón (modo medidos): separaciones, orientación, distancia, diámetro, y «‹ Marcar más» para añadir árboles.
+
+## 24. Implementación v1.8.0 — Malla autocorregida, incidencias, presupuesto/PDF, mantenimiento, jornada, pendiente, copia y mapa sin cobertura
+
+- **Malla › 🎯 Corregir con el trabajo real** (también desde el resumen de un trabajo):
+  - Se usan los puntos del apero trabajando, paralelos a las filas y entre la primera y la última fila.
+  - Giro (±2°, paso 0,05°): el que maximiza la concentración circular de la posición transversal módulo la separación entre filas.
+  - Desplazamiento: diferencia entre la media circular y el centro de la calle (las pasadas son simétricas en la calle).
+  - Se aplica a A/B/C, a los árboles del borde y a los marcados; se guarda el historial en `malla.correcciones`. Se pide fiabilidad ≥ 45 %.
+  - Prueba: malla desplazada 0,8 m y girada 0,6° → error transversal 1,37 m → 0,09 m.
+- **Incidencias** (botón 📍 en el panel de trabajo): falta árbol (marca la falta), árbol dañado, obstáculo (crea una exclusión de r = 1 m), zona sin limpiar, otra.
+  - Se guardan en la posición del apero y aparecen en el mapa, en ⋯ › Incidencias (nota, resolver, eliminar) y en el parte PDF.
+- **Presupuesto** (Plan o ⋯ › 💶): a partir del plan, o estimado por superficie si no hay. Gasóleo (€/L), tractor y operario (€/h) y, opcionalmente, €/ferrado.
+- **PDF** (jsPDF 2.5.1, MIT, se carga bajo demanda): presupuesto y parte de trabajo, con croquis (linde, exclusiones, árboles, plan o recorrido real, incidencias, norte y escala) y datos. Ajustes › Costes (incluye el titular).
+- **Mantenimiento** (Editar finca):
+  - Datos: repetir cada N meses, franja contra incendios (31 de mayo; vale lo hecho desde el 1 de octubre anterior) y última limpieza manual.
+  - Semáforo en la lista (al día, toca en ≤ 30 días, vencida) y aviso global.
+- **🗓 Jornada**:
+  - Se seleccionan fincas y se ordenan (exhaustivo hasta 8, 2-opt a partir de ahí) desde mi posición, con vuelta opcional.
+  - Traslados con distancia ×1,35 a la velocidad por carretera, consumo de traslado y totales de tiempo, gasóleo y coste.
+  - Ruta en el mapa de fincas y botón «siguiente finca» en la lista.
+- **Pendiente**: pendiente por celda del MDT (diferencias centrales). En Mapa 3D › ⛰, zonas por encima del umbral (Ajustes › Seguridad, 25 % por defecto). Durante el trabajo, aviso por voz al entrar (con histéresis).
+- **Copia de seguridad**: aviso en la lista si no hay copia en los últimos 7 días, con descarga directa.
+- **Mapa sin cobertura**: el service worker guarda las teselas vistas de OSM y OpenTopoMap (red primero, máximo ~3000, peticiones CORS).
