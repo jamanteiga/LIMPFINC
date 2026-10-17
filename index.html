@@ -253,7 +253,7 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
 /* =========================================================
    LIMPFINC · F1 — Fincas, linde, exclusiones, área
    ========================================================= */
-const VERSION = '1.8.0';
+const VERSION = '1.9.0';
 
 /* ---------- Ajustes por defecto ---------- */
 const DEF = {
@@ -266,11 +266,12 @@ const DEF = {
   umbralPrecision:8, holguraLinde:0.5,
   mallaX:3.5, mallaY:3.5, holguraTronco:0.30, diamTronco:500, promedioS:10,
   mapaBase:'OpenStreetMap',
+  velAbierta:3.5, velMonte:2.3, ladoArbol:'der', distArbol:0.9,
   precioGasoil:1.10, precioHora:35, precioFerrado:0, titular:'', velCarretera:20, consumoTraslado:3, pendMax:25, ultimaCopia:0,
   consumoAuto:true, velocidadGiro:3.0, velocidadTraslado:5.0, tCambioSentido:4, tManiobra:20, tEsquina:15, margenObstaculo:0.30
 };
 const SET_FIELDS = [
-  ['Trabajo',[['velocidad','Velocidad por defecto en fincas nuevas (km/h)'],['consumoAuto','Usar consumo calibrado en repostajes','bool'],['umbralDesv','Umbral desviación mínimo (m)'],['umbralAuto','Umbral automático según precisión GPS','bool'],['autoPausa','Pausa automática si está parado (s, 0 = no)'],['voz','Avisos por voz en el modo trabajo','bool'],['altoContraste','Alto contraste en el modo trabajo','bool']]],
+  ['Trabajo',[['velAbierta','Velocidad por defecto, finca abierta (km/h)'],['velMonte','Velocidad por defecto, monte / arbolada (km/h)'],['consumoAuto','Usar consumo calibrado en repostajes','bool'],['umbralDesv','Umbral desviación mínimo (m)'],['umbralAuto','Umbral automático según precisión GPS','bool'],['autoPausa','Pausa automática si está parado (s, 0 = no)'],['voz','Avisos por voz en el modo trabajo','bool'],['altoContraste','Alto contraste en el modo trabajo','bool']]],
   ['Planificación',[['velocidadGiro','Velocidad en giros (km/h)'],['velocidadTraslado','Velocidad en traslados (km/h)'],['tCambioSentido','Tiempo cambio de sentido (s)'],
     ['tManiobra','Maniobra al iniciar traslado (s)'],['tEsquina','Maniobra en esquina (s)'],['margenObstaculo','Margen a exclusiones (m)']]],
   ['Unidades',[['verFerrados','Mostrar superficie también en ferrados','bool'],['ferrado','Ferrado de tu comarca (m²)']]],
@@ -282,6 +283,7 @@ const SET_FIELDS = [
 ];
 
 /* ---------- IndexedDB ---------- */
+const velDef = tipo => tipo === 'monte' ? (+SB.velMonte || 2.3) : (+SB.velAbierta || 3.5);
 const DB = (() => {
   let db;
   const open = () => new Promise((res, rej) => {
@@ -686,10 +688,16 @@ function nuevaFinca() {
     <label class="f">Nombre de la finca</label><input class="inp" id="nNom" placeholder="p. ej. Leira do Souto" autocomplete="off">
     <button class="btn" id="nOk" style="margin-top:14px">Continuar</button>
     <div class="note" style="margin:16px 0 6px;text-align:center">o bien</div>
+    <button class="opt" id="nAqui" style="border:2px solid var(--pri)">📍 Estoy en la finca: elegirla en el mapa SIGPAC<small>El mapa se abre en tu posición GPS con las parcelas SIGPAC; tocas la tuya y listo.</small></button>
     <button class="opt" id="nImp">📥 Importar finca desde archivo<small>.json de LIMPFINC, copia de seguridad o GeoJSON</small></button>
     <button class="opt" id="nSig">🗺 Desde SIGPAC / referencia catastral<small>Descarga el linde oficial de la parcela</small></button>`,
     () => {
       $('nImp').onclick = () => { closeSheet(); $('fImpF').click(); };
+      $('nAqui').onclick = async () => {
+        const nombre = $('nNom').value.trim();
+        if (nombre) { const ex = await findByName(nombre); if (ex) { closeSheet(); toast(`«${ex.nombre}» ya existe: se abre`); openFinca(ex.id); return; } }
+        closeSheet(); sigpacMapa({ nombre, aqui: true });
+      };
       $('nSig').onclick = async () => {
         const nombre = $('nNom').value.trim();
         if (nombre) { const ex = await findByName(nombre); if (ex) { closeSheet(); toast(`«${ex.nombre}» ya existe: se abre`); openFinca(ex.id); return; } }
@@ -717,7 +725,7 @@ function cfgHTML(cfg, tipo) {
 }
 function cfgBind(cfg, tipo, onTipo) {
   const seg = $('xTipo'), paint = () => seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === tipo));
-  seg.querySelectorAll('button').forEach(b => b.onclick = () => { tipo = b.dataset.v; paint(); onTipo && onTipo(tipo); }); paint();
+  seg.querySelectorAll('button').forEach(b => b.onclick = () => { const v0 = parseFloat($('xVel').value.replace(',', '.')); if (Math.abs(v0 - velDef(tipo)) < 1e-6) $('xVel').value = String(velDef(b.dataset.v)).replace('.', ','); tipo = b.dataset.v; paint(); onTipo && onTipo(tipo); }); paint();
   const std = () => { const ap = getAp($('xAp').value), v = ap && velStd(ap.labor, $('xVeg').value); $('xStd').innerHTML = v ? `Estándar ${labNom(ap.labor).toLowerCase()} · vegetación ${vegNom($('xVeg').value).toLowerCase()}: <b>${fmt(v, 1)} km/h</b> <button class="lnk" id="xUse" style="display:inline;margin:0 0 0 6px">usar</button>` : ''; if ($('xUse')) $('xUse').onclick = () => { $('xVel').value = String(v).replace('.', ','); }; };
   $('xAp').onchange = $('xVeg').onchange = std; std();
   return () => { const v = parseFloat($('xVel').value.replace(',', '.')); if (!(v > 0 && v < 30)) { toast('Velocidad no válida'); return null; } return { tipo, cfg: { tractorId: $('xTr').value, aperoId: $('xAp').value, vegetacion: $('xVeg').value, velocidad: v } }; };
@@ -748,7 +756,7 @@ function guiaExcl(trasMedir) {
     }), trasMedir ? 700 : 0);
 }
 function nuevaFincaMedir(nombre) {
-  const cfg0 = { tractorId: SB.tractorDef || (CAT.tractores[0] || {}).id, aperoId: SB.aperoDef || (CAT.aperos[0] || {}).id, vegetacion: 'media', velocidad: SB.velocidad || 3 };
+  const cfg0 = { tractorId: SB.tractorDef || (CAT.tractores[0] || {}).id, aperoId: SB.aperoDef || (CAT.aperos[0] || {}).id, vegetacion: 'media', velocidad: velDef('abierta') };
   let leer;
   sheet(`<h3>${esc(nombre)}</h3><div class="note" style="margin-bottom:6px">Finca nueva: configúrala y elige cómo medir su superficie.</div>
     ${cfgHTML(cfg0, 'abierta')}
@@ -907,7 +915,7 @@ function initMap() {
 
 async function openFinca(id) {
   cur = await DB.get(id); if (!cur) return showList();
-  if (!cur.config) cur.config = { tractorId: SB.tractorDef, aperoId: SB.aperoDef, velocidad: SB.velocidad || 3, vegetacion: 'media' };
+  if (!cur.config) cur.config = { tractorId: SB.tractorDef, aperoId: SB.aperoDef, velocidad: velDef(cur.tipo), vegetacion: 'media' };
   DB.raw.kvPut('ultima', cur.id).catch(() => {});
   if (lyr.over) lyr.over.clearLayers();
   if (lyr.m3d) lyr.m3d.clearLayers(); m3dVista = null;
@@ -1034,10 +1042,18 @@ function gpsSheet() {
   paint(); const tm = setInterval(paint, 1000);
 }
 $('gpsChip').onclick = gpsSheet;
+const gpsHist = [];
+function rumboAvance() {   // sentido de avance con las últimas posiciones (≥ 2 m recorridos en ≤ 10 s)
+  const n = gpsHist.length; if (n < 2) return gpsHist.rumbo && Date.now() - gpsHist.rumbo.t < 60000 ? gpsHist.rumbo : null;
+  const p = gpsHist[n - 1], P = Geo.proj(p.lat, p.lon);
+  for (let k = n - 2; k >= 0; k--) { const q = gpsHist[k]; if (p.t - q.t > 10000) break; const a = P.fwd(q.lat, q.lon), d = Math.hypot(a[0], a[1]); if (d >= 2) { gpsHist.rumbo = { u: [-a[0] / d, -a[1] / d], t: Date.now() }; return gpsHist.rumbo; } }
+  return gpsHist.rumbo && Date.now() - gpsHist.rumbo.t < 60000 ? gpsHist.rumbo : null;
+}
 function onPos(p) {
   const c = p.coords;
   GPS.estado = 'ok'; GPS.err = ''; GPS.n++; GPS.alt = c.altitude; GPS.altAcc = c.altitudeAccuracy;
   lastPos = { lat: c.latitude, lon: c.longitude, acc: c.accuracy, t: p.timestamp, rx: Date.now(), spd: c.speed, hdg: c.heading, alt: c.altitude, altAcc: c.altitudeAccuracy };
+  if (c.accuracy <= Math.max(S.umbralPrecision || 8, 8)) { gpsHist.push({ lat: c.latitude, lon: c.longitude, t: p.timestamp }); while (gpsHist.length > 30) gpsHist.shift(); }
   updGpsChip();
   const ll = [c.latitude, c.longitude];
   if (!map) { if (rec) recPoint(lastPos); if (work) workPoint(lastPos); return; }
@@ -3224,7 +3240,7 @@ async function generarDiseno(cfg, ref) {
   if (g.error) return toast(g.error, 4000);
   if (!g.arboles.length) return toast('Con esos valores no cabe ningún árbol: revisa la distancia al linde.', 4000);
   cur.malla = { ...malla, arboles: g.arboles, sepFila: g.sepFila, sepFilas: g.sepFilas };
-  if (cur.tipo !== 'monte') cur.tipo = 'monte';
+  if (cur.tipo !== 'monte') { cur.tipo = 'monte'; if (cur.config && Math.abs(+cur.config.velocidad - velDef('abierta')) < 1e-6) cur.config.velocidad = velDef('monte'); }
   await saveCur(); drawFinca();
   sheet(`<h3>🌳 Arboleda de diseño</h3>
     <div class="card"><div class="kv"><span>Árboles</span><span><b>${g.arboles.length}</b></span></div>
@@ -3312,9 +3328,25 @@ function mallaMedidos() {
 function medPanel() {
   const W = medW; lyr.tmp.clearLayers();
   W.pts.forEach((p, i) => L.marker(p, { interactive: false, icon: L.divIcon({ className: '', html: `<div class="pin" style="background:#0277bd">${i + 1}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] }) }).addTo(lyr.tmp));
-  showTool(`Árboles marcados · ${W.pts.length}`, W.pts.length < 2 ? `Marca primero <b>dos árboles de la misma fila</b>, lo más separados posible (${W.pts.length ? 'ahora el 2.º' : 'ahora el 1.º'}). Colócate junto al tronco y pulsa «GPS», o tócalo en el mapa.` : `Ahora varios árboles más, en cualquier orden, repartidos por <b>filas distintas</b> (esquinas, centro…). Mejor 5–8 en total.`,
-    [['Cancelar', 'sec', medCancel], ['Deshacer', 'sec', () => { if (W.avg) return; W.pts.pop(); medPanel(); }, !W.pts.length],
-     ['GPS (' + (SB.promedioS || 10) + ' s)', '', medGPS], ['Terminar', '', () => { map.off('click', medClick); medidosFin(W.pts, cur.malla && cur.malla.modo === 'medidos' ? cur.malla : null); }, W.pts.length < 3]]);
+  const lado = SB.ladoArbol === 'izq' ? 'izq' : 'der', dist = +SB.distArbol || 0.9;
+  showTool(`Árboles marcados · ${W.pts.length}`, `<div class="srow" style="margin:0 0 6px"><span>Árbol a mi</span><span style="display:flex;gap:6px;align-items:center"><span class="seg" id="mdLd" style="margin:0;white-space:nowrap"><button data-v="izq" class="${lado === 'izq' ? 'on' : ''}" style="padding:6px 8px">◀ Izq</button><button data-v="der" class="${lado === 'der' ? 'on' : ''}" style="padding:6px 8px">Der ▶</button></span><button class="btn sec" id="mdDm" style="width:38px;padding:6px 0">−</button><b id="mdDv" style="min-width:42px;text-align:center">${fmt(dist, 2)} m</b><button class="btn sec" id="mdDp" style="width:38px;padding:6px 0">＋</button></span></div>
+     Camina (o avanza) junto a los árboles y pulsa <b>🌳 Árbol</b> justo al pasar a su altura: se guarda ${fmt(dist, 2)} m a tu ${lado === 'der' ? 'derecha' : 'izquierda'} según el sentido de avance. ${W.pts.length < 2 ? 'Empieza por <b>dos árboles de la misma fila</b>.' : 'Sigue por el perímetro (mejor 8 o más).'} <button class="lnk" id="mdFx" style="display:inline;margin:0">o parado junto al tronco (${SB.promedioS || 10} s)</button>`,
+    [['✕', 'sec', medCancel], ['↶', 'sec', () => { if (W.avg) return; W.pts.pop(); medPanel(); }, !W.pts.length],
+     ['🌳 Árbol', '', medPaso], ['Terminar', '', () => { map.off('click', medClick); medidosFin(W.pts, cur.malla && cur.malla.modo === 'medidos' ? cur.malla : null); }, W.pts.length < 3]]);
+  $('mdLd').querySelectorAll('button').forEach(b => b.onclick = () => { SB.ladoArbol = b.dataset.v; DB.kvPut('settings', SB); medPanel(); });
+  const st = d => { SB.distArbol = Math.max(0, Math.min(3, Math.round(((+SB.distArbol || 0.9) + d) * 20) / 20)); DB.kvPut('settings', SB); medPanel(); };
+  $('mdDm').onclick = () => st(-0.05); $('mdDp').onclick = () => st(0.05); $('mdFx').onclick = medGPS;
+  const r = rumboAvance(); if (W.pts.length || r) $('toolTitle').textContent += r ? ' · rumbo ✓' : ' · camina para fijar el rumbo';
+}
+// árbol al pasar: posición GPS actual desplazada al lado indicado, perpendicular al sentido de avance
+function medPaso() {
+  if (!lastPos || gpsAge() > 4) return toast('Sin posición GPS reciente');
+  if (lastPos.acc > Math.max(S.umbralPrecision || 8, 8)) return toast(`GPS poco preciso (±${fmt(lastPos.acc, 1)} m): espera un momento`);
+  const r = rumboAvance(); if (!r) return toast('Camina unos pasos para saber el sentido de avance', 3500);
+  const d = +SB.distArbol || 0.9, sg = SB.ladoArbol === 'izq' ? -1 : 1, P = Geo.proj(lastPos.lat, lastPos.lon);
+  const q = P.inv(sg * r.u[1] * d, -sg * r.u[0] * d);   // derecha del avance = (uy, −ux)
+  medW.pts.push([+q[0].toFixed(8), +q[1].toFixed(8)]); speak('Árbol ' + medW.pts.length);
+  toast(`🌳 Árbol ${medW.pts.length} (±${fmt(lastPos.acc, 1)} m)`, 1200); medPanel();
 }
 function medCancel() { if (medW && medW.avg) clearInterval(medW.avg); map.off('click', medClick); medW = null; lyr.tmp.clearLayers(); showMain(); }
 function medClick(e) { if (!medW || medW.avg) return; medW.pts.push([+e.latlng.lat.toFixed(7), +e.latlng.lng.toFixed(7)]); medPanel(); }
@@ -3379,7 +3411,7 @@ function medidosFin(pts, M0) {
       };
       $('mdOk').onclick = async () => {
         if (!res) return;
-        if (cur.tipo !== 'monte') cur.tipo = 'monte';
+        if (cur.tipo !== 'monte') { cur.tipo = 'monte'; if (cur.config && Math.abs(+cur.config.velocidad - velDef('abierta')) < 1e-6) cur.config.velocidad = velDef('monte'); }
         cur.malla = res; await saveCur(); closeSheet(); medW = null; lyr.tmp.clearLayers(); showMain(); drawFinca();
         sheet(`<h3>🌳 Arboleda generada</h3><div class="card"><div class="kv"><span>Árboles</span><span><b>${res.arboles.length}</b></span></div><div class="kv"><span>Marcados con GPS</span><span>${pts.length} (círculos azules)</span></div></div>
           <div class="note">Cambia separaciones, diámetro o añade árboles en <b>Malla › ✎ Modificar patrón</b>. Marca las faltas en <b>Malla › ✖️ Faltas</b>.</div>
@@ -3532,7 +3564,7 @@ function effS(f, cfg) {
   if (tr) Object.assign(o, { tractor: tr.nombre, potencia: +tr.potencia_cv || 0, anchoTractor: +tr.ancho_m || 1.7, radioGiro: +tr.radio_giro_m || 4, marchaAtras: tr.marcha_atras !== false });
   if (ap) Object.assign(o, { aperoNombre: ap.nombre, aperoAncho: +ap.ancho_m || 1.7, offsetApero: +ap.distancia_gps_m || 0, desplazamiento: +ap.desplazamiento_m || 0, solape: +ap.solape_m || 0, consumo: +ap.consumo_lh || SB.consumo, labor: ap.labor });
   o.longTractorApero = (tr ? +tr.longitud_m || 3.5 : 3.5) + (ap ? +ap.longitud_m || 1.5 : 1.5);
-  o.velocidad = +c.velocidad || SB.velocidad || 3;
+  o.velocidad = +c.velocidad || velDef(f && f.tipo);
   // ajustes propios de la finca (opcionales): solape, consumo, velocidad en giros
   if (c.solape != null && c.solape !== '') o.solape = +c.solape;
   if (+c.consumo > 0) o.consumo = +c.consumo;
@@ -4085,7 +4117,7 @@ async function importarFincas(file) {
             if (ex) { let nm = f.nombre + ' (importada)', k = 2; while (existentes.some(x => normName(x.nombre) === normName(nm))) nm = `${f.nombre} (importada ${k++})`; f.nombre = nm; }
             if (existentes.some(x => x.id === f.id) || !f.id) f.id = uid();
           }
-          if (!f.config) f.config = { tractorId: SB.tractorDef, aperoId: SB.aperoDef, velocidad: SB.velocidad || 3, vegetacion: 'media' };
+          if (!f.config) f.config = { tractorId: SB.tractorDef, aperoId: SB.aperoDef, velocidad: velDef(f.tipo), vegetacion: 'media' };
           if (!getTr(f.config.tractorId) || !CAT.tractores.some(t => t.id === f.config.tractorId)) f.config.tractorId = SB.tractorDef;
           if (!CAT.aperos.some(a => a.id === f.config.aperoId)) f.config.aperoId = SB.aperoDef;
           f.exclusiones = f.exclusiones || [];
@@ -4194,7 +4226,7 @@ async function sigpacResultado(o, feats) {
         }
         let nombre = (o.nombre || '').trim() || sgTxt(p0) + (info.parcelas.length > 1 ? ' +' + (info.parcelas.length - 1) : '');
         if (await findByName(nombre)) { let k = 2; while (await findByName(`${nombre} (${k})`)) k++; nombre = `${nombre} (${k})`; }
-        const now = Date.now(), cfg = { tractorId: SB.tractorDef || (CAT.tractores[0] || {}).id, aperoId: SB.aperoDef || (CAT.aperos[0] || {}).id, vegetacion: 'media', velocidad: SB.velocidad || 3 };
+        const now = Date.now(), cfg = { tractorId: SB.tractorDef || (CAT.tractores[0] || {}).id, aperoId: SB.aperoDef || (CAT.aperos[0] || {}).id, vegetacion: 'media', velocidad: velDef(tipoN) };
         const exN = tipoN === 'abierta' ? leerEx() : 0;
         const nf = { id: uid(), nombre, tipo: tipoN, config: cfg, notas: '', creada: now, mod: now, sigpac: info, exclObj: exN + u2.huecos.length,
           linde: { coords: u2.coords, metodo: 'sigpac', sigpac: info, fecha: now },
@@ -4226,12 +4258,14 @@ function sigpacMapa(o) {
   const capa = L.layerGroup().addTo(m), selG = L.layerGroup().addTo(m);
   const feats = new Map(), sel = new Map();   // dn_pk → feature ; clave parcela → props
   let pend = 0, ultimaCaja = '';
-  const estilo = f => sel.has(sgKey(f.properties)) ? { color: '#1b5e20', weight: 3, fillColor: '#43a047', fillOpacity: .45 } : { color: '#ef6c00', weight: 1.2, fillColor: '#ffb74d', fillOpacity: .06 };
+  const aquiKey = () => { if (!lastPos) return null; const pt = [lastPos.lon, lastPos.lat]; for (const f of feats.values()) { const g = f.geometry, rings = g.type === 'Polygon' ? [g.coordinates] : g.coordinates; if (rings.some(pc => Geo.inPoly(pt, pc[0]))) return sgKey(f.properties); } return null; };
+  const estilo = f => sel.has(sgKey(f.properties)) ? { color: '#1b5e20', weight: 3, fillColor: '#43a047', fillOpacity: .45 } : sgKey(f.properties) === m._aqui ? { color: '#1565c0', weight: 2.5, dashArray: '6 4', fillColor: '#64b5f6', fillOpacity: .18 } : { color: '#ef6c00', weight: 1.2, fillColor: '#ffb74d', fillOpacity: .06 };
   const pintar = () => {
+    m._aqui = aquiKey();
     capa.clearLayers();
     for (const f of feats.values()) L.geoJSON(f, { style: () => estilo(f), onEachFeature: (ft, l) => l.on('click', () => tocar(ft)) }).addTo(capa);
     const n = sel.size; $('sgUse').disabled = !n;
-    $('sgInfo').innerHTML = n ? `<b>${n === 1 ? sgTxt([...sel.values()][0]) : n + ' parcelas'}</b> seleccionada${n > 1 ? 's' : ''}. Toca otra para añadirla o la misma para quitarla.` : (m.getZoom() < 16 ? 'Acércate hasta ver las parcelas SIGPAC (líneas naranjas).' : 'Toca tu parcela.');
+    $('sgInfo').innerHTML = n ? `<b>${n === 1 ? sgTxt([...sel.values()][0]) : n + ' parcelas'}</b> seleccionada${n > 1 ? 's' : ''}. Toca otra para añadirla o la misma para quitarla.` : (m.getZoom() < 16 ? 'Acércate hasta ver las parcelas SIGPAC (líneas naranjas).' : m._aqui ? 'Estás en la parcela marcada en <b style="color:#1565c0">azul</b>. Tócala (y otras si la finca tiene varias).' : 'Toca tu parcela.');
   };
   const tocar = ft => { const k = sgKey(ft.properties); if (sel.has(k)) sel.delete(k); else sel.set(k, ft.properties); pintar(); };
   const cargar = async () => {
@@ -4248,7 +4282,8 @@ function sigpacMapa(o) {
   m.on('moveend', () => { clearTimeout(m._t); m._t = setTimeout(cargar, 350); });
   const yo = () => { if (lastPos) m.setView([lastPos.lat, lastPos.lon], 18); else toast('Sin posición GPS todavía'); };
   const vista = SB.sigpacVista;
-  if (cur && cur.linde) m.setView(cur.linde.coords[0], 18);
+  if (o.aqui && lastPos) m.setView([lastPos.lat, lastPos.lon], 18);
+  else if (cur && cur.linde && !o.aqui) m.setView(cur.linde.coords[0], 18);
   else if (lastPos) m.setView([lastPos.lat, lastPos.lon], 18);
   else if (vista) m.setView([vista[0], vista[1]], vista[2]);
   else m.setView([43.215, -8.29], 14);
@@ -4257,7 +4292,7 @@ function sigpacMapa(o) {
   let movido = false; m.on('dragstart zoomstart', () => { movido = true; });
   if (!watchId) try { startGPS(); } catch (e) { }
   let yoM = null; const yoT = setInterval(() => { if (!lastPos) return; const ll = [lastPos.lat, lastPos.lon]; if (!yoM) yoM = L.marker(ll, { icon: L.divIcon({ className: '', html: '<div class="pos"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }), interactive: false }).addTo(m); else yoM.setLatLng(ll); }, 1000);
-  let tries = 0; const espera = setInterval(() => { if (++tries > 40 || movido) return clearInterval(espera); if (lastPos && !(cur && cur.linde)) { clearInterval(espera); if (!vista || gpsAge() < 10) m.setView([lastPos.lat, lastPos.lon], 18); } }, 500);
+  let tries = 0; const espera = setInterval(() => { if (++tries > 40 || movido) return clearInterval(espera); if (lastPos && (o.aqui || !(cur && cur.linde))) { clearInterval(espera); if (o.aqui || !vista || gpsAge() < 10) m.setView([lastPos.lat, lastPos.lon], 18); } }, 500);
   const cerrar = () => { clearInterval(espera); clearInterval(yoT); const c = m.getCenter(); SB.sigpacVista = [+c.lat.toFixed(5), +c.lng.toFixed(5), Math.max(16, m.getZoom())]; DB.kvPut('settings', SB); m.remove(); wrap.remove(); };
   $('sgX').onclick = cerrar; $('sgYo').onclick = yo;
   $('sgUse').onclick = async () => {
@@ -4314,6 +4349,10 @@ async function migrarVelocidad() {
   try {
     let n = 0;
     if (+SB.velocidad === 2.5 || !(+SB.velocidad > 0)) { SB.velocidad = 3; await DB.kvPut('settings', SB); applyS(); n++; }
+    if (!SB.migVelTipo) {   // v1.9: velocidad por defecto según el tipo (abierta 3,5 · monte 2,3 km/h)
+      SB.migVelTipo = Date.now(); await DB.kvPut('settings', SB);
+      for (const f of await DB.all()) if (f.config && +f.config.velocidad === 3) { f.config.velocidad = velDef(f.tipo); if (f.plan && f.linde) { try { f.plan = Planner.plan(f, effS(f), { start: f.plan.inicio, end: f.plan.fin, hlFinal: f.plan.hlFinal }); } catch (e) { } } await DB.put(f); n++; }
+    }
     for (const a of CAT.aperos) if (a.labor === 'desbroce' && +a.velocidad_kmh === 2.5) { a.velocidad_kmh = 3; await DB.cPut('aperos', a); n++; }
     // labores nuevas (p. ej. corte de césped): se añaden sus velocidades estándar
     if (CAT.velocidades.length) for (const [lab] of LABORES) if (!CAT.velocidades.some(v => v.labor === lab)) { for (let i = 0; i < 3; i++) await DB.cPut('velocidades', { id: uid(), labor: lab, vegetacion: VEGET[i][0], velocidad_kmh: VEL_STD[lab][i], notas: 'orientativa' }); n++; }

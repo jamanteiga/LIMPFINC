@@ -1,5 +1,5 @@
 // LIMPFINC service worker — app shell en caché; teselas siempre de red
-const CACHE = 'limpfinc-180';
+const CACHE = 'limpfinc-190';
 const TILES = 'limpfinc-teselas';
 let nPut = 0;
 async function recortar(ca) { if (++nPut % 50) return; const ks = await ca.keys(); for (let i = 0; i < ks.length - 3000; i++) await ca.delete(ks[i]); }
