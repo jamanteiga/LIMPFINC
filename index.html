@@ -221,6 +221,7 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
     <button id="tPlan"><b>🧭</b>Plan</button>
     <button id="tWork"><b>🚜</b>Trabajar</button>
     <button id="tInfo"><b>ⓘ</b>Datos</button>
+    <button id="tAj"><b>⚙️</b>Ajustes</button>
   </div>
   <!-- panel grabación -->
   <div class="panel hidden" id="pRec">
@@ -253,7 +254,7 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
 /* =========================================================
    LIMPFINC · F1 — Fincas, linde, exclusiones, área
    ========================================================= */
-const VERSION = '2.4.0';
+const VERSION = '2.4.1';
 
 /* ---------- Ajustes por defecto ---------- */
 const DEF = {
@@ -827,9 +828,11 @@ function fincaAreas(f) {
 /* =========================================================
    AJUSTES
    ========================================================= */
-function showSettings() {
+function showSettings(desdeFinca) {
+  const fv = desdeFinca && cur ? cur : null;
   view = 'set';
-  setHeader('‹ Fincas', 'Ajustes', '', showList);
+  if (fv) { stopGPS(); setHeader('‹ ' + fv.nombre, 'Ajustes', '', () => openFinca(fv.id)); $('mapWrap').classList.add('hidden'); $('bLay').classList.add('hidden'); }
+  else setHeader('‹ Fincas', 'Ajustes', '', showList);
   $('vList').classList.add('hidden'); $('bNueva').classList.add('hidden'); $('vSet').classList.remove('hidden');
   let h = '';
   for (const [g, fields] of SET_FIELDS) {
@@ -5788,6 +5791,44 @@ $('tPlan').onclick = planMenu;
 $('tWork').onclick = workMenu;
 $('bLay').onclick = () => { if (!busy() || work) capasSheet(); };
 $('tInfo').onclick = () => { if (!busy()) infoSheet(); };
+$('tAj').onclick = () => { if (busy()) return toast('Termina o cancela la operación en curso'); ajustesFinca(); };
+// ⚙️ Ajustes de la finca: máquina (tractor, apero, cortacésped), ancho, velocidad, precios y ajustes generales
+function ajustesFinca() {
+  const f = cur, c = f.config || {}, S0 = effS(f), tr0 = getTr(c.tractorId), ap0 = getAp(c.aperoId), n = v => String(v ?? '').replace('.', ',');
+  sheet(`<h3>⚙️ Ajustes · ${esc(f.nombre)}</h3>
+    <div class="sgrp">Máquina de esta finca</div>
+    <div class="card">
+      <label class="f" style="margin-top:0">Tractor / máquina</label><select class="inp" id="ajTr">${CAT.tractores.map(t => `<option value="${t.id}" ${t.id === (tr0 && tr0.id) ? 'selected' : ''}>${icoTr(t)} ${esc(t.nombre)}</option>`).join('')}</select>
+      <label class="f">Apero</label><select class="inp" id="ajAp">${CAT.aperos.map(a => `<option value="${a.id}" ${a.id === (ap0 && ap0.id) ? 'selected' : ''}>${esc(a.nombre)} · ${labNom(a.labor)}</option>`).join('')}</select>
+      <div class="row"><div><label class="f">Ancho de trabajo (m)</label><input class="inp" id="ajAn" inputmode="decimal" value="${n(S0.aperoAncho)}"></div>
+        <div><label class="f">Velocidad (km/h)</label><input class="inp" id="ajVe" inputmode="decimal" value="${n(S0.velocidad)}"></div></div>
+      <button class="btn" id="ajOk" style="margin-top:10px">${f.linde ? 'Guardar y calcular plan' : 'Guardar'}</button>
+      <button class="lnk" id="ajAlt" style="margin-top:6px">🔄 Probar otra máquina sin cambiar la finca (plan alternativo, más parámetros)</button>
+    </div>
+    <div class="sgrp">Más ajustes</div>
+    <button class="opt" id="ajCat">🚜 Tractores, aperos y cortacéspedes<small>Añadir o modificar máquinas, medidas y velocidades.</small></button>
+    <button class="opt" id="ajPre">💶 Precios: gasóleo ${fmt(+SB.precioGasoil, 2)} €/L · ${fmt(+SB.precioHora, 0)} €/h · margen ${fmt(+SB.margen || 0, 0)} %</button>
+    <button class="opt" id="ajApr">🧠 Lo aprendido de tus rutas</button>
+    <button class="opt" id="ajGen">⚙️ Ajustes generales<small>Voz, GPS, unidades, planificación, monte, copia de seguridad.</small></button>`,
+    () => {
+      $('ajAp').onchange = () => { const a = getAp($('ajAp').value); if (a) { $('ajAn').value = n(+a.ancho_m); $('ajVe').value = n(velProp(a, f.tipo)); } };
+      $('ajTr').onchange = () => { const ap = aperoPara(getTr($('ajTr').value), getAp($('ajAp').value)); if (ap) { $('ajAp').value = ap.id; $('ajAp').onchange(); } };
+      $('ajOk').onclick = async () => {
+        const an = parseFloat($('ajAn').value.replace(',', '.')), ve = parseFloat($('ajVe').value.replace(',', '.')), ap = getAp($('ajAp').value);
+        if (!(an > 0.1 && an < 15)) return toast('Ancho no válido'); if (!(ve > 0 && ve < 30)) return toast('Velocidad no válida');
+        f.config = { ...c, tractorId: $('ajTr').value, aperoId: $('ajAp').value, velocidad: ve, ancho: Math.abs(an - (+ap.ancho_m || 0)) > 1e-9 ? an : null };
+        if (!f.config.ancho) delete f.config.ancho;
+        await saveCur(); applyS(); closeSheet();
+        toast(`Máquina: ${getTr(f.config.tractorId).nombre} + ${ap.nombre} · ${fmt(S.aperoAncho, 2)} m · ${fmt(ve, 1)} km/h`, 3500);
+        if (f.linde && !(f.tipo === 'monte' && !(f.malla && f.malla.arboles && f.malla.arboles.length))) { const o = f.planOpt || { dirMode: 'auto', nHMode: 'auto' }, pl0 = f.plan; runPlan(o, pl0 && pl0.inicio || null, pl0 && pl0.fin || null); }
+      };
+      $('ajAlt').onclick = () => recalcSheet();
+      $('ajCat').onclick = () => catSheet();
+      $('ajPre').onclick = () => sheet(`<h3>💶 Precios</h3>${preciosHTML()}<div class="note">Precio (sin IVA) = coste × ${fmt(margenK(), 2)}. Cada ruta guarda el precio del gasóleo del día en que se hizo.</div>`, () => preciosBind(() => toast('Precios guardados')));
+      $('ajApr').onclick = () => aprendizajeSheet(f);
+      $('ajGen').onclick = () => { closeSheet(); showSettings(true); };
+    });
+}
 
 /* =========================================================
    ARRANQUE
