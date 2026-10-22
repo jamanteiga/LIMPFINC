@@ -776,3 +776,93 @@ Al tocarlo se abre «Cuenta y sincronización».
 - **Velocidades por defecto**: finca abierta 3,5 km/h y monte/arbolada 2,3 km/h (⚙︎ › Trabajo).
   - Al cambiar el tipo en la ficha se propone la del nuevo tipo si no se había cambiado a mano.
   - Migración única: las fincas con la antigua velocidad general de 3 km/h pasan a la de su tipo y se recalcula el plan.
+
+## 26. Implementación v1.9.1 — Correcciones (giros dentro del linde, arboleda con un botón, velocidades)
+
+- **Giros siempre dentro del linde**: las pasadas terminan a la distancia necesaria para girar, sin salir (apero 2 m + voladizo + radio de giro + media anchura ≈ 7,8 m con el TN95F). Se recorta con `off(linde, −need)`. Prueba: 0 de 1919 puntos del plan fuera del linde. Si los árboles exteriores están más cerca del linde que esa distancia, se avisa.
+- **Arboleda**: una sola opción. Menú Arboleda → botón grande **🌳 MARCAR ÁRBOL**: guarda la posición GPS a 1000 mm a la derecha del sentido de avance (distancia ajustable con −/＋ de 50 en 50 mm).
+  - Árboles exteriores e interiores, los que se quieran; mínimo 3.
+  - Al terminar: patrón (3500 × 3500 mm, editable), diámetro (mm) y «árboles hasta X m del linde» (automático: el árbol marcado más próximo al linde menos 0,4 × separación).
+  - La orientación se calcula sola (libre o paralela a los lados del linde, la que mejor encaje).
+  - Se generan todos los árboles del linde de SIGPAC.
+  - Eliminados del menú: árboles del borde, diseño teórico, A–B–C, faltas y corrección.
+- **Velocidades por defecto**: finca abierta **3,0 km/h** y monte **2,3 km/h**, aplicadas a todas las fincas existentes (una vez) y recalculando sus planes. Se cambian en ⚙︎ › Trabajo y por finca.
+
+## 27. v1.9.2 — Dos pasadas por calle
+
+- Monte: siempre **dos pasadas por calle**, una arrimada a cada hilera. El borde del apero queda a la holgura (0,30 m) de la corteza: eje de la pasada a radio del tronco + holgura + medio apero de cada hilera.
+- Se acepta el solape central. Si la calle es tan ancha que entre las dos pasadas queda franja sin limpiar, se avisa con su anchura. Si la calle es más estrecha que apero + holguras, una pasada centrada (con aviso).
+- Prueba (calle de 3,5 m, tronco de 500 mm, apero de 1,70 m): pasadas a 1,40 m y 2,10 m de la hilera, 2 por calle.
+
+## 28. v2.0.0 — Planes y rutas numerados, análisis, zonas sin limpiar en rojo y peligros
+
+- **Planes numerados**: cada plan calculado o recalculado se guarda como **Plan 1, 2, 3…** con fecha y hora, origen (calculado, recalculado, copia o anterior) y nota.
+  - Almacén IndexedDB `planes` (versión 5) y tabla Supabase `planes` (`supabase_limpfinc_v200.sql`). `finca.planId` indica el plan activo.
+  - ⋯ › 🧭 Planes guardados: usar/activar, detalle, nombre y nota, copiar (nuevo número), modificar (recalcular → nuevo número), eliminar y comparar planes (⭐ el más rápido).
+- **Rutas de trabajo numeradas**: **Ruta 1, 2, 3…** con fecha y hora; cada ruta guarda el `planId` con el que se hizo y, al terminar o dejarla abierta, un `planResumen` (se conserva aunque se elimine el plan).
+  - ⋯ › 🛤 Rutas de trabajo: ver en el mapa, 🔴 zonas sin limpiar, resumen, analizar, nombre y nota, copiar, parte PDF, continuar/finalizar y eliminar.
+- **Análisis de rutas**:
+  - Tiempo y gasóleo reales frente a los del plan para la misma superficie (plan × cobertura), con la diferencia en %.
+  - Cobertura, m² sin limpiar, η del recorrido, desviación media, solape y **efectividad** = cobertura × min(1, tiempo plan / real) × min(1, η).
+  - ⭐ la más efectiva.
+- **Zonas sin limpiar en rojo**: celdas del objetivo por las que no pasó la desbrozadora (sin contar el tronco de los árboles).
+- **⚠️ Peligros** (botón rojo en el panel de trabajo): piedra grande (r = 1 m), árbol caído / tronco (2 m), obstáculo peligroso (1,5 m).
+  - Quedan en la finca (`finca.peligros`) y crean una exclusión, de modo que los planes los esquivan.
+  - Aviso por voz a 12 m (cada 60 s como máximo).
+  - Se editan (radio, nota) o eliminan en ⋯ › ⚠️ Peligros o tocando el icono.
+- Al empezar a trabajar con un plan desactualizado se avisa: la ruta se guarda sin plan.
+- Corregido: un aviso GPS sin mapa abierto (desde la lista) daba error.
+
+## 29. v2.1.0 — Exclusiones sin número fijo
+
+- Ya no se pide cuántas exclusiones hay. En el alta, «Editar finca» y SIGPAC (abierta) se pregunta **«¿Hay zonas de exclusión?» No / Sí** (`finca.exclPend`).
+- Con «Sí», tras el linde y tras cada exclusión aparece **«Exclusión n»** (a pie, dibujar, punto + radio en serie), con **✅ No hay más exclusiones** para cerrar y «Más tarde».
+- ⋯ › Exclusiones: «Medidas: n» y casilla «Quedan exclusiones por medir».
+- Plan: si siguen abiertas, «¿Quedan exclusiones?» → Medir la exclusión n+1 / No hay más: calcular / Calcular igualmente.
+- Compatibilidad: las fincas con `exclObj` mayor que las medidas se consideran abiertas.
+
+## 30. v2.2.0 — Retomar ruta, repaso de zonas sin limpiar, informe anual y exportar peligros
+
+- **Retomar una ruta a medias** (Trabajar › «Continuar Ruta N desde donde quedó», o Rutas › ▶️):
+  - Se reconstruye la cobertura y se busca la pasada más cercana a la última posición de corte; desde ahí, el primer tramo ≥ 3 m sin limpiar en orden del plan (si no hay, el primer tramo pendiente anterior).
+  - Marca ↻ naranja y línea discontinua hasta el punto; el panel indica distancia y lado (delante, detrás, izquierda, derecha); voz por tramos de distancia y «Punto de reanudación alcanzado» (radio máx(3 m, precisión ≤ 6 m)).
+  - El guiado del plan continúa desde esa pasada. `trab.reanudar` guarda el punto.
+- **🧹 Repaso de zonas sin limpiar** (Rutas › ruta, Análisis, ⋯ de la finca):
+  - Celdas rojas de la ruta (sin troncos) agrupadas en franjas en el sentido del plan (ancho apero − solape); en monte, dos pasadas por calle arrimadas a cada hilera, como el plan.
+  - Se ignoran manchas menores de 0,5 m² (editable). Las pasadas quedan a ancho/2 + 0,35 m del linde y de las exclusiones y no tocan troncos (holgura).
+  - Orden: vecino más próximo desde la posición GPS + 2-opt con inversión; traslados rectos o por A* (rejilla 1 m) dentro de la zona libre.
+  - Se guarda como Plan N «(repaso de Ruta M)», origen `repaso`, y queda activo; las rutas hechas con un repaso no compiten en el ⭐ del análisis.
+  - Prueba: 0 de 891 puntos fuera del linde; monte con 2900 árboles: distancia mínima eje-tronco = radio + holgura + medio apero.
+- **📄 Informe anual en PDF** (lista › 📄 Informe anual, o ⋯ de la finca): año a elegir; resumen de todas las fincas (rutas, horas, gasóleo, coste, ha, franja contra incendios) y una página por finca con croquis, superficie, SIGPAC, mantenimiento, franja contra incendios (limpieza entre el 1/10 anterior y el 31/05), peligros, incidencias y tabla de rutas con totales.
+- **⚠️ Exportar peligros**: KML (punto + círculo del radio, carpetas por finca) y GPX (waypoints «Danger Area») de una finca o de todas; desde ⋯ › Peligros, Exportar y la lista. Los KML/GPX completos de la finca incluyen también los peligros.
+
+## 31. v2.3.0 — El plan aprende de las rutas reales
+
+- Al terminar o dejar abierta una ruta hecha con un plan guardado, se reproducen las últimas 8 rutas de la finca sobre su plan (`aprenderFinca`):
+  - **Velocidad real en zona normal**: velocidad del corte con el apero en trabajo por celdas de 2 m; se excluyen las celdas lentas.
+  - **Zonas lentas**: celdas con velocidad < 70 % de la mediana (≥ 3 lecturas y ≥ 2 s); se guarda la relación de velocidad de cada celda.
+  - **Giros y traslados**: tiempo real desde la última lectura alineada en una pasada (desvío < 1,5 m y rumbo alineado) hasta la primera en la siguiente pasada del plan, frente al tiempo del plan para los tramos intermedios → factores `fGiro` y `fTras` (mín. 3 giros / 2 traslados; límites ×0,4–×3).
+  - Se guarda en `finca.aprende` (se sincroniza con la finca) y, por tractor + apero, en `SB.aprendeG` (giros y traslados para fincas sin rutas).
+- **Planes**: `Planner.plan` usa la velocidad real, escala velocidad de giro y cambios de sentido con `fGiro`, y velocidad y maniobra de traslado con `fTras`. Después suma el tiempo extra de las pasadas que cruzan zonas lentas. El plan guarda `aprendido` y se marca con 🧠.
+- ⋯ › **🧠 Lo aprendido**: velocidad configurada frente a real, giro medio plan → real, traslados, área lenta; interruptor «Usar lo aprendido», calcular plan nuevo, ver zonas lentas (capa naranja), volver a aprender y olvidar.
+- Prueba: ruta simulada con giros a la mitad de velocidad y una franja de 20 m a 1,2 km/h → velocidad normal 2,99 km/h, giros ×2,01 (16 giros medidos), zonas lentas 1120 m², plan de 89 → 117 min (+20 min por zonas lentas).
+
+## 32. v2.4.0 — Máquinas, cortacésped, planes alternativos, gasóleo y margen
+
+- **Tipo de máquina** en el catálogo de tractores (`tipo`): 🚜 tractor agrícola, 🛻 tractor cortacésped, 🚶 cortacésped a pie (convencional), ⚙️ motocultor / desbrozadora de operario. Si falta, se deduce de ancho y radio de giro. Columna nueva en Supabase (`supabase_limpfinc_v240.sql`); sin ella, el resto del catálogo se sigue subiendo.
+- **Cortacésped convencional** añadido al catálogo (una vez, ids fijos `tr-pie` / `ap-cesped-053`): a pie, ancho 0,6 m, radio de giro 0,4 m; apero de 0,53 m a **2 km/h**, corte 0,6 m por delante del operario, 0,6 L/h.
+- Al cambiar de máquina se propone el apero adecuado (a pie → cortacésped convencional) y la velocidad del apero (los de desbroce, la de la finca: abierta 3, monte 2,3 km/h).
+- **Recalcular plan**: máquina, apero, **ancho de trabajo** (`config.ancho`, propio de la finca), velocidad, solape, giros, consumo, cabeceras y rumbo. «Guardar y usar» o **«Guardar como plan alternativo»** (no cambia la máquina ni el plan activo). Cada plan guarda su máquina (`params.maq`, `rec.cfg`); «Usar este plan» pasa la finca a esa máquina.
+- Comparar planes: máquina, ancho, coste y precio; ⭐ el más barato.
+- Lo aprendido (v2.3) solo se aplica con la misma máquina con la que se hicieron las rutas.
+- Finca demasiado pequeña para el tractor: el aviso propone el cortacésped.
+- **Gasóleo editable** directamente en Presupuesto e Informe anual (y en Ajustes › Costes), con fecha de actualización. Cada ruta guarda los precios del día (`trab.precios`) y su coste se calcula con ellos.
+- **Margen sobre el coste: 70 %** (Ajustes › Costes, editable). Precio (sin IVA) = coste × 1,70. Aparece en presupuesto, PDF de presupuesto y parte, informe anual (columnas Coste y Precio) y comparación de planes.
+
+## 33. v2.4.1 — Botón ⚙️ Ajustes en la barra de la finca
+
+- Barra inferior: Linde · Exclusión · Editar · Plan · Trabajar · Datos · **⚙️ Ajustes**.
+- ⚙️ Ajustes de la finca:
+  - **Máquina de esta finca**: tractor / máquina (con icono de tipo), apero, ancho de trabajo y velocidad. Al cambiar de máquina se propone el apero y la velocidad adecuados (cortacésped a pie → 0,53 m a 2 km/h). «Guardar y calcular plan» guarda la máquina en la finca y abre el plan nuevo para revisarlo y guardarlo.
+  - «Probar otra máquina sin cambiar la finca» → recálculo con plan alternativo.
+  - Tractores, aperos y cortacéspedes (catálogo); Precios (gasóleo, €/h, margen); Lo aprendido; Ajustes generales (con «‹ finca» para volver al mapa).
