@@ -253,7 +253,7 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
 /* =========================================================
    LIMPFINC · F1 — Fincas, linde, exclusiones, área
    ========================================================= */
-const VERSION = '2.0.0';
+const VERSION = '2.4.0';
 
 /* ---------- Ajustes por defecto ---------- */
 const DEF = {
@@ -267,7 +267,7 @@ const DEF = {
   mallaX:3.5, mallaY:3.5, holguraTronco:0.30, diamTronco:500, promedioS:10,
   mapaBase:'OpenStreetMap',
   velAbierta:3.0, velMonte:2.3, ladoArbol:'der', distArbol:1.0,
-  precioGasoil:1.10, precioHora:35, precioFerrado:0, titular:'', velCarretera:20, consumoTraslado:3, pendMax:25, ultimaCopia:0,
+  precioGasoil:1.10, precioHora:35, precioFerrado:0, margen:70, titular:'', velCarretera:20, consumoTraslado:3, pendMax:25, ultimaCopia:0,
   consumoAuto:true, velocidadGiro:3.0, velocidadTraslado:5.0, tCambioSentido:4, tManiobra:20, tEsquina:15, margenObstaculo:0.30
 };
 const SET_FIELDS = [
@@ -276,7 +276,7 @@ const SET_FIELDS = [
     ['tManiobra','Maniobra al iniciar traslado (s)'],['tEsquina','Maniobra en esquina (s)'],['margenObstaculo','Margen a exclusiones (m)']]],
   ['Unidades',[['verFerrados','Mostrar superficie también en ferrados','bool'],['ferrado','Ferrado de tu comarca (m²)']]],
   ['Medición GPS',[['umbralPrecision','Descartar puntos con precisión peor que (m)'],['promedioS','Segundos de promedio GPS por punto (árboles, exclusiones)'],['holguraLinde','Holgura lateral tractor–linde (m)']]],
-  ['Costes (presupuestos y partes)',[['precioGasoil','Gasóleo (€/L)'],['precioHora','Tractor y operario (€/h)'],['precioFerrado','Precio por ferrado (€; 0 = no usar)'],['titular','Titular / empresa en los PDF','text']]],
+  ['Costes (presupuestos y partes)',[['precioGasoil','Gasóleo (€/L)'],['precioHora','Tractor y operario, coste (€/h)'],['margen','Margen sobre el coste (%)'],['precioFerrado','Precio por ferrado (€; 0 = no usar)'],['titular','Titular / empresa en los PDF','text']]],
   ['Jornada',[['velCarretera','Velocidad por carretera entre fincas (km/h)'],['consumoTraslado','Consumo en traslado (L/h)']]],
   ['Seguridad',[['pendMax','Avisar de pendiente mayor que (%) · 0 = no avisar']]],
   ['Monte',[['mallaX','Separación entre filas (m)'],['mallaY','Separación en fila (m)'],['holguraTronco','Holgura al tronco (m)'],['diamTronco','Diámetro medio del tronco (mm)']]]
@@ -602,7 +602,7 @@ async function showList() {
     + (jSig ? `<button class="card lastc" id="lJor" style="background:#f3e5f5"><span style="font-size:24px">🗓</span><span>Jornada: siguiente finca<small>${esc(jSig.nombre)}</small></span></button>` : '')
     + (fs.length && (diasCopia == null || diasCopia >= 7) ? `<div class="card" style="background:#e3f2fd;color:#0d47a1;font-size:14px">💾 ${diasCopia == null ? 'Aún no has descargado ninguna copia de seguridad' : `Hace ${diasCopia} días de la última copia de seguridad`}. <button class="lnk" id="lCop" style="display:inline;margin:0">Descargar ahora</button></div>` : '');
   const top = (fu ? `<button class="card lastc" id="lLast"><span style="font-size:24px">▶</span><span>Continuar con ${esc(fu.nombre)}<small>${fu.linde ? fmtArea(fincaAreas(fu).neta) : 'sin linde'}${fu.plan ? ' · plan ' + fmtH(fu.plan.stats.t.total / 3600) : ''}</small></span></button>` : '')
-    + `<div class="row" style="margin-bottom:10px"><button class="btn sec" id="lMap">🗺 Mapa de fincas</button><button class="btn sec" id="lJo">🗓 Jornada</button><button class="btn sec" id="lImp">📥 Importar</button></div>`;
+    + `<div class="row" style="margin-bottom:10px"><button class="btn sec" id="lMap">🗺 Mapa de fincas</button><button class="btn sec" id="lJo">🗓 Jornada</button><button class="btn sec" id="lImp">📥 Importar</button></div><div class="row" style="margin:-4px 0 10px"><button class="btn sec" id="lInf">📄 Informe anual</button><button class="btn sec" id="lPel">⚠️ Exportar peligros</button></div>`;
   el.innerHTML = nube + avisos + top + (fs.length > 4 ? `<input class="inp" id="fBus" placeholder="🔍 Buscar finca…" style="margin-bottom:10px">` : '') + fs.map(f => {
     const a = fincaAreas(f), c = f.config || {};
     return `<div class="card fcard" data-n="${esc(normName(f.nombre))}"><div class="finca" data-id="${f.id}">
@@ -622,7 +622,7 @@ async function showList() {
     else if (b.dataset.a === 'del') confirmSheet(`¿Eliminar «${esc(f.nombre)}» y todos sus trabajos?`, 'Eliminar', () => borrarFinca(f), true);
   });
   if ($('lLast')) $('lLast').onclick = () => openFinca(fu.id);
-  $('lMap').onclick = verMapaFincas; $('lJo').onclick = jornadaSheet;
+  $('lMap').onclick = verMapaFincas; $('lJo').onclick = jornadaSheet; $('lInf').onclick = () => informeSheet(null); $('lPel').onclick = () => exportPelSheet(null);
   if ($('lJor')) $('lJor').onclick = () => openFinca(jSig.id);
   if ($('lCop')) $('lCop').onclick = async () => { await exportBackup(); showList(); };
   el.querySelectorAll('.fcard').forEach(c => { const id = c.querySelector('.finca').dataset.id, m = MT[id]; if (m && m.st !== 'nunca') c.querySelector('.s').insertAdjacentHTML('beforeend', `<br><span style="color:${m.col};font-size:13px">Limpieza: ${m.txt}</span>`); });
@@ -720,7 +720,7 @@ function nuevaFinca() {
 function cfgHTML(cfg, tipo) {
   return `<label class="f">Tipo</label>
     <div class="seg" id="xTipo"><button data-v="abierta">🌾 Abierta</button><button data-v="monte">🌲 Monte / plantación</button></div>
-    <label class="f">Tractor</label><select class="inp" id="xTr">${CAT.tractores.map(t => `<option value="${t.id}" ${t.id === cfg.tractorId ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</select>
+    <label class="f">Tractor / máquina</label><select class="inp" id="xTr">${CAT.tractores.map(t => `<option value="${t.id}" ${t.id === cfg.tractorId ? 'selected' : ''}>${icoTr(t)} ${esc(t.nombre)}</option>`).join('')}</select>
     <label class="f">Apero</label><select class="inp" id="xAp">${CAT.aperos.map(a => `<option value="${a.id}" ${a.id === cfg.aperoId ? 'selected' : ''}>${esc(a.nombre)} · ${labNom(a.labor)}</option>`).join('')}</select>
     <div class="row"><div><label class="f">Vegetación</label><select class="inp" id="xVeg">${VEGET.map(([v, n]) => `<option value="${v}" ${v === (cfg.vegetacion || 'media') ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
       <div><label class="f">Velocidad de trabajo (km/h)</label><input class="inp" id="xVel" inputmode="decimal" value="${String(cfg.velocidad || 3).replace('.', ',')}"></div></div>
@@ -730,32 +730,35 @@ function cfgBind(cfg, tipo, onTipo) {
   const seg = $('xTipo'), paint = () => seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === tipo));
   seg.querySelectorAll('button').forEach(b => b.onclick = () => { const v0 = parseFloat($('xVel').value.replace(',', '.')); if (Math.abs(v0 - velDef(tipo)) < 1e-6) $('xVel').value = String(velDef(b.dataset.v)).replace('.', ','); tipo = b.dataset.v; paint(); onTipo && onTipo(tipo); }); paint();
   const std = () => { const ap = getAp($('xAp').value), v = ap && velStd(ap.labor, $('xVeg').value); $('xStd').innerHTML = v ? `Estándar ${labNom(ap.labor).toLowerCase()} · vegetación ${vegNom($('xVeg').value).toLowerCase()}: <b>${fmt(v, 1)} km/h</b> <button class="lnk" id="xUse" style="display:inline;margin:0 0 0 6px">usar</button>` : ''; if ($('xUse')) $('xUse').onclick = () => { $('xVel').value = String(v).replace('.', ','); }; };
-  $('xAp').onchange = $('xVeg').onchange = std; std();
+  $('xVeg').onchange = std; std();
+  $('xAp').onchange = () => { $('xVel').value = String(velProp(getAp($('xAp').value), tipo)).replace('.', ','); std(); };
+  $('xTr').onchange = () => { const ap = aperoPara(getTr($('xTr').value), getAp($('xAp').value)); if (ap && ap.id !== $('xAp').value) { $('xAp').value = ap.id; toast('Apero: ' + ap.nombre); } $('xAp').onchange(); };
   return () => { const v = parseFloat($('xVel').value.replace(',', '.')); if (!(v > 0 && v < 30)) { toast('Velocidad no válida'); return null; } return { tipo, cfg: { tractorId: $('xTr').value, aperoId: $('xAp').value, vegetacion: $('xVeg').value, velocidad: v } }; };
 }
-// selector numérico − n + para el número de exclusiones
-const exclStepHTML = (id, n) => `<div class="srow"><span>Exclusiones dentro de la finca<br><small style="color:var(--sub)">Rocas, pozos, edificaciones, árboles aislados…</small></span>
-  <span style="display:flex;align-items:center;gap:6px"><button class="btn sec" data-st="-1" style="width:44px;padding:8px 0">−</button><b id="${id}" style="min-width:26px;text-align:center;font-size:18px">${n}</b><button class="btn sec" data-st="1" style="width:44px;padding:8px 0">＋</button></span></div>`;
-function exclStepBind(id, onCh) { const el = $(id); el.closest('.srow').querySelectorAll('[data-st]').forEach(b => b.onclick = () => { const v = Math.max(0, Math.min(50, (+el.textContent || 0) + +b.dataset.st)); el.textContent = v; onCh && onCh(v); }); return () => +el.textContent || 0; }
+// v2.1: exclusiones sin número fijo: «¿hay exclusiones?» Sí/No; se añaden una tras otra hasta «No hay más»
+const exclAbiertas = f => f.exclPend != null ? !!f.exclPend : (+f.exclObj || 0) > (f.exclusiones || []).length;
+const exclStepHTML = (id, on) => `<div class="srow"><span>¿Hay zonas de exclusión?<br><small style="color:var(--sub)">Rocas, pozos, edificaciones, árboles aislados… Las que sean: se miden una tras otra.</small></span>
+  <span class="seg" id="${id}" style="width:auto;margin:0"><button data-v="0" class="${on ? '' : 'on'}" style="padding:8px 12px">No</button><button data-v="1" class="${on ? 'on' : ''}" style="padding:8px 12px">Sí</button></span></div>`;
+function exclStepBind(id, onCh) { const el = $(id); let v = !!el.querySelector('[data-v="1"].on'); el.querySelectorAll('button').forEach(b => b.onclick = () => { v = b.dataset.v === '1'; el.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); onCh && onCh(v); }); return () => v; }
 // guía: tras medir el linde o una exclusión, propone la siguiente hasta completar las indicadas
 function guiaExcl(trasMedir) {
   if (!cur || !cur.linde) return;
   if (trasMedir && guiaMalla()) return;
-  const N = +cur.exclObj || 0, n = (cur.exclusiones || []).length;
-  if (n >= N) { if (trasMedir && N > 0) toast(`✅ Exclusiones completas (${n} de ${N}). Ya puedes calcular el plan.`, 3500); return; }
-  setTimeout(() => sheet(`<h3>Exclusión ${n + 1} de ${N}</h3>
-    <div class="note" style="margin-bottom:8px">${n ? `Llevas ${n} medida${n > 1 ? 's' : ''}. ` : ''}Mide la siguiente zona que no se debe pisar.</div>
+  const n = (cur.exclusiones || []).length;
+  if (!exclAbiertas(cur)) return;
+  setTimeout(() => sheet(`<h3>Exclusión ${n + 1}</h3>
+    <div class="note" style="margin-bottom:8px">${n ? `Llevas <b>${n}</b> medida${n > 1 ? 's' : ''}. ` : ''}Mide la siguiente zona que no se debe pisar. Añade todas las que haya; cuando acabes pulsa «No hay más».</div>
     <button class="opt" id="gPie">🚶 Rodear a pie<small>Da la vuelta a la zona con el iPhone.</small></button>
     <button class="opt" id="gDraw">✍️ Dibujar sobre el mapa<small>Toca sus vértices en el mapa.</small></button>
-    <button class="opt" id="gPto">📍 Punto + radio<small>Árbol, poste, arqueta… GPS promediado.</small></button>
-    <button class="opt" id="gLuego" style="color:var(--sub)">Más tarde<small>Quedan ${N - n} pendiente${N - n > 1 ? 's' : ''}; se recordarán al calcular el plan.</small></button>
-    <button class="opt" id="gNo" style="color:var(--sub)">No hay más exclusiones<small>Deja el total en ${n}.</small></button>`,
+    <button class="opt" id="gPto">📍 Punto + radio<small>Árbol, poste, arqueta… varias seguidas, GPS promediado.</small></button>
+    <button class="opt" id="gNo" style="color:var(--ok,#2a2)">✅ No hay más exclusiones<small>Cerrar con ${n} medida${n === 1 ? '' : 's'}. Podrás añadir más en ⋯ › Exclusiones.</small></button>
+    <button class="opt" id="gLuego" style="color:var(--sub)">Más tarde<small>Se recordará al calcular el plan.</small></button>`,
     () => {
       $('gPie').onclick = () => { closeSheet(); startRec('excl', 'pie'); };
       $('gDraw').onclick = () => { closeSheet(); startDraw('excl'); };
       $('gPto').onclick = () => { closeSheet(); exclPuntos(); };
       $('gLuego').onclick = closeSheet;
-      $('gNo').onclick = async () => { cur.exclObj = n; await saveCur(); closeSheet(); toast(`Exclusiones: ${n}`); };
+      $('gNo').onclick = async () => { cur.exclPend = false; await saveCur(); closeSheet(); toast(`✅ Exclusiones cerradas: ${n}. Ya puedes calcular el plan.`, 3500); };
     }), trasMedir ? 700 : 0);
 }
 function nuevaFincaMedir(nombre) {
@@ -763,7 +766,7 @@ function nuevaFincaMedir(nombre) {
   let leer;
   sheet(`<h3>${esc(nombre)}</h3><div class="note" style="margin-bottom:6px">Finca nueva: configúrala y elige cómo medir su superficie.</div>
     ${cfgHTML(cfg0, 'abierta')}
-    ${exclStepHTML('nExN', 0)}
+    ${exclStepHTML('nExN', false)}
     <label class="f">Medición del linde</label>
     <button class="opt" id="nPie">🚶 A pie<small>Recorre el linde con el iPhone. Máxima precisión.</small></button>
     <button class="opt" id="nTrac">🚜 Con tractor<small>Recorre el interior junto al linde; se corrige hacia fuera.</small></button>
@@ -774,7 +777,7 @@ function nuevaFincaMedir(nombre) {
       leer = cfgBind(cfg0, 'abierta'); const leerEx = exclStepBind('nExN');
       const crear = async modo => {
         const v = leer(); if (!v) return;
-        const now = Date.now(), nf = { id: uid(), nombre, tipo: v.tipo, config: v.cfg, notas: '', creada: now, mod: now, linde: null, exclusiones: [], exclObj: leerEx() };
+        const now = Date.now(), nf = { id: uid(), nombre, tipo: v.tipo, config: v.cfg, notas: '', creada: now, mod: now, linde: null, exclusiones: [], exclPend: leerEx() };
         await DB.put(nf); closeSheet(); await openFinca(nf.id);
         if (modo === 'pie') startRec('linde', 'pie'); else if (modo === 'tractor') tractorSetup();
         else if (modo === 'sigpac') sigpacSheet({ actual: true }); else if (modo === 'file') lindeArchivo();
@@ -788,7 +791,7 @@ function fincaForm(f, desdeLista) {
   sheet(`<h3>Editar finca</h3>
     <label class="f">Nombre</label><input class="inp" id="fNom" value="${esc(f.nombre)}">
     ${cfgHTML(cfg0, f.tipo)}
-    ${exclStepHTML('fExN', Math.max(+f.exclObj || 0, (f.exclusiones || []).length))}
+    ${exclStepHTML('fExN', exclAbiertas(f))}
     <div class="note">${(f.exclusiones || []).length} medida(s).</div>
     <div class="sgrp">Mantenimiento</div>
     <div class="srow"><span>Volver a limpiar cada (meses)</span><input class="inp" id="fMm" inputmode="numeric" value="${(f.mant && f.mant.meses) || 12}" style="width:80px;text-align:right"></div>
@@ -803,7 +806,7 @@ function fincaForm(f, desdeLista) {
         if (await findByName(nombre, f.id)) return toast('Ya existe otra finca con ese nombre');
         const v = leer(); if (!v) return;
         const cambio = JSON.stringify(v.cfg) !== JSON.stringify({ tractorId: cfg0.tractorId, aperoId: cfg0.aperoId, vegetacion: cfg0.vegetacion || 'media', velocidad: cfg0.velocidad }) || v.tipo !== f.tipo;
-        Object.assign(f, { nombre, tipo: v.tipo, config: v.cfg, notas: $('fNot').value.trim(), exclObj: leerEx(), mant: { meses: Math.max(1, parseInt($('fMm').value) || 12), incendios: $('fMi').checked, ultimaManual: $('fMu').value ? Date.parse($('fMu').value + 'T12:00') : null } });
+        Object.assign(f, { nombre, tipo: v.tipo, config: v.cfg, notas: $('fNot').value.trim(), exclPend: leerEx(), mant: { meses: Math.max(1, parseInt($('fMm').value) || 12), incendios: $('fMi').checked, ultimaManual: $('fMu').value ? Date.parse($('fMu').value + 'T12:00') : null } });
         delete f.refCat;
         await DB.put(f); closeSheet(); cur = f; applyS();
         if (cambio && f.plan) await recalcPlan();
@@ -949,7 +952,7 @@ function drawFinca(fit) {
     L.polygon(e.coords, { color: '#b71c1c', weight: 2, dashArray: '6 4', fillColor: '#757575', fillOpacity: .55 })
       .bindTooltip(esc(e.nombre), { sticky: true }).addTo(lyr.finca);
   });
-  drawTrabView(); drawFotos(); drawIncidencias(cur, lyr.finca); drawPeligros(cur, lyr.finca);
+  drawTrabView(); drawFotos(); drawIncidencias(cur, lyr.finca); drawPeligros(cur, lyr.finca); drawLentas(cur, lyr.finca);
   if (fit) fitFinca();
 }
 // encuadra la finca en la parte visible del mapa (entre la cabecera y el panel inferior), en cualquier pantalla
@@ -1405,17 +1408,17 @@ async function endEdit(save) {
    ========================================================= */
 function exclMenu() {
   if (busy()) return;
-  const nM = (cur.exclusiones || []).length, nO = Math.max(+cur.exclObj || 0, nM);
+  const nM = (cur.exclusiones || []).length, nO = exclAbiertas(cur);
   sheet(`<h3>Zonas de exclusión</h3><div class="note" style="margin-bottom:8px">Rocas, pozos, zonas que no se pueden pisar. Se restan del área a limpiar.</div>
-    ${exclStepHTML('eExN', nO)}
+    <div class="srow"><span>Quedan exclusiones por medir</span><input type="checkbox" id="eExN" ${nO ? 'checked' : ''} style="width:auto"></div>
     <div class="note" id="eExS" style="margin-bottom:6px"></div>
     <button class="opt" id="ePto">📍 Punto + radio (árbol, poste, farola, arqueta…)<small>Colócate junto al objeto: GPS promediado y círculo del radio que indiques. Rápido para muchos obstáculos.</small></button>
     <button class="opt" id="eDraw">✍️ Dibujar sobre el mapa</button>
     <button class="opt" id="ePie">🚶 Rodear a pie</button>
     ${(cur.exclusiones || []).length ? `<div class="sgrp">Existentes</div>` + cur.exclusiones.map(e => `<button class="opt" data-id="${e.id}">${esc(e.nombre)}<small>${fmtArea(Geo.areaLL(e.coords))} · tocar para editar o renombrar</small></button>`).join('') : ''}`,
     sh => {
-      const est = v => { $('eExS').innerHTML = v > nM ? `Medidas <b>${nM} de ${v}</b> · faltan ${v - nM}.` : v ? `Medidas <b>${nM} de ${v}</b> ✅` : 'Sin exclusiones.'; };
-      exclStepBind('eExN', async v => { cur.exclObj = v; est(v); await saveCur(); }); est(nO);
+      const est = v => { $('eExS').innerHTML = `Medidas: <b>${nM}</b>` + (v ? ' · se pueden añadir todas las que quieras.' : ' ✅ cerradas.'); };
+      $('eExN').onchange = async () => { cur.exclPend = $('eExN').checked; est(cur.exclPend); await saveCur(); }; est(nO);
       $('eDraw').onclick = () => { closeSheet(); startDraw('excl'); };
       $('ePto').onclick = () => { closeSheet(); exclPuntos(); };
       $('ePie').onclick = () => { closeSheet(); startRec('excl', 'pie'); };
@@ -1429,9 +1432,9 @@ function exclPuntos() {
   map.on('click', ptoClick); ptoPanel();
 }
 function ptoPanel() {
-  const N = +cur.exclObj || 0, m = (cur.exclusiones || []).length;
+  const m = (cur.exclusiones || []).length;
   showTool('Exclusiones: punto + radio', `<div class="srow" style="margin:0 0 6px"><span>Radio (m)</span><span style="display:flex;gap:6px;align-items:center"><button class="btn sec" id="ptM" style="width:44px;padding:8px 0">−</button><b id="ptR" style="min-width:40px;text-align:center">${fmt(ptoW.r, 2)}</b><button class="btn sec" id="ptP" style="width:44px;padding:8px 0">＋</button></span></div>
-    Colócate junto al objeto y pulsa «GPS», o tócalo en el mapa. ${ptoW.n ? `<b>${ptoW.n}</b> añadida${ptoW.n > 1 ? 's' : ''} · ` : ''}${N ? `${m} de ${N}` : `${m} en total`}.`,
+    Colócate junto al objeto y pulsa «GPS», o tócalo en el mapa. ${ptoW.n ? `<b>${ptoW.n}</b> añadida${ptoW.n > 1 ? 's' : ''} · ` : ''}${m} en total.`,
     [['Terminar', 'sec', ptoFin], ['GPS (' + (SB.promedioS || 10) + ' s)', '', ptoGPS]]);
   const st = d => { ptoW.r = Math.max(0.1, Math.min(20, Math.round((ptoW.r + d) * 100) / 100)); SB.radioExcl = ptoW.r; $('ptR').textContent = fmt(ptoW.r, 2); };
   $('ptM').onclick = () => st(ptoW.r > 1 ? -0.25 : -0.05); $('ptP').onclick = () => st(ptoW.r >= 1 ? 0.25 : 0.05);
@@ -1631,10 +1634,10 @@ const Planner = (() => {
       if (!ps.length) break;
       hl.push(ps.map(p => Geo.ccw(frC(p))));
     }
-    if (!hl.length && !monte) return { error: 'La finca es demasiado pequeña para el apero.' };
+    if (!hl.length && !monte) return { error: 'La finca es demasiado pequeña para este tractor y apero: no cabe el giro dentro del linde. Prueba con el cortacésped (Recalcular › Tractor / máquina).' };
     if (hl.length < nH && !monte) warn.push('La finca se cubre solo con vueltas perimetrales.');
     const inner = hl.length ? off(field, -(w + (hl.length - 1) * we)) : off(field, -w / 2);
-    if (!inner.length) return { error: 'La finca es demasiado pequeña para el apero.' };
+    if (!inner.length) return { error: 'La finca es demasiado pequeña para este tractor y apero: no cabe el giro dentro del linde. Prueba con el cortacésped (Recalcular › Tractor / máquina).' };
     const marg = S.margenObstaculo;
     const obsInf = obs.length ? off(obs, w / 2 + marg, true) : [];
     const region = obsInf.length ? boolOp('diff', inner, obsInf) : inner;
@@ -1974,15 +1977,15 @@ function planMenu() {
   if (!cur.linde) return toast('Primero define el linde de la finca');
   if (cur.tipo === 'monte' && !(cur.malla && cur.malla.arboles && cur.malla.arboles.length)) { toast('Marca primero los árboles (Arboleda)'); return mallaMenu(); }
   if (!window.ClipperLib) return toast('No se ha cargado la librería de geometría. Revisa la conexión.');
-  const nEx = (cur.exclusiones || []).length, nEO = +cur.exclObj || 0;
-  if (nEO > nEx && !planMenu._ok) {
-    return sheet(`<h3>Faltan exclusiones</h3><div class="note">Indicaste <b>${nEO}</b> exclusiones y hay <b>${nEx}</b> medida${nEx === 1 ? '' : 's'}. El plan no sabrá esquivar las que falten.</div>
-      <button class="opt" id="pxM">📍 Medir la exclusión ${nEx + 1} de ${nEO}</button>
-      <button class="opt" id="pxC">Calcular igualmente</button>
-      <button class="opt" id="pxN" style="color:var(--sub)">No hay más (dejar en ${nEx})</button>`, () => {
+  const nEx = (cur.exclusiones || []).length;
+  if (exclAbiertas(cur) && !planMenu._ok) {
+    return sheet(`<h3>¿Quedan exclusiones?</h3><div class="note">Hay <b>${nEx}</b> medida${nEx === 1 ? '' : 's'} y no has indicado que estén todas. El plan no sabrá esquivar las que falten.</div>
+      <button class="opt" id="pxM">📍 Medir la exclusión ${nEx + 1}</button>
+      <button class="opt" id="pxN">✅ No hay más: calcular</button>
+      <button class="opt" id="pxC" style="color:var(--sub)">Calcular igualmente (siguen abiertas)</button>`, () => {
         $('pxM').onclick = () => { closeSheet(); guiaExcl(); };
         $('pxC').onclick = () => { closeSheet(); planMenu._ok = true; try { planMenu(); } finally { planMenu._ok = false; } };
-        $('pxN').onclick = async () => { cur.exclObj = nEx; await saveCur(); closeSheet(); planMenu(); };
+        $('pxN').onclick = async () => { cur.exclPend = false; await saveCur(); closeSheet(); planMenu(); };
       });
   }
   if (!cur.plan) return planOptions();
@@ -2126,20 +2129,26 @@ function recalcSheet(desdeLista) {
     ${pl0 ? `<div class="card"><div class="kv"><span>Plan actual</span><span>${fmtH(pl0.stats.t.total / 3600)} · ${fmt(pl0.stats.litros, 1)} L · ${fmt(S0.velocidad, 1)} km/h</span></div></div>` : '<div class="note">La finca aún no tiene plan: se calculará uno nuevo.</div>'}
     <div class="card">
       <div class="srow"><span><b>Velocidad de trabajo (km/h)</b></span><input class="inp" id="rVel" inputmode="decimal" value="${num(S0.velocidad)}" style="width:90px;text-align:right"></div>
-      <div class="srow"><span>Tractor</span><select class="inp" id="rTr" style="width:170px">${CAT.tractores.map(t => `<option value="${t.id}" ${t.id === (c.tractorId || SB.tractorDef) ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</select></div>
+      <div class="srow"><span>Tractor / máquina</span><select class="inp" id="rTr" style="width:170px">${CAT.tractores.map(t => `<option value="${t.id}" ${t.id === (c.tractorId || SB.tractorDef) ? 'selected' : ''}>${icoTr(t)} ${esc(t.nombre)}</option>`).join('')}</select></div>
       <div class="srow"><span>Apero</span><select class="inp" id="rAp" style="width:170px">${CAT.aperos.map(a => `<option value="${a.id}" ${a.id === (c.aperoId || SB.aperoDef) ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}</select></div>
+      <div class="srow"><span><b>Ancho de trabajo del apero (m)</b></span><input class="inp" id="rAnc" inputmode="decimal" value="${num(S0.aperoAncho)}" style="width:90px;text-align:right"></div>
+      <button class="lnk" id="rCat" style="margin:2px 0 6px">＋ Añadir otro tractor, cortacésped o apero</button>
       <div class="srow"><span>Solape entre pasadas (m)</span><input class="inp" id="rSol" inputmode="decimal" value="${num(S0.solape)}" style="width:90px;text-align:right"></div>
       <div class="srow"><span>Velocidad en giros (km/h)</span><input class="inp" id="rVg" inputmode="decimal" value="${num(S0.velocidadGiro)}" style="width:90px;text-align:right"></div>
       <div class="srow"><span>Consumo (L/h)</span><input class="inp" id="rCon" inputmode="decimal" value="${num(S0.consumo)}" style="width:90px;text-align:right"></div>
       <div class="srow"><span>Vueltas de cabecera (vacío = auto)</span><input class="inp" id="rNH" inputmode="numeric" value="${o.nHMode === 'man' ? o.nH : ''}" style="width:90px;text-align:right"></div>
       ${f.tipo !== 'monte' ? `<div class="srow"><span>Rumbo pasadas ° (vacío = óptimo)</span><input class="inp" id="rAz" inputmode="decimal" value="${o.dirMode === 'man' ? o.az : ''}" style="width:90px;text-align:right"></div>` : ''}
     </div>
+    ${(() => { const A = aprendS(f, S0); return A ? `<div class="note">🧠 Se aplica lo aprendido: ${A.a && A.a.vNormal ? 'velocidad real ' + fmt(A.a.vNormal, 1) + ' km/h en lugar de la configurada' : 'velocidad configurada'}${A.fG ? ', giros ×' + fmt(A.fG, 2) : ''}${A.fT ? ', traslados ×' + fmt(A.fT, 2) : ''}. Se desactiva en ⋯ › 🧠 Lo aprendido.</div>` : ''; })()}
     <div id="rRes"></div>
-    <div class="row"><button class="btn sec" id="rCalc">Calcular</button><button class="btn" id="rOk" disabled>Guardar</button></div>`,
+    <div class="row"><button class="btn sec" id="rCalc">Calcular</button><button class="btn" id="rOk" disabled>Guardar y usar</button></div>
+    <button class="btn sec" id="rAlt" disabled style="margin-top:8px">💾 Guardar como plan alternativo<small style="display:block;font-size:12px;font-weight:400">Sin cambiar la máquina ni el plan activo de la finca</small></button>`,
     () => {
       let nuevo = null, cfgN = null, optN = null;
       // al cambiar el apero se proponen sus valores
-      $('rAp').onchange = () => { const a = getAp($('rAp').value); if (a) { $('rSol').value = num(+a.solape_m || 0); $('rCon').value = num(+a.consumo_lh || SB.consumo); } };
+      $('rAp').onchange = () => { const a = getAp($('rAp').value); if (a) { $('rSol').value = num(+a.solape_m || 0); $('rCon').value = num(+a.consumo_lh || SB.consumo); $('rAnc').value = num(+a.ancho_m); $('rVel').value = num(velProp(a, f.tipo)); } };
+      $('rTr').onchange = () => { const ap = aperoPara(getTr($('rTr').value), getAp($('rAp').value)); if (ap) { $('rAp').value = ap.id; $('rAp').onchange(); } };
+      $('rCat').onclick = () => catSheet();
       $('rCalc').onclick = () => {
         const n = id => { const t = ($(id) ? $(id).value : '').trim().replace(',', '.'); return t === '' ? null : parseFloat(t); };
         const vel = n('rVel'); if (!(vel > 0 && vel < 30)) return toast('Velocidad no válida');
@@ -2147,6 +2156,8 @@ function recalcSheet(desdeLista) {
         cfgN = { ...c, velocidad: vel, tractorId: $('rTr').value, aperoId: $('rAp').value };
         const sol = n('rSol'), vg = n('rVg'), con = n('rCon');
         cfgN.solape = sol != null && Math.abs(sol - (+ap.solape_m || 0)) > 1e-9 ? sol : null;
+        const anc = n('rAnc'); if (anc != null && !(anc > 0.1 && anc < 15)) return toast('Ancho no válido');
+        cfgN.ancho = anc != null && Math.abs(anc - (+ap.ancho_m || 0)) > 1e-9 ? anc : null;
         cfgN.consumo = con != null && Math.abs(con - (+ap.consumo_lh || 0)) > 1e-9 ? con : null;
         cfgN.velGiro = vg != null && Math.abs(vg - SB.velocidadGiro) > 1e-9 ? vg : null;
         const nh = n('rNH'), az = n('rAz');
@@ -2163,11 +2174,16 @@ function recalcSheet(desdeLista) {
           <div class="kv"><span>Rendimiento</span><span>${fmt(st.haH, 2)} ha/h · ${fmt(st.litros / (st.area.objetivo / 1e4 || 1), 1)} L/ha</span></div>
           <div class="kv"><span>Pasadas · giros U/K/Ω</span><span>${st.nPasadas} · ${st.giros.U}/${st.giros.K}/${st.giros.O}</span></div>
           <div class="kv"><span>Cobertura teórica</span><span>${fmt(st.area.cobertura * 100, 1)} %</span></div></div>`;
-        $('rOk').disabled = false;
+        $('rOk').disabled = false; $('rAlt').disabled = false;
+      };
+      $('rAlt').onclick = async () => {
+        if (!nuevo || nuevo.error) return;
+        const rec = await guardarPlanAlt(f, nuevo, cfgN, optN); closeSheet();
+        toast(`${nomPlan(rec)} guardado como alternativo: ${fmtH(nuevo.stats.t.total / 3600)} · ${fmt(nuevo.stats.litros, 1)} L. Está en ⋯ › 🧭 Planes guardados.`, 5000);
       };
       $('rOk').onclick = async () => {
         if (!nuevo || nuevo.error) return;
-        f.config = cfgN; f.planOpt = optN; await guardarPlan(f, nuevo, 'recalculado'); cur = f; applyS();
+        f.config = cfgN; f.planOpt = optN; await guardarPlan(f, nuevo, 'recalculado', cfgN); cur = f; applyS();
         await saveCur(); closeSheet(); toast(`Plan guardado: ${fmtH(nuevo.stats.t.total / 3600)} · ${fmt(nuevo.stats.litros, 1)} L`, 3500);
         if (desdeLista || view === 'list') showList(); else drawFinca();
       };
@@ -2189,9 +2205,14 @@ function planReview(pl) {
   planRev = { pl };
   lyr.plan.clearLayers(); drawPlan(pl, lyr.tmp);
   const st = pl.stats;
+  if (pl.repaso) return showTool('🧹 Repaso calculado',
+    `<b>${fmtH(st.t.total / 3600)}</b> · <b>${fmt(st.litros, 1)} L</b> · ${st.nPasadas} pasadas de repaso · ${fmt(st.L.trabajo, 0)} m con apero<br>Sin limpiar en ${esc(pl.repaso.ruta)}: ${fmtArea(pl.repaso.rojo)} · se alcanza ${fmtArea(pl.repaso.cubre)} (${fmt(st.area.cobertura * 100, 0)} %)${pl.repaso.rojo - pl.repaso.cubre > Math.max(2, pl.repaso.rojo * 0.02) ? '<br>El resto está pegado al linde, a exclusiones o a troncos, o son manchas menores de ' + fmt(pl.repaso.minArea, 1) + ' m².' : ''}`,
+    [['Descartar', 'sec', () => { planRev = null; lyr.tmp.clearLayers(); drawFinca(); showMain(); }],
+     ['Detalle', 'sec', () => planDetail(pl)],
+     ['Guardar y usar', '', async () => { const rec = await guardarPlan(cur, pl, 'repaso'); rec.nombre = nomPlan(rec) + ' (repaso de ' + pl.repaso.ruta + ')'; await DB.pPut(rec); planesCache.set(rec.id, rec); CFG.plan = true; saveCfg(); await saveCur(); toast(`${nomPlan(rec)} activo. Pulsa Trabajar para hacerlo; el plan completo sigue en ⋯ › 🧭 Planes guardados.`, 6000); planRev = null; lyr.tmp.clearLayers(); drawFinca(); showMain(); }]]);
   showTool('Plan calculado',
     `<b>${fmtH(st.t.total / 3600)}</b> · <b>${fmt(st.litros, 1)} L</b> · ${fmt(st.haH, 2)} ha/h · cobertura ${fmt(st.area.cobertura * 100, 1)} %<br>
-     ${st.monte ? 'Franja de árboles no accesible ' + fmtArea(st.area.franjaArboles) + ' · cobertura alcanzable ' + fmt(st.area.coberturaAlcanzable * 100, 1) + ' %<br>' : ''}Rumbo ${pl.az}° · ${st.nVueltas} vueltas perimetrales · ${st.nPasadas} pasadas · giros U ${st.giros.U} / K ${st.giros.K} / Ω ${st.giros.O}` +
+     ${pl.aprendido ? aprTxt(pl.aprendido) + '<br>' : ''}${st.monte ? 'Franja de árboles no accesible ' + fmtArea(st.area.franjaArboles) + ' · cobertura alcanzable ' + fmt(st.area.coberturaAlcanzable * 100, 1) + ' %<br>' : ''}Rumbo ${pl.az}° · ${st.nVueltas} vueltas perimetrales · ${st.nPasadas} pasadas · giros U ${st.giros.U} / K ${st.giros.K} / Ω ${st.giros.O}` +
     (pl.warn.length ? '<br>⚠️ ' + pl.warn.join('<br>⚠️ ') : ''),
     [['Descartar', 'sec', () => { planRev = null; lyr.tmp.clearLayers(); drawFinca(); showMain(); }],
      ['Detalle', 'sec', () => planDetail(pl)],
@@ -2201,6 +2222,7 @@ function planDetail(pl) {
   const st = pl.stats, m = v => fmt(v, 0) + ' m', h = s => fmtH(s / 3600);
   sheet(`<h3>Detalle del plan</h3>
     <div class="card">
+      ${pl.aprendido ? `<div class="note" style="margin-bottom:6px">${aprTxt(pl.aprendido)}</div>` : ''}
       <div class="kv"><span>Rumbo de pasadas</span><span>${pl.az}°</span></div>
       <div class="kv"><span>Vueltas perimetrales</span><span>${st.nVueltas}${pl.nH !== pl.nHauto ? ' (auto ' + pl.nHauto + ')' : ''}</span></div>
       <div class="kv"><span>Cabecera necesaria</span><span>${fmt(pl.need, 1)} m</span></div>
@@ -2241,13 +2263,13 @@ function planDetail(pl) {
 /* =========================================================
    F5 — FILTROS DE CAPAS, HISTÓRICO, EXPORTACIÓN
    ========================================================= */
-const CFG_DEF = { area: true, excl: true, arboles: true, plan: true, noAlc: false, real: true, desv: true, limpia: true, solape: true, pendiente: false };
+const CFG_DEF = { area: true, excl: true, arboles: true, plan: true, noAlc: false, real: true, desv: true, limpia: true, solape: true, pendiente: false, lentas: false };
 let CFG = { ...CFG_DEF }, viewTrab = null;
 const CAPAS = [
   ['area', 'Área finca (linde)', '#a5d6a7'], ['excl', 'Exclusiones', '#757575'], ['arboles', 'Árboles', '#33691e'],
   ['plan', 'Trayectoria ideal', '#1565c0'], ['noAlc', 'Zonas no alcanzadas (plan)', '#ff9800'],
   ['real', 'Trayectoria real', '#7b1fa2'], ['desv', 'Desviaciones', '#d50000'],
-  ['limpia', 'Área real limpia', '#1b5e20'], ['solape', 'Solape (≥ 2 pasadas)', '#fdd835'], ['pendiente', 'Zonas sin limpiar (rojo)', '#d32f2f']
+  ['limpia', 'Área real limpia', '#1b5e20'], ['solape', 'Solape (≥ 2 pasadas)', '#fdd835'], ['pendiente', 'Zonas sin limpiar (rojo)', '#d32f2f'], ['lentas', 'Zonas lentas (aprendidas)', '#ef6c00']
 ];
 const PRESETS_DEF = [
   { nombre: 'Todo', cfg: { ...CFG_DEF, noAlc: true, pendiente: true } },
@@ -2315,17 +2337,18 @@ function trabOpts(t) {
   sheet(`<h3>${esc(nomRuta(t))}</h3><div class="note">${fFecha(t.inicio)}${planDeRuta(t) ? ' · ' + esc(planDeRuta(t).nombre) : ''}</div>
     <button class="opt" id="tVer">🗺 Ver en el mapa</button>
     <button class="opt" id="tRoj">🔴 Ver zonas sin limpiar</button>
+    <button class="opt" id="tRep">🧹 Repaso de zonas sin limpiar<small>Plan corto solo por lo rojo.</small></button>
     <button class="opt" id="tRes">📋 Resumen</button>
     <button class="opt" id="tAn">📊 Analizar frente al plan</button>
     <button class="opt" id="tEd">✎ Nombre y nota</button>
     <button class="opt" id="tCp">⧉ Copiar</button>
     <button class="opt" id="tPdf">📄 Parte en PDF</button>
-    ${t.estado === 'abierto' ? '<button class="opt" id="tCont">▶️ Continuar</button><button class="opt" id="tCer">✅ Marcar como finalizado</button>' : ''}
+    ${t.estado === 'abierto' ? '<button class="opt" id="tCont">▶️ Continuar desde donde quedó</button><button class="opt" id="tCer">✅ Marcar como finalizado</button>' : ''}
     <button class="opt" id="tDel" style="color:var(--err)">🗑 Eliminar</button>`,
     () => {
       $('tVer').onclick = () => { viewTrab = t.id; trabCache = null; closeSheet(); drawFinca(); };
       $('tRes').onclick = () => resumenSheet(t);
-      $('tRoj').onclick = () => verSinLimpiar(t);
+      $('tRoj').onclick = () => verSinLimpiar(t); $('tRep').onclick = () => repasoSheet(t);
       $('tAn').onclick = () => analizarRutas([t]);
       $('tPdf').onclick = () => pdfDoc(cur, t);
       $('tCp').onclick = () => copiarRuta(t);
@@ -2390,13 +2413,14 @@ async function exportSheet() {
     <button class="opt" id="xGpx">🛰 GPX</button>
     <button class="opt" id="xJson">📦 JSON de LIMPFINC<small>Para importar la finca en otro móvil o guardarla.</small></button>
     <button class="opt" id="xGeo">🧩 GeoJSON</button>
+    <button class="opt" id="xPel">⚠️ Peligros (KML / GPX)<small>Para TopoGPS, OsmAnd, Google Earth o Garmin.</small></button>
     <button class="opt" id="xM3d">🏔 Mapa 3D del terreno<small>KML, GPX, GeoJSON, CSV, XYZ y DXF 3D.</small></button>
     ${t ? '<button class="opt" id="xCsv">📄 CSV de puntos GPS del trabajo</button>' : ''}`,
     () => {
       $('xDxf').onclick = async () => download(safeName(cur.nombre) + '.dxf', buildDXF(await exportData()), 'application/dxf');
       $('xKml').onclick = async () => download(safeName(cur.nombre) + '.kml', buildKML(await exportData()), 'application/vnd.google-earth.kml+xml');
       $('xGpx').onclick = async () => download(safeName(cur.nombre) + '.gpx', buildGPX(await exportData()), 'application/gpx+xml');
-      $('xGeo').onclick = exportGeoJSON; $('xM3d').onclick = () => mapa3DSheet(cur);
+      $('xGeo').onclick = exportGeoJSON; $('xPel').onclick = () => exportPelSheet(cur); $('xM3d').onclick = () => mapa3DSheet(cur);
       $('xJson').onclick = () => exportarFincaJSON(cur);
       if ($('xCsv')) $('xCsv').onclick = () => {
         let s = 'sesion;fecha_hora;lat;lon;precision_m;apero\n';
@@ -2441,6 +2465,7 @@ function buildKML({ f, t, real }) {
   (f.exclusiones || []).forEach(e => k += pm(e.nombre, 'excl', `<Polygon><outerBoundaryIs><LinearRing><coordinates>${ring(e.coords)}</coordinates></LinearRing></outerBoundaryIs></Polygon>`));
   if (f.malla && f.malla.arboles) k += pm('Árboles', 'linde', `<MultiGeometry>${f.malla.arboles.filter(a => !a[4]).map(a => `<Point><coordinates>${a[1]},${a[0]},0</coordinates></Point>`).join('')}</MultiGeometry>`);
   k += '</Folder>';
+  if ((f.peligros || []).length) k += `<Folder><name>Peligros</name>${f.peligros.map(p => `<Placemark><name>${esc(PEL[p.tipo][1])}</name><description>${esc('radio ' + fmt(p.radio, 1) + ' m' + (p.nota ? ' · ' + p.nota : ''))}</description><Style><IconStyle><color>ff1c1cb7</color><Icon><href>http://maps.google.com/mapfiles/kml/shapes/caution.png</href></Icon></IconStyle></Style><Point><coordinates>${p.ll[1]},${p.ll[0]},0</coordinates></Point></Placemark>`).join('')}</Folder>`;
   if (f.plan) k += `<Folder><name>Plan (ideal)</name>${f.plan.parts.map((p, i) => pm(`${i + 1} ${p.type}`, p.type === 'trabajo' ? 'plan' : p.type === 'tras' ? 'tras' : 'giro', ls(p.ll))).join('')}</Folder>`;
   if (real.length) {
     k += `<Folder><name>Real ${t ? new Date(t.inicio).toLocaleDateString('es-ES') : ''}</name>`;
@@ -2454,6 +2479,7 @@ function buildGPX({ f, t }) {
   let g = `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="LIMPFINC" xmlns="http://www.topografix.com/GPX/1/1"><metadata><name>${esc(f.nombre)}</name></metadata>`;
   g += `<trk><name>Linde</name><trkseg>${[...f.linde.coords, f.linde.coords[0]].map(p => pt(p, 'trkpt')).join('')}</trkseg></trk>`;
   (f.exclusiones || []).forEach(e => g += `<trk><name>${esc(e.nombre)}</name><trkseg>${[...e.coords, e.coords[0]].map(p => pt(p, 'trkpt')).join('')}</trkseg></trk>`);
+  (f.peligros || []).forEach(p => { g = g.replace('</metadata>', `</metadata><wpt lat="${p.ll[0]}" lon="${p.ll[1]}"><name>${esc(PEL[p.tipo][1])}</name><desc>${esc('radio ' + fmt(p.radio, 1) + ' m' + (p.nota ? ' · ' + p.nota : ''))}</desc><sym>Danger Area</sym></wpt>`); });
   if (f.plan) g += `<trk><name>Plan ideal</name>${f.plan.parts.map(p => `<trkseg>${p.ll.map(q => pt(q, 'trkpt')).join('')}</trkseg>`).join('')}</trk>`;
   if (t) g += `<trk><name>Trabajo ${new Date(t.inicio).toLocaleDateString('es-ES')}</name>${t.sesiones.map(s => `<trkseg>${s.pts.map(q => pt(q, 'trkpt', `<time>${new Date(q[3]).toISOString()}</time><hdop>${(q[2] / 5).toFixed(1)}</hdop>`)).join('')}</trkseg>`).join('')}</trk>`;
   return g + '</gpx>';
@@ -2466,6 +2492,9 @@ function fincaMenu() {
     <button class="opt" id="fmCap">🗂 Capas y filtros</button>
     <button class="opt" id="fmPla">🧭 Planes guardados</button>
     <button class="opt" id="fmHis">🛤 Rutas de trabajo (guardadas y análisis)</button>
+    <button class="opt" id="fmApr">🧠 Lo aprendido<small>Velocidad real, giros, traslados y zonas lentas de tus rutas.</small></button>
+    <button class="opt" id="fmRep">🧹 Repaso de zonas sin limpiar<small>Plan corto por lo que quedó en rojo en una ruta.</small></button>
+    <button class="opt" id="fmInf">📄 Informe anual (PDF)</button>
     <button class="opt" id="fmPel">⚠️ Peligros (piedras, árboles caídos…)${(cur.peligros || []).length ? ' (' + cur.peligros.length + ')' : ''}</button>
     ${cur.tipo === 'monte' ? '<button class="opt" id="fmMal">🌳 Arboleda (marcar árboles)</button>' : ''}
     <button class="opt" id="fmInc">📍 Incidencias${(cur.incidencias || []).filter(i => !i.resuelta).length ? ' (' + cur.incidencias.filter(i => !i.resuelta).length + ')' : ''}</button>
@@ -2481,7 +2510,7 @@ function fincaMenu() {
     <button class="opt" id="fmSw">📂 Cambiar de finca</button>
     <button class="opt" id="fmNew">＋ Nueva finca</button>`,
     () => {
-      $('fmCap').onclick = capasSheet; $('fmHis').onclick = rutasSheet; $('fmPla').onclick = planesSheet; $('fmPel').onclick = () => peligrosLista(cur); $('fmExp').onclick = exportSheet; $('fmM3d').onclick = () => mapa3DSheet(cur); $('fmInc').onclick = () => incidenciasLista(cur); $('fmPre').onclick = () => presupuestoSheet(cur);
+      $('fmCap').onclick = capasSheet; $('fmHis').onclick = rutasSheet; $('fmPla').onclick = planesSheet; $('fmRep').onclick = () => repasoSheet(); $('fmApr').onclick = () => aprendizajeSheet(cur); $('fmInf').onclick = () => informeSheet(cur); $('fmPel').onclick = () => peligrosLista(cur); $('fmExp').onclick = exportSheet; $('fmM3d').onclick = () => mapa3DSheet(cur); $('fmInc').onclick = () => incidenciasLista(cur); $('fmPre').onclick = () => presupuestoSheet(cur);
       $('fmFuel').onclick = repostajeSheet; $('fmEd').onclick = () => fincaForm(cur);
       if ($('fmRe')) $('fmRe').onclick = () => recalcSheet();
       $('fmSw').onclick = fincaSwitcher; $('fmCp').onclick = () => copiarFinca(cur);
@@ -2524,7 +2553,7 @@ function Grid(f) {
     treeM = new Uint8Array(N); const rr = (+(f.malla.diam || S.diamTronco || 500)) / 2000 + (S.holguraTronco || 0.3), n_ = Math.ceil(rr / cs);
     f.malla.arboles.forEach(a => { const q = P.fwd(a[0], a[1]), c0 = Math.floor((q[0] - x0) / cs), r0 = Math.floor((q[1] - y0) / cs); for (let dr = -n_; dr <= n_; dr++) for (let dc = -n_; dc <= n_; dc++) { const r_ = r0 + dr, c_ = c0 + dc; if (r_ < 0 || c_ < 0 || r_ >= rows || c_ >= cols) continue; if (Math.hypot(x0 + (c_ + .5) * cs - q[0], y0 + (r_ + .5) * cs - q[1]) <= rr) treeM[r_ * cols + c_] = 1; } });
   }
-  const g = { P, x0, y0, cs, cols, rows, mask, cnt, nMask, nClean: 0, nOver: 0 };
+  const g = { P, x0, y0, cs, cols, rows, mask, cnt, treeM, nMask, nClean: 0, nOver: 0 };
   g.stamp = (a, b, w, t) => {
     const r = w / 2, r2 = r * r;
     const c0 = Math.max(0, Math.floor((Math.min(a[0], b[0]) - r - x0) / cs)), c1 = Math.min(cols - 1, Math.floor((Math.max(a[0], b[0]) + r - x0) / cs));
@@ -2682,10 +2711,12 @@ async function workMenu() {
   if (!cur.linde) return toast('Primero define el linde de la finca');
   const trs = await DB.tByFinca(cur.id), abierto = trs.find(t => t.estado === 'abierto');
   const hasPlan = cur.plan && !planStale(cur);
+  let reTxt = '';
+  if (abierto) { try { await cargarPlanes(cur); const R0 = rebuildTrab(cur, abierto), q = puntoReanudar(R0); reTxt = q ? q.completo ? ' · plan ya recorrido' : ' · reanuda en ' + q.lab.toLowerCase() : ''; } catch (e) { } }
   sheet(`<h3>Trabajar</h3>
     ${hasPlan ? `<div class="note" style="margin-bottom:8px">Plan: ${fmtH(cur.plan.stats.t.total / 3600)} · ${fmt(cur.plan.stats.L.total, 0)} m de trayectoria ideal.</div>`
       : `<div class="card" style="background:#fff3e0;color:#e65100">Sin plan ${cur.plan ? 'actualizado' : ''}: se registrará cobertura y tiempo, pero no desviaciones ni eficiencia.</div>`}
-    ${abierto ? `<button class="opt" id="wCont">▶️ Continuar trabajo del ${new Date(abierto.inicio).toLocaleDateString('es-ES')}<small>${abierto.sesiones.length} sesión(es) · ${fmtH(sesHoras(abierto))}${abierto.resumen ? ' · ' + fmt(abierto.resumen.cobertura * 100, 0) + ' % limpio' : ''}</small></button>` : ''}
+    ${abierto ? `<button class="opt" id="wCont">▶️ Continuar ${esc(nomRuta(abierto))} desde donde quedó<small>${new Date(abierto.inicio).toLocaleDateString('es-ES')} · ${abierto.sesiones.length} sesión(es) · ${fmtH(sesHoras(abierto))}${abierto.resumen ? ' · ' + fmt(abierto.resumen.cobertura * 100, 0) + ' % limpio' : ''}${reTxt}. Te guía hasta el punto exacto.</small></button>` : ''}
     <button class="opt" id="wNew">🆕 Nuevo trabajo<small>${abierto ? 'El trabajo abierto quedará cerrado.' : 'Empieza con el apero en trabajo.'}</small></button>`,
     () => {
       if (abierto) $('wCont').onclick = () => { closeSheet(); startWork(abierto); };
@@ -2697,6 +2728,7 @@ async function workMenu() {
     });
 }
 async function startWork(trab) {
+  const cont = !!trab;
   const hasPlan = cur.plan && !planStale(cur);
   if (!trab && cur.plan && !hasPlan) toast('⚠️ El plan está desactualizado (cambió el linde, una exclusión o un peligro): esta ruta se guarda sin plan. Recalcula el plan para compararla.', 6000);
   if (!trab) {
@@ -2719,6 +2751,7 @@ async function startWork(trab) {
   work.tRender = setInterval(renderWork, 3000);
   work.tSave = setInterval(saveWork, 20000);
   if (lastPos) map.setView([lastPos.lat, lastPos.lon], Math.max(map.getZoom(), 19));
+  if (cont && R.plan) { try { resumeInit(R, trab); } catch (e) { console.warn(e); } }
 }
 /* ---- Guiado en cabina: barra de luces + voz ---- */
 let vozES = null;
@@ -2809,6 +2842,7 @@ function workPoint(p) {
     $('wPause').textContent = '⏸ Pausar'; $('wPause').className = 'btn big sec'; keepAwake(true); work.lastMove = Date.now();
     speak('En marcha. Continuamos', true); toast('▶ Reanudado automáticamente');
   }
+  resumeUpdate(p);
   if (work.paused) return;
   // puntos 3D para el mapa del terreno: cada 2 s, con su altura
   if (p.alt != null && isFinite(p.alt)) {
@@ -2868,6 +2902,7 @@ function updWorkUI(p) {
   $('wLit').textContent = fmt(horas * S.consumo, 1);
   const planL = work.plan ? work.plan.stats.L.total : 0;
   $('wEta').textContent = planL && work.tr.L > 20 ? fmt(Math.min(1.5, planL * cov / work.tr.L) * 100, 0) + ' %' : '–';
+  resumePaint(p);
   if (p) { const el = $('wAcc'); el.textContent = '±' + fmt(r.accF != null ? r.accF : p.acc, 1) + ' m' + (r.thr ? ' · umbral ' + fmt(r.thr, 1) : ''); el.className = p.acc <= 5 ? 'acc-ok' : p.acc <= S.umbralPrecision ? 'acc-mid' : 'acc-bad'; }
 }
 function paintApero() {
@@ -2903,15 +2938,16 @@ async function endWork(estado) {
   if (!w.paused && w.ses) w.ses.fin = Date.now();
   w.trab.sesiones = w.trab.sesiones.filter(s => s.pts.length > 0);
   w.trab.sesiones.forEach(x => { const lp = x.pts[x.pts.length - 1]; if (lp) x.fin = Math.max(x.fin || 0, lp[3]); });
-  w.trab.estado = estado; w.trab.fin = Date.now();
+  w.trab.estado = estado; w.trab.fin = Date.now(); w.trab.precios = { gasoil: +SB.precioGasoil || 0, hora: +SB.precioHora || 0, fecha: Date.now() };
   w.trab.resumen = resumenTrab(w.trab, w);
   if (w.plan) { const pr = w.trab.planId && planesCache.get(w.trab.planId); w.trab.planResumen = { nombre: pr ? nomPlan(pr) : 'Plan', t: w.plan.stats.t.total / 3600, litros: w.plan.stats.litros, L: w.plan.stats.L.total, fecha: w.plan.fecha }; }
-  clearInterval(w.tRender); clearInterval(w.tSave);
+  clearInterval(w.tRender); clearInterval(w.tSave); resumeEnd();
   if (w.trab.sesiones.length) await DB.tPut(w.trab); else await DB.tDel(w.trab.id);
   setActivo(null);
   work = null; keepAwake(false); followPos = false; document.body.classList.remove('hc'); try { speechSynthesis.cancel(); } catch { }
   $('pWork').classList.add('hidden'); $('bLoc').classList.remove('hidden'); showMain();
   trabCache = null; drawFinca();
+  if (w.trab.sesiones.length && w.trab.planId) aprenderTrasRuta(cur, w.trab);
   if (w.trab.sesiones.length) { resumenSheet(w.trab); toast(`💾 ${nomRuta(w.trab)} guardada${w.trab.planResumen ? ' con ' + w.trab.planResumen.nombre : ''}`, 3500); }
 }
 function resumenSheet(trab) {
@@ -3548,7 +3584,20 @@ const VEGET = [['ligera', 'Ligera'], ['media', 'Media'], ['densa', 'Densa']];
 const VEL_STD = { desbroce: [3.5, 3.0, 2.0], trituracion: [2.5, 2.0, 1.5], siega: [6, 5, 4], grada: [8, 7, 6], arado: [5, 4.5, 4], cultivador: [7, 6, 5], fresado: [3, 2.5, 2], cesped: [6, 5, 3.5], otro: [4, 3, 2.5] };
 const labNom = k => (LABORES.find(l => l[0] === k) || [k, k])[1];
 const vegNom = k => (VEGET.find(l => l[0] === k) || [k, k])[1];
-const TR_FIELDS = [['nombre', 'Modelo', 'text'], ['potencia_cv', 'Potencia (CV)'], ['ancho_m', 'Ancho (m)'], ['longitud_m', 'Longitud sin apero (m)'], ['radio_giro_m', 'Radio de giro mínimo (m)'], ['deposito_l', 'Depósito de gasoil (L)'], ['marcha_atras', 'Maniobras con marcha atrás', 'bool'], ['notas', 'Notas', 'text']];
+const TIPOS_TR = [['agricola', '🚜', 'Tractor agrícola'], ['cortacesped', '🛻', 'Tractor cortacésped'], ['pie', '🚶', 'Cortacésped a pie (convencional)'], ['motocultor', '⚙️', 'Motocultor / desbrozadora de operario']];
+const tipoTr = t => !t ? 'agricola' : t.tipo || (+t.radio_giro_m < 1 && +t.ancho_m < 1 ? 'pie' : +t.radio_giro_m < 2 ? 'cortacesped' : 'agricola');
+const icoTr = t => (TIPOS_TR.find(x => x[0] === tipoTr(t)) || TIPOS_TR[0])[1];
+const nomTipoTr = t => (TIPOS_TR.find(x => x[0] === tipoTr(t)) || TIPOS_TR[0])[2];
+// velocidad propuesta al elegir máquina: la del apero (césped, etc.); en desbroce, la del tipo de finca
+const velProp = (ap, tipoF) => ap && ap.labor !== 'desbroce' && +ap.velocidad_kmh > 0 ? +ap.velocidad_kmh : velDef(tipoF);
+// apero adecuado al cambiar de máquina (cortacésped a pie → cortacésped convencional…)
+function aperoPara(tr, apActual) {
+  const ti = tipoTr(tr), ces = CAT.aperos.filter(a => a.labor === 'cesped').sort((a, b) => a.ancho_m - b.ancho_m);
+  if (ti === 'pie' || ti === 'motocultor') return (apActual && apActual.labor === 'cesped' && apActual.ancho_m <= 0.8) ? apActual : ces.find(a => a.id === 'ap-cesped-053') || ces[0] || apActual;
+  if (ti === 'cortacesped') return apActual && apActual.labor === 'cesped' ? apActual : ces[ces.length - 1] || apActual;
+  return apActual && apActual.labor === 'cesped' ? getAp(SB.aperoDef) : apActual;
+}
+const TR_FIELDS = [['nombre', 'Modelo', 'text'], ['tipo', 'Tipo de máquina', 'ttipo'], ['potencia_cv', 'Potencia (CV)'], ['ancho_m', 'Ancho (m)'], ['longitud_m', 'Longitud sin apero (m)'], ['radio_giro_m', 'Radio de giro mínimo (m)'], ['deposito_l', 'Depósito de gasoil (L)'], ['marcha_atras', 'Maniobras con marcha atrás', 'bool'], ['notas', 'Notas', 'text']];
 const AP_FIELDS = [['nombre', 'Nombre', 'text'], ['labor', 'Labor', 'labor'], ['ancho_m', 'Ancho de trabajo (m)'], ['longitud_m', 'Longitud del apero (m)'], ['enganche', 'Enganche', 'enganche'], ['distancia_gps_m', 'Distancia iPhone → centro del apero (m)'], ['desplazamiento_m', 'Desplazamiento lateral (m, + derecha)'], ['solape_m', 'Solape entre pasadas (m)'], ['velocidad_kmh', 'Velocidad de trabajo típica (km/h)'], ['consumo_lh', 'Consumo con este apero (L/h)'], ['potencia_cv', 'Potencia necesaria (CV)'], ['tdf_rpm', 'Toma de fuerza (rpm)'], ['notas', 'Notas', 'text']];
 
 async function loadCat() { for (const k of Object.keys(CAT)) CAT[k] = (await DB.gAll(k)).sort((a, b) => String(a.nombre || a.labor).localeCompare(String(b.nombre || b.labor))); }
@@ -3567,6 +3616,7 @@ async function seedCat() {
     ch = true;
   }
   if (ch) { await loadCat(); await DB.kvPut('settings', SB); }
+  await asegurarCortacesped();
 }
 const velStd = (labor, veg) => { const v = CAT.velocidades.find(x => x.labor === labor && x.vegetacion === (veg || 'media')); return v ? +v.velocidad_kmh : null; };
 const getTr = id => CAT.tractores.find(x => x.id === id) || CAT.tractores.find(x => x.id === SB.tractorDef) || CAT.tractores[0];
@@ -3576,12 +3626,14 @@ const getAp = id => CAT.aperos.find(x => x.id === id) || CAT.aperos.find(x => x.
 const DERIVED = ['tractor', 'potencia', 'radioGiro', 'marchaAtras', 'aperoNombre', 'aperoAncho', 'offsetApero', 'desplazamiento', 'solape', 'consumo', 'anchoTractor', 'longTractorApero', 'labor'];
 function effS(f, cfg) {
   const c = cfg || (f && f.config) || {}, tr = getTr(c.tractorId), ap = getAp(c.aperoId), o = { ...SB };
+  o.tractorId = tr ? tr.id : null; o.aperoId = ap ? ap.id : null; o.tipoTractor = tipoTr(tr);
   if (tr) Object.assign(o, { tractor: tr.nombre, potencia: +tr.potencia_cv || 0, anchoTractor: +tr.ancho_m || 1.7, radioGiro: +tr.radio_giro_m || 4, marchaAtras: tr.marcha_atras !== false });
   if (ap) Object.assign(o, { aperoNombre: ap.nombre, aperoAncho: +ap.ancho_m || 1.7, offsetApero: +ap.distancia_gps_m || 0, desplazamiento: +ap.desplazamiento_m || 0, solape: +ap.solape_m || 0, consumo: +ap.consumo_lh || SB.consumo, labor: ap.labor });
   o.longTractorApero = (tr ? +tr.longitud_m || 3.5 : 3.5) + (ap ? +ap.longitud_m || 1.5 : 1.5);
   o.velocidad = +c.velocidad || velDef(f && f.tipo);
   // ajustes propios de la finca (opcionales): solape, consumo, velocidad en giros
   if (c.solape != null && c.solape !== '') o.solape = +c.solape;
+  if (+c.ancho > 0) o.aperoAncho = +c.ancho;
   if (+c.consumo > 0) o.consumo = +c.consumo;
   if (+c.velGiro > 0) o.velocidadGiro = +c.velGiro;
   return o;
@@ -3595,8 +3647,8 @@ async function saveSB() {
 
 /* ---------- UI del catálogo ---------- */
 function catSheet() {
-  const card = (list, kind) => list.map(o => `<button class="opt" data-k="${kind}" data-id="${o.id}">${kind === 'tractores' ? '🚜' : '🔧'} ${esc(o.nombre)}${(kind === 'tractores' ? SB.tractorDef : SB.aperoDef) === o.id ? ' <b style="color:var(--pri)">· predeterminado</b>' : ''}
-    <small>${kind === 'tractores' ? `${fmt(+o.potencia_cv || 0, 0)} CV · ancho ${fmt(+o.ancho_m, 2)} m · radio ${fmt(+o.radio_giro_m, 1)} m` : `${labNom(o.labor)} · ${fmt(+o.ancho_m, 2)} m · ${fmt(+o.velocidad_kmh || 0, 1)} km/h · ${fmt(+o.consumo_lh || 0, 1)} L/h`}</small></button>`).join('');
+  const card = (list, kind) => list.map(o => `<button class="opt" data-k="${kind}" data-id="${o.id}">${kind === 'tractores' ? icoTr(o) : '🔧'} ${esc(o.nombre)}${(kind === 'tractores' ? SB.tractorDef : SB.aperoDef) === o.id ? ' <b style="color:var(--pri)">· predeterminado</b>' : ''}
+    <small>${kind === 'tractores' ? `${nomTipoTr(o)} · ${fmt(+o.potencia_cv || 0, 0)} CV · ancho ${fmt(+o.ancho_m, 2)} m · radio ${fmt(+o.radio_giro_m, 1)} m` : `${labNom(o.labor)} · ${fmt(+o.ancho_m, 2)} m · ${fmt(+o.velocidad_kmh || 0, 1)} km/h · ${fmt(+o.consumo_lh || 0, 1)} L/h`}</small></button>`).join('');
   sheet(`<h3>Tractores, aperos y velocidades</h3>
     <div class="sgrp">Tractores</div>${card(CAT.tractores, 'tractores')}<button class="btn sec" id="cNT" style="margin-bottom:6px">＋ Nuevo tractor</button>
     <div class="sgrp">Aperos</div>${card(CAT.aperos, 'aperos')}<button class="btn sec" id="cNA" style="margin-bottom:6px">＋ Nuevo apero</button>
@@ -3609,8 +3661,8 @@ function catSheet() {
 }
 const PLANTILLAS = {
   tractores: [
-    { nombre: 'Tractor cortacésped', potencia_cv: 22, ancho_m: 1.2, longitud_m: 2.4, radio_giro_m: 0.9, deposito_l: 12, marcha_atras: true, notas: 'Plantilla: ajústala a tu máquina' },
-    { nombre: 'Cortacésped autopropulsado (a pie)', potencia_cv: 4, ancho_m: 0.6, longitud_m: 1.6, radio_giro_m: 0.4, deposito_l: 1.5, marcha_atras: true, notas: 'Plantilla: el iPhone lo lleva el operario' }],
+    { nombre: 'Tractor cortacésped', tipo: 'cortacesped', potencia_cv: 22, ancho_m: 1.2, longitud_m: 2.4, radio_giro_m: 0.9, deposito_l: 12, marcha_atras: true, notas: 'Plantilla: ajústala a tu máquina' },
+    { nombre: 'Cortacésped autopropulsado (a pie)', tipo: 'pie', potencia_cv: 4, ancho_m: 0.6, longitud_m: 1.6, radio_giro_m: 0.4, deposito_l: 1.5, marcha_atras: true, notas: 'Plantilla: el iPhone lo lleva el operario' }],
   aperos: [
     { nombre: 'Cortacésped 1,07 m', labor: 'cesped', ancho_m: 1.07, longitud_m: 0.8, enganche: 'suspendido', distancia_gps_m: 0.6, desplazamiento_m: 0, solape_m: 0.08, velocidad_kmh: 5, consumo_lh: 1.8, potencia_cv: 20, tdf_rpm: null, notas: 'Plantilla: ajusta ancho de corte y velocidad' },
     { nombre: 'Cortacésped 0,53 m', labor: 'cesped', ancho_m: 0.53, longitud_m: 0.6, enganche: 'suspendido', distancia_gps_m: 0.5, desplazamiento_m: 0, solape_m: 0.05, velocidad_kmh: 3.5, consumo_lh: 0.6, potencia_cv: 4, tdf_rpm: null, notas: 'Plantilla' },
@@ -3625,12 +3677,13 @@ function plantillaSheet(kind) {
 }
 function catForm(kind, o, plantilla) {
   const isT = kind === 'tractores', F = isT ? TR_FIELDS : AP_FIELDS, nuevo = !o || !!plantilla;
-  o = o || (isT ? { id: uid(), nombre: '', potencia_cv: 90, ancho_m: 1.8, longitud_m: 3.5, radio_giro_m: 4, deposito_l: null, marcha_atras: true, notas: '' }
+  o = o || (isT ? { id: uid(), nombre: '', tipo: 'agricola', potencia_cv: 90, ancho_m: 1.8, longitud_m: 3.5, radio_giro_m: 4, deposito_l: null, marcha_atras: true, notas: '' }
     : { id: uid(), nombre: '', labor: 'desbroce', ancho_m: 1.8, longitud_m: 1.5, enganche: 'suspendido', distancia_gps_m: 2, desplazamiento_m: 0, solape_m: 0.1, velocidad_kmh: 3, consumo_lh: 5, potencia_cv: null, tdf_rpm: 540, notas: '' });
   const inp = ([k, lbl, t]) => {
     const v = o[k];
     if (t === 'bool') return `<div class="srow"><span>${lbl}</span><input type="checkbox" data-f="${k}" ${v !== false ? 'checked' : ''} style="width:auto"></div>`;
     if (t === 'labor') return `<div class="srow"><span>${lbl}</span><select class="inp" data-f="${k}" style="width:150px">${LABORES.map(([a, b]) => `<option value="${a}" ${v === a ? 'selected' : ''}>${b}</option>`).join('')}</select></div>`;
+    if (t === 'ttipo') return `<div class="srow"><span>${lbl}</span><select class="inp" data-f="${k}" style="width:190px">${TIPOS_TR.map(([a, ic, b]) => `<option value="${a}" ${tipoTr(o) === a ? 'selected' : ''}>${ic} ${b}</option>`).join('')}</select></div>`;
     if (t === 'enganche') return `<div class="srow"><span>${lbl}</span><select class="inp" data-f="${k}" style="width:150px">${[['suspendido', 'Suspendido (3 puntos)'], ['arrastrado', 'Arrastrado']].map(([a, b]) => `<option value="${a}" ${v === a ? 'selected' : ''}>${b}</option>`).join('')}</select></div>`;
     if (t === 'text') return `<label class="f">${lbl}</label><input class="inp" data-f="${k}" value="${esc(v || '')}">`;
     return `<div class="srow"><span>${lbl}</span><input class="inp" data-f="${k}" inputmode="decimal" value="${v == null ? '' : String(v).replace('.', ',')}" style="width:100px;text-align:right"></div>`;
@@ -3645,7 +3698,7 @@ function catForm(kind, o, plantilla) {
       $('cOk').onclick = async () => {
         for (const [k, , t] of F) {
           const el = sh.querySelector(`[data-f="${k}"]`);
-          if (t === 'bool') o[k] = el.checked; else if (['text', 'labor', 'enganche'].includes(t)) o[k] = el.value.trim();
+          if (t === 'bool') o[k] = el.checked; else if (['text', 'labor', 'enganche', 'ttipo'].includes(t)) o[k] = el.value.trim();
           else { const s = el.value.trim().replace(',', '.'); o[k] = s === '' ? null : parseFloat(s); if (s !== '' && !isFinite(o[k])) return toast('Valor no válido: ' + k); }
         }
         if (!o.nombre) return toast('Indica un nombre');
@@ -3688,7 +3741,7 @@ function velSheet() {
 const SUPA_URL = 'https://wuarkraddnndmgvfnkmm.supabase.co';
 const SUPA_KEY = 'sb_publishable_qF-x44yXSydPBojMk_GOUg_TM34uXFI';
 const CAT_COLS = {
-  tractores: ['nombre', 'potencia_cv', 'ancho_m', 'longitud_m', 'radio_giro_m', 'deposito_l', 'marcha_atras', 'notas'],
+  tractores: ['nombre', 'tipo', 'potencia_cv', 'ancho_m', 'longitud_m', 'radio_giro_m', 'deposito_l', 'marcha_atras', 'notas'],
   aperos: ['nombre', 'labor', 'ancho_m', 'longitud_m', 'enganche', 'distancia_gps_m', 'desplazamiento_m', 'solape_m', 'velocidad_kmh', 'consumo_lh', 'potencia_cv', 'tdf_rpm', 'notas'],
   velocidades: ['labor', 'vegetacion', 'velocidad_kmh', 'notas']
 };
@@ -3758,7 +3811,8 @@ const Sync = {
     if (T === 'fotos') { const x = await DB.gGet('fotos', it.id); if (!x) return; await Remote.upsert('fotos', { id: x.id, finca_id: x.fincaId, caption: x.caption, lat: x.lat, lon: x.lon, img: x.img, fecha: iso(x.fecha), updated_at: iso(x.mod) }); x._sync = x.mod; await DB.gPut('fotos', x); return; }
     const o = await DB.gGet(T, it.id); if (!o) return;
     const row = { id: o.id, updated_at: iso(o.mod) }; CAT_COLS[T].forEach(k => row[k] = o[k] ?? null);
-    await Remote.upsert(T, row); o._sync = o.mod; await DB.gPut(T, o);
+    if (T === 'tractores' && this.sinTipo) delete row.tipo;
+    try { await Remote.upsert(T, row); } catch (e) { if (T === 'tractores' && /tipo/.test(e.message || '') && !this.sinTipo) { this.sinTipo = true; delete row.tipo; await Remote.upsert(T, row); } else throw e; } o._sync = o.mod; await DB.gPut(T, o);
   },
   async pull() {
     if (!this.user || !navigator.onLine) return;
@@ -3778,7 +3832,7 @@ const Sync = {
       }
       for (const T of ['tractores', 'aperos', 'velocidades']) {
         const rem = await Remote.list(T), loc = await DB.gAll(T), lmap = new Map(loc.map(o => [o.id, o]));
-        for (const r of rem) { if (pend.has(T + ':' + r.id)) continue; const l = lmap.get(r.id), rm = Date.parse(r.updated_at); if (!l || rm > (l.mod || 0)) { const o = { id: r.id, mod: rm, _sync: rm }; CAT_COLS[T].forEach(k => o[k] = r[k]); await DB.gPut(T, o); } }
+        for (const r of rem) { if (pend.has(T + ':' + r.id)) continue; const l = lmap.get(r.id), rm = Date.parse(r.updated_at); if (!l || rm > (l.mod || 0)) { const o = { id: r.id, mod: rm, _sync: rm }; CAT_COLS[T].forEach(k => o[k] = r[k]); if (l && o.tipo === undefined && l.tipo) o.tipo = l.tipo; await DB.gPut(T, o); } }
         const rset = new Set(rem.map(r => r.id));
         for (const l of loc) if (!rset.has(l.id) && !pend.has(T + ':' + l.id)) { if (l._sync) await DB.gDel(T, l.id); else await this.mark(T, l.id, 'up'); }
       }
@@ -4222,11 +4276,11 @@ async function sigpacResultado(o, feats) {
     <div class="card">${rec.map((r, i) => `<label class="kv" style="cursor:pointer"><span><input type="checkbox" data-i="${i}" ${USOS_NO.includes(r.uso) ? '' : 'checked'}> ${varias ? sgTxt(r.p) + ' · ' : ''}Rec. ${r.n} · ${esc(USOS[r.uso] || r.uso || '—')}</span><span>${fmtArea(r.area)}</span></label>`).join('')}</div>
     <div class="note" id="sgTot"></div>
     ${o.actual ? '' : `<label class="f">Tipo de finca</label><div class="seg" id="sgTipo"><button data-v="abierta" class="on">🌾 Abierta</button><button data-v="monte">🌲 Arbolada / plantación</button></div>
-      <div id="sgAb">${exclStepHTML('sgExN', 0)}<div class="note">Tras crearla te guía para medir cada exclusión (a pie, punto + radio o dibujando).</div></div>
+      <div id="sgAb">${exclStepHTML('sgExN', false)}<div class="note">Si dices «Sí», tras crearla te guía para medir una exclusión tras otra (a pie, punto + radio o dibujando) hasta que pulses «No hay más».</div></div>
       <div id="sgMo" class="hidden"><div class="note">Al crearla marcarás árboles con el botón 🌳 MARCAR ÁRBOL (a 1 m a tu derecha) y la app genera la arboleda dentro del linde.</div></div>`}
     <button class="btn" id="sgOk" style="margin-top:10px">${o.actual ? 'Usar como linde de la finca' : 'Crear finca'}</button>`,
     () => {
-      let tipoN = 'abierta', malN = 'gps', leerEx = () => 0;
+      let tipoN = 'abierta', malN = 'gps', leerEx = () => false;
       if ($('sgTipo')) {
         $('sgTipo').querySelectorAll('button').forEach(b => b.onclick = () => { tipoN = b.dataset.v; $('sgTipo').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); $('sgAb').classList.toggle('hidden', tipoN !== 'abierta'); $('sgMo').classList.toggle('hidden', tipoN !== 'monte'); });
 
@@ -4252,14 +4306,14 @@ async function sigpacResultado(o, feats) {
         let nombre = (o.nombre || '').trim() || sgTxt(p0) + (info.parcelas.length > 1 ? ' +' + (info.parcelas.length - 1) : '');
         if (await findByName(nombre)) { let k = 2; while (await findByName(`${nombre} (${k})`)) k++; nombre = `${nombre} (${k})`; }
         const now = Date.now(), cfg = { tractorId: SB.tractorDef || (CAT.tractores[0] || {}).id, aperoId: SB.aperoDef || (CAT.aperos[0] || {}).id, vegetacion: 'media', velocidad: velDef(tipoN) };
-        const exN = tipoN === 'abierta' ? leerEx() : 0;
-        const nf = { id: uid(), nombre, tipo: tipoN, config: cfg, notas: '', creada: now, mod: now, sigpac: info, exclObj: exN + u2.huecos.length,
+        const exN = tipoN === 'abierta' && leerEx();
+        const nf = { id: uid(), nombre, tipo: tipoN, config: cfg, notas: '', creada: now, mod: now, sigpac: info, exclPend: exN,
           linde: { coords: u2.coords, metodo: 'sigpac', sigpac: info, fecha: now },
           exclusiones: u2.huecos.map((h, i) => ({ id: uid(), nombre: 'Exclusión ' + (i + 1), coords: h, metodo: 'sigpac', fecha: now })) };
         await DB.put(nf); closeSheet(); await openFinca(nf.id); setTimeout(fitFinca, 80);
         toast(`Finca «${nombre}» creada desde SIGPAC · ${fmtArea(Geo.areaLL(u2.coords))}`, 4000);
         if (tipoN === 'monte') setTimeout(() => mallaMedidos(), 900);   // arbolada: árboles con GPS o árbol ficticio
-        else if (exN > 0) guiaExcl(true);   // abierta: medir las exclusiones indicadas
+        else if (exN) guiaExcl(true);   // abierta: medir exclusiones una tras otra
         else setTimeout(() => fincaForm(nf), 900);   // revisar nombre, tipo, tractor, apero y velocidad
       };
     });
@@ -4370,6 +4424,13 @@ async function lindeArchivo() {
   inp.click();
 }
 // v1.2.1: la velocidad por defecto es 3 km/h (las versiones iniciales guardaban 2,5)
+async function asegurarCortacesped() {
+  if (SB.migCesped || !CAT.tractores.length) return false;
+  SB.migCesped = Date.now(); await DB.kvPut('settings', SB);
+  if (!CAT.tractores.some(t => t.id === 'tr-pie')) await DB.cPut('tractores', { id: 'tr-pie', nombre: 'Cortacésped convencional (a pie)', tipo: 'pie', potencia_cv: 4, ancho_m: 0.6, longitud_m: 1.2, radio_giro_m: 0.4, deposito_l: 1.5, marcha_atras: true, notas: 'Para fincas muy pequeñas: el iPhone lo lleva el operario' });
+  if (!CAT.aperos.some(a => a.id === 'ap-cesped-053')) await DB.cPut('aperos', { id: 'ap-cesped-053', nombre: 'Cortacésped convencional 0,53 m', labor: 'cesped', ancho_m: 0.53, longitud_m: 0.6, enganche: 'suspendido', distancia_gps_m: -0.6, desplazamiento_m: 0, solape_m: 0.05, velocidad_kmh: 2, consumo_lh: 0.6, potencia_cv: 4, tdf_rpm: null, notas: 'Cortacésped empujado: el corte va 0,6 m por delante del operario' });
+  await loadCat(); return true;
+}
 async function migrarVelocidad() {
   try {
     let n = 0;
@@ -4390,6 +4451,7 @@ async function migrarVelocidad() {
       if (f.plan && f.linde) { try { f.plan = Planner.plan(f, effS(f), {}); } catch (e) { } }
       await DB.put(f); n++;
     }
+    if (await asegurarCortacesped()) n++;
     if (n) { await loadCat(); applyS(); }
     return n;
   } catch (e) { return 0; }
@@ -4796,29 +4858,54 @@ function incidenciasLista(f) {
 /* =========================================================
    PRESUPUESTO Y PARTE DE TRABAJO (PDF con jsPDF, MIT)
    ========================================================= */
+const margenK = () => 1 + (+SB.margen || 0) / 100;
+function costePlan(pl) { const h = pl.stats.t.total / 3600, c = pl.stats.litros * (+SB.precioGasoil || 0) + h * (+SB.precioHora || 0); return { coste: c, precio: c * margenK() }; }
+// coste de una ruta con los precios guardados al hacerla (el gasóleo cambia mucho)
+function costeRuta(t) { const r = t.resumen || {}, pg = t.precios ? +t.precios.gasoil : +SB.precioGasoil || 0, ph = t.precios ? +t.precios.hora : +SB.precioHora || 0, c = (r.litros || 0) * pg + (r.horas || 0) * ph; return { cG: (r.litros || 0) * pg, cH: (r.horas || 0) * ph, coste: c, precio: c * margenK(), pg, ph }; }
 function presupuestoDatos(f) {
   const Sf = effS(f), a = fincaAreas(f);
   let h, lit, fuente;
   if (f.plan && !planStale(f)) { h = f.plan.stats.t.total / 3600; lit = f.plan.stats.litros; fuente = 'plan calculado'; }
   else { const vm = Sf.velocidad / 3.6, we = Math.max(0.3, Sf.aperoAncho - (Sf.solape || 0)); h = a.neta / (we * vm * 0.75) / 3600; lit = h * Sf.consumo; fuente = 'estimación por superficie (sin plan)'; }
-  const cG = lit * (+SB.precioGasoil || 0), cH = h * (+SB.precioHora || 0), porHora = cG + cH;
+  const cG = lit * (+SB.precioGasoil || 0), cH = h * (+SB.precioHora || 0), coste = cG + cH, margen = coste * (margenK() - 1), porHora = coste + margen;
   const ferr = SB.ferrado > 0 ? a.neta / SB.ferrado : 0, porFerr = ferr * (+SB.precioFerrado || 0);
-  return { h, lit, cG, cH, porHora, ferr, porFerr, area: a.neta, fuente, Sf };
+  return { h, lit, cG, cH, coste, margen, porHora, ferr, porFerr, area: a.neta, fuente, Sf };
+}
+function preciosHTML() {
+  const n = v => String(v ?? '').replace('.', ',');
+  return `<div class="card"><div class="srow"><span><b>Gasóleo (€/L)</b>${SB.precioGasoilFecha ? `<br><small style="color:var(--sub)">actualizado ${new Date(SB.precioGasoilFecha).toLocaleDateString('es-ES')}</small>` : ''}</span><input class="inp" id="ppG" inputmode="decimal" value="${n(SB.precioGasoil)}" style="width:90px;text-align:right"></div>
+    <div class="srow"><span>Máquina y operario, coste (€/h)</span><input class="inp" id="ppH" inputmode="decimal" value="${n(SB.precioHora)}" style="width:90px;text-align:right"></div>
+    <div class="srow"><span>Margen sobre el coste (%)</span><input class="inp" id="ppM" inputmode="decimal" value="${n(SB.margen)}" style="width:90px;text-align:right"></div></div>`;
+}
+function preciosBind(onCh) {
+  const rd = id => parseFloat($(id).value.replace(',', '.'));
+  ['ppG', 'ppH', 'ppM'].forEach(id => $(id).onchange = async () => {
+    const g = rd('ppG'), h = rd('ppH'), m = rd('ppM');
+    if (!(g >= 0 && g < 10) || !(h >= 0 && h < 1000) || !(m >= 0 && m < 1000)) return toast('Valor no válido');
+    if (g !== +SB.precioGasoil) SB.precioGasoilFecha = Date.now();
+    SB.precioGasoil = g; SB.precioHora = h; SB.margen = m; await DB.kvPut('settings', SB); applyS(); onCh && onCh();
+  });
 }
 function presupuestoSheet(f) {
-  const d = presupuestoDatos(f), e = v => fmt(v, 2) + ' €';
+  const e = v => fmt(v, 2) + ' €';
   sheet(`<h3>💶 Presupuesto · ${esc(f.nombre)}</h3>
-    <div class="note">Basado en: ${d.fuente}. Precios en <b>Ajustes › Costes</b>.</div>
-    <div class="card">
+    ${preciosHTML()}
+    <div id="prRes"></div>
+    <button class="btn" id="prPdf">📄 Presupuesto en PDF</button>`,
+    () => {
+      const pinta = () => { const d = presupuestoDatos(f); $('prRes').innerHTML = `<div class="note">Basado en: ${d.fuente} · ${esc(d.Sf.tractor || '')} + ${esc(d.Sf.aperoNombre || '')} (${fmt(d.Sf.aperoAncho, 2)} m) a ${fmt(d.Sf.velocidad, 1)} km/h.</div>
+      <div class="card">
       <div class="kv"><span>Superficie a limpiar</span><span>${fmtArea(d.area)}</span></div>
       <div class="kv"><span>Tiempo</span><span>${fmtH(d.h)}</span></div>
       <div class="kv"><span>Gasóleo</span><span>${fmt(d.lit, 1)} L × ${fmt(+SB.precioGasoil, 2)} €/L = ${e(d.cG)}</span></div>
-      <div class="kv"><span>Tractor y operario</span><span>${fmt(d.h, 2)} h × ${fmt(+SB.precioHora, 2)} €/h = ${e(d.cH)}</span></div>
-      <div class="kv"><span><b>Total por horas</b></span><span><b>${e(d.porHora)}</b></span></div>
-      ${+SB.precioFerrado > 0 ? `<div class="kv"><span><b>Total por ferrado</b> (${fmt(d.ferr, 1)} × ${fmt(+SB.precioFerrado, 2)} €)</span><span><b>${e(d.porFerr)}</b></span></div>` : ''}
-    </div>
-    <button class="btn" id="prPdf">📄 Presupuesto en PDF</button>`,
-    () => { $('prPdf').onclick = () => pdfDoc(f, null, d); });
+      <div class="kv"><span>Máquina y operario</span><span>${fmt(d.h, 2)} h × ${fmt(+SB.precioHora, 2)} €/h = ${e(d.cH)}</span></div>
+      <div class="kv"><span>Coste</span><span>${e(d.coste)}</span></div>
+      <div class="kv"><span>Margen ${fmt(+SB.margen || 0, 0)} %</span><span>${e(d.margen)}</span></div>
+      <div class="kv" style="font-size:18px"><span><b>Precio (sin IVA)</b></span><span><b>${e(d.porHora)}</b></span></div>
+      ${+SB.precioFerrado > 0 ? `<div class="kv"><span>Precio por ferrado (${fmt(d.ferr, 1)} × ${fmt(+SB.precioFerrado, 2)} €)</span><span><b>${e(d.porFerr)}</b></span></div>` : ''}
+      </div>`; $('prPdf').onclick = () => pdfDoc(f, null, d); };
+      preciosBind(pinta); pinta();
+    });
 }
 function cargarJsPDF() {
   if (window.jspdf) return Promise.resolve();
@@ -4857,20 +4944,21 @@ async function pdfDoc(f, trab, pres) {
   const img = croquis(f, trab, 1400, 900).toDataURL('image/jpeg', 0.85); doc.addImage(img, 'JPEG', 16, y, 178, 114); y += 120;
   doc.setFontSize(11);
   const a = fincaAreas(f), Sf = effS(f);
-  ln('Superficie', `${fmtArea(a.neta)}`); ln('Tractor · apero', `${Sf.tractor || ''} · ${Sf.aperoNombre || ''}`);
+  ln('Superficie', `${fmtArea(a.neta)}`);
   if (f.sigpac && f.sigpac.parcelas) ln('SIGPAC', f.sigpac.parcelas.map(p => `${p.provincia}:${p.municipio}:${p.poligono}:${p.parcela}`).join(', '));
+  ln('Máquina', `${Sf.tractor || ''} + ${Sf.aperoNombre || ''} (${fmt(Sf.aperoAncho, 2)} m)`.slice(0, 80));
   if (trab) {
-    const r = trab.resumen || resumenTrab(trab, rebuildTrab(f, trab)), cG = r.litros * (+SB.precioGasoil || 0), cH = r.horas * (+SB.precioHora || 0);
+    const r = trab.resumen || resumenTrab(trab, rebuildTrab(f, trab)); if (!trab.resumen) trab.resumen = r; const K = costeRuta(trab), cG = K.cG, cH = K.cH;
     ln('Fecha del trabajo', `${new Date(trab.inicio).toLocaleString('es-ES')} – ${new Date(trab.fin || trab.inicio).toLocaleTimeString('es-ES')}`);
     ln('Tiempo total · con apero', `${fmtH(r.horas)} · ${fmtH(r.horasOn)}`); ln('Superficie limpia · cobertura', `${fmtArea(r.limpia)} · ${fmt(r.cobertura * 100, 1)} %`);
     ln('Combustible', `${fmt(r.litros, 1)} L`); ln('Rendimiento', `${r.haH == null ? '–' : fmt(r.haH, 2) + ' ha/h'}`);
     const inc = (f.incidencias || []).filter(i => i.trabId === trab.id); if (inc.length) ln('Incidencias', inc.map(i => INC[i.tipo][1] + (i.nota ? ' (' + i.nota + ')' : '')).join('; ').slice(0, 90));
-    y += 2; ln('Gasóleo', `${fmt(cG, 2)} €`); ln('Horas', `${fmt(cH, 2)} €`); ln('TOTAL', `${fmt(cG + cH, 2)} €`, true);
+    y += 2; ln(`Gasóleo (${fmt(K.pg, 2)} €/L)`, `${fmt(cG, 2)} €`); ln(`Tractor y operario (${fmt(K.ph, 2)} €/h)`, `${fmt(cH, 2)} €`); ln('Coste', `${fmt(K.coste, 2)} €`); ln(`Margen ${fmt(+SB.margen || 0, 0)} %`, `${fmt(K.precio - K.coste, 2)} €`); ln('PRECIO (sin IVA)', `${fmt(K.precio, 2)} €`, true);
   } else {
     const d = pres || presupuestoDatos(f);
     ln('Tiempo previsto', `${fmtH(d.h)} (${d.fuente})`); ln('Gasóleo previsto', `${fmt(d.lit, 1)} L × ${fmt(+SB.precioGasoil, 2)} €/L = ${fmt(d.cG, 2)} €`);
-    ln('Tractor y operario', `${fmt(d.h, 2)} h × ${fmt(+SB.precioHora, 2)} €/h = ${fmt(d.cH, 2)} €`); ln('TOTAL por horas', `${fmt(d.porHora, 2)} €`, true);
-    if (+SB.precioFerrado > 0) ln(`TOTAL por ferrado (${fmt(d.ferr, 1)} ferr.)`, `${fmt(d.porFerr, 2)} €`, true);
+    ln('Máquina y operario', `${fmt(d.h, 2)} h × ${fmt(+SB.precioHora, 2)} €/h = ${fmt(d.cH, 2)} €`); ln('Coste', `${fmt(d.coste, 2)} €`); ln(`Margen ${fmt(+SB.margen || 0, 0)} %`, `${fmt(d.margen, 2)} €`); ln('PRECIO (sin IVA)', `${fmt(d.porHora, 2)} €`, true);
+    if (+SB.precioFerrado > 0) ln(`Precio por ferrado (${fmt(d.ferr, 1)} ferr.)`, `${fmt(d.porFerr, 2)} €`, true);
     doc.setFontSize(9); doc.text('Presupuesto orientativo calculado con LIMPFINC. Impuestos no incluidos.', 16, 287);
   }
   doc.save(safeName(f.nombre) + (trab ? '_parte_' + new Date(trab.inicio).toISOString().slice(0, 10) : '_presupuesto') + '.pdf');
@@ -4993,9 +5081,14 @@ function avisoPendiente(p) {
    ========================================================= */
 let planesCache = new Map();
 async function cargarPlanes(f) { planesCache = new Map((await DB.pByFinca(f.id)).map(r => [r.id, r])); return planesCache; }
-async function guardarPlan(f, pl, origen) {
+async function guardarPlanAlt(f, pl, cfg, opt) {   // se guarda sin activarlo ni cambiar la máquina de la finca
   const recs = await DB.pByFinca(f.id), num = recs.reduce((m, r) => Math.max(m, r.num || 0), 0) + 1;
-  const rec = { id: uid(), fincaId: f.id, num, nombre: 'Plan ' + num, fecha: Date.now(), origen: origen || 'calculado', nota: '', plan: pl };
+  const rec = { id: uid(), fincaId: f.id, num, nombre: 'Plan ' + num, fecha: Date.now(), origen: 'alternativo', nota: '', plan: pl, cfg: { ...cfg }, opt: opt || null };
+  pl.id = rec.id; pl.num = num; await DB.pPut(rec); if (cur === f) planesCache.set(rec.id, rec); return rec;
+}
+async function guardarPlan(f, pl, origen, cfg) {
+  const recs = await DB.pByFinca(f.id), num = recs.reduce((m, r) => Math.max(m, r.num || 0), 0) + 1;
+  const rec = { id: uid(), fincaId: f.id, num, nombre: 'Plan ' + num, fecha: Date.now(), origen: origen || 'calculado', nota: '', plan: pl, cfg: { ...(cfg || f.config || {}) } };
   pl.id = rec.id; pl.num = num; f.plan = pl; f.planId = rec.id;
   await DB.pPut(rec); if (cur === f) planesCache.set(rec.id, rec);
   return rec;
@@ -5010,6 +5103,7 @@ async function numerarRutas(f) {
   for (const t of trs) if (!t.num) { t.num = ++max; await DB.tPut(t); }
   return trs.reverse();
 }
+const maqTxt = pa => pa && pa.maq ? `${(TIPOS_TR.find(x => x[0] === pa.maq.tipo) || TIPOS_TR[0])[1]} ${pa.maq.tractor || ''} + ${pa.maq.apero || ''} · ${fmt(pa.maq.ancho, 2)} m` : '';
 const nomRuta = t => t.nombre || ('Ruta ' + (t.num || '?'));
 const nomPlan = r => r.nombre || ('Plan ' + r.num);
 const fFecha = ts => new Date(ts).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' });
@@ -5021,8 +5115,8 @@ async function planesSheet() {
   if (!recs.length) return sheet(`<h3>🧭 Planes · ${esc(cur.nombre)}</h3><div class="note">Aún no hay planes. Calcula uno en <b>Plan</b>.</div>`);
   sheet(`<h3>🧭 Planes · ${esc(cur.nombre)}</h3>
     <div class="note">Cada plan calculado o recalculado se guarda con su número. Las rutas de trabajo guardan el plan con el que se hicieron.</div>
-    ${recs.map(r => { const st = r.plan.stats, us = trs.filter(t => t.planId === r.id).map(nomRuta); return `<button class="opt" data-id="${r.id}">${r.id === cur.planId ? '✅ ' : ''}<b>${esc(nomPlan(r))}</b> · ${fFecha(r.fecha)}
-      <small>${fmtH(st.t.total / 3600)} · ${fmt(st.litros, 1)} L · ${st.nPasadas} pasadas · rumbo ${r.plan.az}° · ${fmt(r.plan.params.v, 1)} km/h${us.length ? ' · usado en ' + us.join(', ') : ''}${r.nota ? '<br>' + esc(r.nota) : ''}</small></button>`; }).join('')}
+    ${recs.map(r => { const st = r.plan.stats, us = trs.filter(t => t.planId === r.id).map(nomRuta); return `<button class="opt" data-id="${r.id}">${r.id === cur.planId ? '✅ ' : ''}<b>${esc(nomPlan(r))}</b>${r.plan.aprendido ? ' 🧠' : ''} · ${fFecha(r.fecha)}
+      <small>${r.plan.params.maq ? esc(maqTxt(r.plan.params)) + '<br>' : ''}${r.origen === 'alternativo' ? 'alternativo · ' : ''}${fmtH(st.t.total / 3600)} · ${fmt(st.litros, 1)} L · ${st.nPasadas} pasadas · rumbo ${r.plan.az}° · ${fmt(r.plan.params.v, 1)} km/h${us.length ? ' · usado en ' + us.join(', ') : ''}${r.nota ? '<br>' + esc(r.nota) : ''}</small></button>`; }).join('')}
     ${recs.length > 1 ? '<button class="btn sec" id="plCmp" style="margin-top:6px">📊 Comparar planes</button>' : ''}`,
     sh => {
       sh.querySelectorAll('[data-id]').forEach(b => b.onclick = () => planOptsSheet(planesCache.get(b.dataset.id)));
@@ -5031,14 +5125,15 @@ async function planesSheet() {
 }
 function planOptsSheet(r) {
   sheet(`<h3>${esc(nomPlan(r))}</h3><div class="note">${fFecha(r.fecha)} · ${r.origen}</div>
-    ${r.id !== cur.planId ? '<button class="opt" id="poUse">✅ Usar este plan (verlo en el mapa y trabajar con él)</button>' : '<div class="card" style="background:#e8f5e9">✅ Es el plan activo de la finca</div>'}
+    ${r.plan.params && r.plan.params.maq ? `<div class="card">${esc(maqTxt(r.plan.params))}</div>` : ''}
+    ${r.id !== cur.planId ? '<button class="opt" id="poUse">✅ Usar este plan (verlo en el mapa y trabajar con él; la finca pasa a usar su máquina)</button>' : '<div class="card" style="background:#e8f5e9">✅ Es el plan activo de la finca</div>'}
     <button class="opt" id="poDet">📋 Detalle</button>
     <button class="opt" id="poEd">✎ Nombre y nota</button>
     <button class="opt" id="poCp">⧉ Copiar (nuevo número)</button>
     <button class="opt" id="poRe">🔄 Modificar: recalcular con otros parámetros</button>
     <button class="opt" id="poDel" style="color:var(--err)">🗑 Eliminar</button>`,
     () => {
-      if ($('poUse')) $('poUse').onclick = async () => { cur.plan = r.plan; cur.planId = r.id; await saveCur(); CFG.plan = true; closeSheet(); drawFinca(true); toast(nomPlan(r) + ' activo'); };
+      if ($('poUse')) $('poUse').onclick = async () => { cur.plan = r.plan; cur.planId = r.id; if (r.cfg && r.cfg.tractorId) { cur.config = { ...r.cfg }; if (r.opt) cur.planOpt = r.opt; applyS(); } await saveCur(); CFG.plan = true; closeSheet(); drawFinca(true); toast(nomPlan(r) + ' activo'); };
       $('poDet').onclick = () => planDetail(r.plan);
       $('poEd').onclick = () => sheet(`<h3>✎ ${esc(nomPlan(r))}</h3><label class="f">Nombre</label><input class="inp" id="peN" value="${esc(nomPlan(r))}"><label class="f">Nota</label><input class="inp" id="peT" value="${esc(r.nota || '')}"><button class="btn" id="peOk" style="margin-top:10px">Guardar</button>`,
         () => { $('peOk').onclick = async () => { r.nombre = $('peN').value.trim() || ('Plan ' + r.num); r.nota = $('peT').value.trim(); await DB.pPut(r); closeSheet(); planesSheet(); }; });
@@ -5052,12 +5147,13 @@ function planOptsSheet(r) {
     });
 }
 function compararPlanes(recs) {
-  const rows = [['Fecha', r => new Date(r.fecha).toLocaleDateString('es-ES')], ['Tiempo', r => fmtH(r.plan.stats.t.total / 3600)], ['Litros', r => fmt(r.plan.stats.litros, 1)],
+  const rows = [['Fecha', r => new Date(r.fecha).toLocaleDateString('es-ES')], ['Máquina', r => r.plan.params.maq ? esc(r.plan.params.maq.tractor + ' + ' + r.plan.params.maq.apero) : '–'], ['Ancho', r => fmt(r.plan.params.w, 2) + ' m'],
+    ['Coste', r => fmt(costePlan(r.plan).coste, 2) + ' €'], ['Precio (+' + fmt(+SB.margen || 0, 0) + ' %)', r => fmt(costePlan(r.plan).precio, 2) + ' €'], ['Tiempo', r => fmtH(r.plan.stats.t.total / 3600)], ['Litros', r => fmt(r.plan.stats.litros, 1)],
     ['Pasadas', r => r.plan.stats.nPasadas], ['Giros U/K/Ω', r => `${r.plan.stats.giros.U}/${r.plan.stats.giros.K}/${r.plan.stats.giros.O}`], ['Recorrido', r => fmt(r.plan.stats.L.total, 0) + ' m'],
     ['Cobertura teórica', r => fmt(r.plan.stats.area.cobertura * 100, 1) + ' %'], ['Rumbo', r => r.plan.az + '°'], ['Velocidad', r => fmt(r.plan.params.v, 1) + ' km/h']];
-  const best = recs.reduce((a, b) => b.plan.stats.t.total < a.plan.stats.t.total ? b : a);
+  const best = recs.reduce((a, b) => costePlan(b.plan).coste < costePlan(a.plan).coste ? b : a);
   sheet(`<h3>📊 Comparar planes</h3><div style="overflow-x:auto"><table class="cmp"><tr><th></th>${recs.map(r => `<th>${esc(nomPlan(r))}${r === best ? ' ⭐' : ''}</th>`).join('')}</tr>
-    ${rows.map(([n, f]) => `<tr><th>${n}</th>${recs.map(r => `<td>${f(r)}</td>`).join('')}</tr>`).join('')}</table></div><div class="note">⭐ el plan más rápido.</div>`);
+    ${rows.map(([n, f]) => `<tr><th>${n}</th>${recs.map(r => `<td>${f(r)}</td>`).join('')}</tr>`).join('')}</table></div><div class="note">⭐ el plan más barato (gasóleo ${fmt(+SB.precioGasoil, 2)} €/L + ${fmt(+SB.precioHora, 2)} €/h).</div>`);
 }
 
 /* ---- Rutas de trabajo ---- */
@@ -5080,7 +5176,7 @@ function planDeRuta(t) {
 }
 // lo que el plan habría necesitado para limpiar la misma superficie que la ruta (proporcional a la cobertura)
 function planEquiv(t) {
-  const r = t.resumen, pr = planDeRuta(t); if (!pr) return null;
+  const r = t.resumen, pr = planDeRuta(t); if (!pr || (pr.plan && pr.plan.repaso)) return null;
   const T = pr.plan ? pr.plan.stats.t.total / 3600 : pr.resumen.t, Lt = pr.plan ? pr.plan.stats.litros : pr.resumen.litros, Lm = pr.plan ? pr.plan.stats.L.total : pr.resumen.L, c = Math.min(1, r.cobertura || 0);
   return { t: T * c, litros: Lt * c, L: Lm * c, tTot: T, litrosTot: Lt };
 }
@@ -5099,12 +5195,13 @@ function analizarRutas(trs) {
     ['Cobertura', t => pc(t.resumen.cobertura)], ['Sin limpiar', t => fmtArea(t.resumen.pendiente)],
     ['η recorrido (plan / real)', t => pc(etaRuta(t))], ['Desviación media', t => t.resumen.devMed == null ? '–' : fmt(t.resumen.devMed, 2) + ' m'],
     ['Solape', t => pc(t.resumen.solapePct)], ['<b>Efectividad</b>', t => `<b>${pc(efectividad(t))}</b>`]];
-  const best = trs.reduce((a, b) => efectividad(b) > efectividad(a) ? b : a);
+  const esRep = t => { const q = planDeRuta(t); return !!(q && q.plan && q.plan.repaso); }, cand = trs.filter(t => !esRep(t)).length ? trs.filter(t => !esRep(t)) : trs;
+  const best = cand.reduce((a, b) => efectividad(b) > efectividad(a) ? b : a);
   sheet(`<h3>📊 Análisis de rutas</h3><div style="overflow-x:auto"><table class="cmp"><tr><th></th>${trs.map(t => `<th>${esc(nomRuta(t))}${t === best ? ' ⭐' : ''}</th>`).join('')}</tr>
     ${rows.map(([n, f]) => `<tr><th>${n}</th>${trs.map(t => `<td>${f(t)}</td>`).join('')}</tr>`).join('')}</table></div>
     <div class="note">⭐ <b>${esc(nomRuta(best))}</b> fue la más efectiva. Efectividad = cobertura × cumplimiento del tiempo del plan × η. En verde/rojo, la diferencia con el plan.</div>
-    <button class="btn sec" id="anRo" style="margin-top:8px">🔴 Ver zonas sin limpiar de ${esc(nomRuta(best))}</button>`,
-    () => { $('anRo').onclick = () => verSinLimpiar(best); });
+    <div class="row" style="margin-top:8px"><button class="btn sec" id="anRo">🔴 Zonas sin limpiar</button><button class="btn sec" id="anRp">🧹 Repaso</button></div>`,
+    () => { $('anRo').onclick = () => verSinLimpiar(best); $('anRp').onclick = () => repasoSheet(best); });
 }
 function verSinLimpiar(t) {
   viewTrab = t.id; trabCache = null; CFG.pendiente = true; CFG.limpia = true; CFG.real = true; CFG.area = false; saveCfg(); closeSheet(); drawFinca(true);
@@ -5154,8 +5251,8 @@ function peligrosLista(f) {
   const L_ = (f.peligros || []).slice().sort((a, b) => b.fecha - a.fecha);
   sheet(`<h3>⚠️ Peligros · ${esc(f.nombre)}</h3>
     ${L_.length ? L_.map(p => `<button class="opt" data-id="${p.id}">${PEL[p.tipo][0]} ${PEL[p.tipo][1]}<small>${new Date(p.fecha).toLocaleDateString('es-ES')} · radio ${fmt(p.radio, 1)} m${p.nota ? ' · ' + esc(p.nota) : ''}</small></button>`).join('') : '<div class="note">Sin peligros. Se anotan durante el trabajo con el botón ⚠️.</div>'}
-    <button class="btn sec" id="pgA" style="margin-top:8px">＋ Anotar aquí (posición GPS)</button>`,
-    sh => { sh.querySelectorAll('[data-id]').forEach(b => b.onclick = () => { closeSheet(); const p = f.peligros.find(x => x.id === b.dataset.id); if (map) map.setView(p.ll, Math.max(map.getZoom(), 19)); peligroOpts(f, p.id); }); $('pgA').onclick = peligroSheet; });
+    <div class="row" style="margin-top:8px"><button class="btn sec" id="pgA">＋ Anotar aquí (GPS)</button><button class="btn sec" id="pgX">📤 Exportar KML/GPX</button></div>`,
+    sh => { $('pgX').onclick = () => exportPelSheet(f); sh.querySelectorAll('[data-id]').forEach(b => b.onclick = () => { closeSheet(); const p = f.peligros.find(x => x.id === b.dataset.id); if (map) map.setView(p.ll, Math.max(map.getZoom(), 19)); peligroOpts(f, p.id); }); $('pgA').onclick = peligroSheet; });
 }
 function avisoPeligros(p) {
   if (!work || !cur || !(cur.peligros || []).length) return;
@@ -5165,6 +5262,515 @@ function avisoPeligros(p) {
     const a = P.fwd(q.ll[0], q.ll[1]), d = Math.hypot(a[0], a[1]) - q.radio;
     if (d < 12 && (!work.pelDicho[q.id] || p.t - work.pelDicho[q.id] > 60000)) { work.pelDicho[q.id] = p.t; speak(`Atención: ${PEL[q.tipo][1].toLowerCase()} a ${Math.max(1, Math.round(d))} metros`, true); toast(`${PEL[q.tipo][0]} ${PEL[q.tipo][1]} a ${Math.max(1, Math.round(d))} m`, 3000); break; }
   }
+}
+
+/* =========================================================
+   v2.2 — Retomar ruta, repaso de zonas sin limpiar, informe anual, exportar peligros
+   ========================================================= */
+
+/* ---- 1. Retomar una ruta a medias: punto exacto donde quedó el plan ---- */
+// recorre las pasadas del plan en orden y busca el primer tramo (≥ 3 m) que la ruta no limpió, a partir de la última pasada hecha
+function puntoReanudar(R) {
+  if (!R || !R.plan || !R.g) return null;
+  const g = R.g, P = g.P, parts = R.plan.parts, info = planGuide(R.plan);
+  const limpio = xy => { const c = Math.floor((xy[0] - g.x0) / g.cs), r = Math.floor((xy[1] - g.y0) / g.cs); if (c < 0 || r < 0 || c >= g.cols || r >= g.rows) return true; const k = r * g.cols + c; return !g.mask[k] || g.cnt[k] > 0 || (g.treeM && g.treeM[k]); };
+  const muestras = parts.map((p, i) => {
+    if (p.type !== 'trabajo') return null;
+    const xy = Geo.toXY(p.ll, P), s = [];
+    for (let j = 1; j < xy.length; j++) { const a = xy[j - 1], b = xy[j], L = Geo.dist(a, b), n = Math.max(1, Math.ceil(L)); for (let k = 0; k < n; k++) s.push([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]); }
+    if (xy.length) s.push(xy[xy.length - 1]);
+    const ok = s.map(limpio); return { i, s, ok, frac: ok.filter(Boolean).length / (ok.length || 1) };
+  });
+  const hechas = muestras.filter(m => m && m.frac >= 0.5);
+  if (!hechas.length) return null;   // aún no se hizo nada: se empieza por el inicio del plan
+  // última posición de corte de la ruta → pasada hecha más cercana: ahí quedó el trabajo
+  const ult = [...(R.outs || [])].reverse().find(o => o); let kLast = hechas[hechas.length - 1].i, j0 = 0;
+  if (ult) { const q = P.fwd(ult[0][0], ult[0][1]); let bd = Infinity; hechas.forEach(m => m.s.forEach((x, j) => { const d = Geo.dist(x, q); if (d < bd) { bd = d; kLast = m.i; j0 = j; } })); }
+  const tramo = (m, desde) => { for (let j = desde; j < m.s.length; j++) if (!m.ok[j] && !m.ok[Math.min(j + 1, m.s.length - 1)] && !m.ok[Math.min(j + 2, m.s.length - 1)]) { const ll = P.inv(m.s[j][0], m.s[j][1]); return { ll: [+ll[0].toFixed(7), +ll[1].toFixed(7)], part: m.i, lab: info[m.i] ? info[m.i].lab : 'Pasada', faltan: m.s.length - j }; } return null; };
+  const busca = (desde, hasta) => { for (let i = desde; i <= hasta; i++) { const m = muestras[i]; if (!m) continue; const x = i === kLast ? tramo(m, j0) : m.frac < 0.6 ? tramo(m, 0) : null; if (x) return x; } return null; };
+  const r = busca(kLast, parts.length - 1) || (() => { const x = busca(0, kLast - 1); return x ? { ...x, atras: true } : null; })();
+  return r || { completo: true };
+}
+function resumeInit(R, trab) {
+  const res = puntoReanudar(R);
+  if (!res) return;
+  if (res.completo) { setTimeout(() => toast('✅ El plan ya está recorrido en esta ruta. Para lo que quedó sin limpiar usa ⋯ › 🛤 Rutas › 🧹 Repaso de zonas sin limpiar.', 6000), 400); return; }
+  trab.reanudar = { ll: res.ll, part: res.part, lab: res.lab, fecha: Date.now() };
+  work.resume = { ...res, done: false, band: null, tSay: Date.now() };
+  work.guide.part = res.part - 1;
+  work.resLayer = L.layerGroup().addTo(map);
+  L.marker(res.ll, { zIndexOffset: 950, interactive: false, icon: L.divIcon({ className: '', html: '<div class="pin" style="background:#ef6c00;width:30px;height:30px;line-height:30px;font-size:18px">↻</div>', iconSize: [30, 30], iconAnchor: [15, 15] }) }).addTo(work.resLayer);
+  work.resLine = L.polyline([res.ll, res.ll], { color: '#ef6c00', weight: 4, dashArray: '8 8', interactive: false }).addTo(work.resLayer);
+  const d = lastPos ? Geo.lenLL([[lastPos.lat, lastPos.lon], res.ll]) : null;
+  toast(`↻ Reanudar en ${res.lab}${res.atras ? ' (tramo que quedó atrás)' : ''}${d != null ? ' · a ' + fmt(d, 0) + ' m' : ''}. Sigue la línea naranja.`, 6000);
+  speak(`Punto de reanudación: ${res.lab.toLowerCase()}${d != null ? ', a ' + Math.round(d) + ' metros' : ''}`, true);
+  resumeUpdate(lastPos);
+}
+function resumeTxt(p) {
+  const R_ = work && work.resume; if (!R_ || R_.done || !p) return null;
+  const P = Geo.proj(p.lat, p.lon), q = P.fwd(R_.ll[0], R_.ll[1]), d = Math.hypot(q[0], q[1]);
+  let lado = ''; const h = rumboAvance();
+  if (h && d > 3) { const u = [q[0] / d, q[1] / d], dot = u[0] * h.u[0] + u[1] * h.u[1], cr = h.u[0] * u[1] - h.u[1] * u[0]; lado = dot > 0.85 ? 'delante' : dot < -0.6 ? 'detrás' : cr > 0 ? 'a la izquierda' : 'a la derecha'; }
+  return { d, lado };
+}
+function resumeUpdate(p) {
+  const R_ = work && work.resume; if (!R_ || R_.done || !p) return;
+  const r = resumeTxt(p); if (!r) return;
+  if (work.resLine) work.resLine.setLatLngs([[p.lat, p.lon], R_.ll]);
+  if (r.d <= Math.max(3, Math.min(p.acc || 3, 6))) {
+    R_.done = true; if (work.resLayer) { map.removeLayer(work.resLayer); work.resLayer = null; }
+    speak(`Punto de reanudación alcanzado. ${R_.lab}. Baja el apero y continúa`, true); toast(`✅ Punto de reanudación alcanzado: ${R_.lab}`, 4000);
+    $('wPass').textContent = R_.lab; $('wNext').textContent = ''; return;
+  }
+  resumePaint(p);
+  const band = r.d > 100 ? Math.round(r.d / 50) * 50 : r.d > 30 ? Math.round(r.d / 25) * 25 : r.d > 12 ? 15 : 8;
+  if (band !== R_.band && (p.t || Date.now()) - R_.tSay > 6000) { R_.band = band; R_.tSay = p.t || Date.now(); speak(`Reanudación a ${Math.round(r.d)} metros${r.lado ? ', ' + r.lado : ''}`); }
+}
+function resumePaint(p) {
+  const R_ = work && work.resume; if (!R_ || R_.done || !p) return; const r = resumeTxt(p); if (!r) return;
+  $('wGuide').classList.remove('hidden');
+  $('wPass').textContent = `↻ Reanudar ${R_.lab}: ${fmt(r.d, 0)} m${r.lado ? ' ' + r.lado : ''}`;
+  $('wNext').textContent = 'Ve a la marca ↻ naranja (línea discontinua)';
+}
+function resumeEnd() { if (work && work.resLayer) { map.removeLayer(work.resLayer); work.resLayer = null; } }
+
+/* ---- 2. Repaso de zonas sin limpiar: plan corto solo por lo rojo ---- */
+function rasterLibre(g, clear, clearT) {
+  // distancias (m) de cada celda a lo prohibido: fuera del linde/exclusiones y troncos (por separado)
+  const { cols, rows, cs, mask } = g, N = cols * rows, INF = 1e9;
+  const dist = isBad => { const d = new Float32Array(N);
+    for (let k = 0; k < N; k++) d[k] = isBad(k) ? 0 : INF;
+    const a = 1, b = Math.SQRT2;
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) { const k = r * cols + c; if (!d[k]) continue; let v = d[k];
+      if (c > 0) v = Math.min(v, d[k - 1] + a); if (r > 0) { v = Math.min(v, d[k - cols] + a); if (c > 0) v = Math.min(v, d[k - cols - 1] + b); if (c < cols - 1) v = Math.min(v, d[k - cols + 1] + b); } d[k] = v; }
+    for (let r = rows - 1; r >= 0; r--) for (let c = cols - 1; c >= 0; c--) { const k = r * cols + c; if (!d[k]) continue; let v = d[k];
+      if (c < cols - 1) v = Math.min(v, d[k + 1] + a); if (r < rows - 1) { v = Math.min(v, d[k + cols] + a); if (c < cols - 1) v = Math.min(v, d[k + cols + 1] + b); if (c > 0) v = Math.min(v, d[k + cols - 1] + b); } d[k] = v; }
+    return d; };
+  const dO = dist(k => !mask[k]), dT = g.treeM ? dist(k => g.treeM[k]) : null, lim = clear / cs, limT = (clearT != null ? clearT : clear) / cs;
+  // sinArboles: pasadas por la calle ya separadas de los troncos por construcción (como el plan)
+  const ok = (xy, sinArboles) => { const c = Math.floor((xy[0] - g.x0) / cs), r = Math.floor((xy[1] - g.y0) / cs); if (c < 0 || r < 0 || c >= cols || r >= rows) return false; const k = r * cols + c; return dO[k] >= lim && (sinArboles || !dT || dT[k] >= limT); };
+  return { ok };
+}
+// camino libre entre dos puntos: recto si cabe; si no, A* en rejilla de 1 m y tensado de la cuerda
+function caminoLibre(a, b, L_, g) {
+  const recto = (p, q) => { const n = Math.max(1, Math.ceil(Geo.dist(p, q) / (g.cs * 2))); for (let i = 0; i <= n; i++) if (!L_.ok([p[0] + (q[0] - p[0]) * i / n, p[1] + (q[1] - p[1]) * i / n])) return false; return true; };
+  if (recto(a, b)) return [a, b];
+  const s = 1, X0 = g.x0, Y0 = g.y0, C = Math.ceil(g.cols * g.cs / s), Rr = Math.ceil(g.rows * g.cs / s);
+  const free = (i, j) => i >= 0 && j >= 0 && i < C && j < Rr && L_.ok([X0 + (i + .5) * s, Y0 + (j + .5) * s]);
+  const cel = p => [Math.floor((p[0] - X0) / s), Math.floor((p[1] - Y0) / s)];
+  const near = p => { const [i0, j0] = cel(p); for (let rr = 0; rr < 6; rr++) for (let di = -rr; di <= rr; di++) for (let dj = -rr; dj <= rr; dj++) if (free(i0 + di, j0 + dj)) return [i0 + di, j0 + dj]; return null; };
+  const A = near(a), B = near(b); if (!A || !B) return [a, b];
+  const key = (i, j) => j * C + i, gS = new Map([[key(...A), 0]]), from = new Map(), open = [[Math.hypot(A[0] - B[0], A[1] - B[1]), A[0], A[1]]], done = new Set();
+  let found = false, it = 0;
+  while (open.length && it++ < 200000) {
+    let bi = 0; for (let k = 1; k < open.length; k++) if (open[k][0] < open[bi][0]) bi = k;
+    const [, i, j] = open[bi]; open[bi] = open[open.length - 1]; open.pop();
+    const k0 = key(i, j); if (done.has(k0)) continue; done.add(k0);
+    if (i === B[0] && j === B[1]) { found = true; break; }
+    for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      const ni = i + di, nj = j + dj; if (!free(ni, nj)) continue; const nk = key(ni, nj); if (done.has(nk)) continue;
+      const ng = gS.get(k0) + Math.hypot(di, dj); if (ng < (gS.get(nk) ?? Infinity)) { gS.set(nk, ng); from.set(nk, k0); open.push([ng + Math.hypot(ni - B[0], nj - B[1]), ni, nj]); }
+    }
+  }
+  if (!found) return [a, b];
+  const pth = []; let k = key(...B); while (k != null) { pth.push([X0 + (k % C + .5) * s, Y0 + (Math.floor(k / C) + .5) * s]); k = from.get(k); }
+  pth.reverse(); const full = [a, ...pth, b], out = [a]; let i = 0;
+  while (i < full.length - 1) { let j = full.length - 1; while (j > i + 1 && !recto(full[i], full[j])) j--; out.push(full[j]); i = j; }
+  return out;
+}
+function rumboPlan(f) {
+  if (f.plan && f.plan.parts) { const sw = f.plan.parts.filter(p => p.swath && p.ll.length > 1).sort((a, b) => Geo.lenLL(b.ll) - Geo.lenLL(a.ll))[0]; if (sw) { const P = Geo.projFor(sw.ll), a = P.fwd(...sw.ll[0]), b = P.fwd(...sw.ll[sw.ll.length - 1]); return Math.atan2(b[1] - a[1], b[0] - a[0]); } }
+  const P = Geo.projFor(f.linde.coords), xy = Geo.toXY(f.linde.coords, P); let best = 0, ang = 0;
+  xy.forEach((p, i) => { const q = xy[(i + 1) % xy.length], L = Geo.dist(p, q); if (L > best) { best = L; ang = Math.atan2(q[1] - p[1], q[0] - p[0]); } });
+  return ang;
+}
+function planRepaso(f, t, o) {
+  o = o || {};
+  const T0 = performance.now(), R = rebuildTrab(f, t), g = R.g, S2 = R.S2 || effS(f), cs = g.cs;
+  const w = S2.aperoAncho, wEff = Math.max(0.5, w - (S2.solape != null ? +S2.solape : 0.1)), minA = o.minArea != null ? o.minArea : 0.5;
+  const L_ = rasterLibre(g, w / 2 + 0.35, w / 2 + 0.2);
+  let th = rumboPlan(f);
+  const M = f.malla; if (M && M.A && M.B && M.nAB > 1) { try { const ab = mallaVec(f, g.P).ab; th = Math.atan2(ab[1], ab[0]); } catch (e) { } }
+  const ux = [Math.cos(th), Math.sin(th)], vy = [-ux[1], ux[0]];
+  // celdas rojas en coordenadas (u, v)
+  const red = []; let nRed = 0;
+  for (let r = 0; r < g.rows; r++) for (let c = 0; c < g.cols; c++) { const k = r * g.cols + c; if (!g.mask[k] || g.cnt[k] || (g.treeM && g.treeM[k])) continue; nRed++; const x = g.x0 + (c + .5) * cs, y = g.y0 + (r + .5) * cs; red.push([x * ux[0] + y * ux[1], x * vy[0] + y * vy[1]]); }
+  if (!nRed) return { vacio: true };
+  const v0 = Math.min(...red.map(p => p[1])), strips = new Map(), toXY = (u, v) => [u * ux[0] + v * vy[0], u * ux[1] + v * vy[1]];
+  // monte: dos pasadas por calle, arrimadas a cada hilera (como el plan); fuera de la arboleda, franjas normales
+  let lanes = null, vr0 = 0, vr1 = 0;
+  if (M && M.arboles && M.arboles.length >= 6) {
+    const vs = M.arboles.filter(a => !a[4]).map(a => { const q = g.P.fwd(a[0], a[1]); return q[0] * vy[0] + q[1] * vy[1]; }).sort((a, b) => a - b), rows = []; let grp = [vs[0]];
+    for (let i = 1; i < vs.length; i++) { if (vs[i] - vs[i - 1] > 1) { rows.push(grp.reduce((q, x) => q + x, 0) / grp.length); grp = []; } grp.push(vs[i]); } rows.push(grp.reduce((q, x) => q + x, 0) / grp.length);
+    if (rows.length >= 2) {
+      const cpas = (+(M.diam || S2.diamTronco || 500)) / 2000 + (S2.holguraTronco || 0.3) + w / 2; lanes = [];
+      for (let i = 0; i + 1 < rows.length; i++) { const a = rows[i], b = rows[i + 1]; if (b - a < 2 * cpas) lanes.push((a + b) / 2); else lanes.push(a + cpas, b - cpas); }
+      vr0 = rows[0]; vr1 = rows[rows.length - 1];
+    }
+  }
+  red.forEach(p => {
+    let key, v;
+    if (lanes && p[1] > vr0 && p[1] < vr1) { let bi = 0; lanes.forEach((x, i) => { if (Math.abs(x - p[1]) < Math.abs(lanes[bi] - p[1])) bi = i; }); if (Math.abs(lanes[bi] - p[1]) > w / 2) return; key = 'm' + bi; v = lanes[bi]; }
+    else { const sI = Math.floor((p[1] - v0) / wEff); key = 'g' + sI; v = v0 + (sI + .5) * wEff; }
+    (strips.get(key) || strips.set(key, { v, m: key[0] === 'm', us: [] }).get(key)).us.push(p[0]);
+  });
+  const segs = [];
+  for (const [, st] of strips) {
+    const us = st.us.sort((a, b) => a - b);
+    const ivs = []; let a = us[0], b = us[0], n = 1;
+    for (let i = 1; i < us.length; i++) { if (us[i] - b <= 2) { b = us[i]; n++; } else { ivs.push([a, b, n]); a = b = us[i]; n = 1; } }
+    ivs.push([a, b, n]);
+    for (const [ua, ub, cnt] of ivs) {
+      if (cnt * cs * cs < minA) continue;
+      let A = ua - 0.6, B = ub + 0.6; if (B - A < 2) { const m = (A + B) / 2; A = m - 1; B = m + 1; }
+      const vc = st.v;
+      let best = null;
+      for (const dv of st.m ? [0, 0.1, -0.1] : [0, 0.3, -0.3, 0.6, -0.6, 0.85, -0.85]) {
+        const runs = []; let run = null;
+        for (let u = A; u <= B + 1e-9; u += cs) { const p = toXY(u, vc + dv); if (L_.ok(p, st.m)) { if (!run) run = [u, u]; run[1] = u; } else if (run) { runs.push(run); run = null; } }
+        if (run) runs.push(run);
+        const len = runs.reduce((q, r) => q + r[1] - r[0], 0);
+        if (!best || len > best.len + 0.3) best = { len, runs, v: vc + dv };
+      }
+      if (best) best.runs.filter(r => r[1] - r[0] >= 0.75).forEach(r => segs.push([toXY(r[0], best.v), toXY(r[1], best.v)]));
+    }
+  }
+  if (!segs.length) return { vacio: true, inalc: nRed * cs * cs };
+  // orden: vecino más próximo desde el inicio y 2-opt con inversión de sentido
+  const P = g.P, ini = o.inicio ? P.fwd(o.inicio[0], o.inicio[1]) : segs[0][0];
+  const seq = [], used = new Set(); let pos = ini;
+  while (seq.length < segs.length) { let bj = -1, bd = Infinity, br = false; segs.forEach((s, j) => { if (used.has(j)) return; const d0 = Geo.dist(pos, s[0]), d1 = Geo.dist(pos, s[1]); if (d0 < bd) { bd = d0; bj = j; br = false; } if (d1 < bd) { bd = d1; bj = j; br = true; } }); used.add(bj); seq.push({ j: bj, r: br }); pos = br ? segs[bj][0] : segs[bj][1]; }
+  const en = x => x.r ? segs[x.j][1] : segs[x.j][0], ex = x => x.r ? segs[x.j][0] : segs[x.j][1];
+  let mejora = true, it = 0;
+  while (mejora && it++ < 40) { mejora = false;
+    for (let i = 0; i < seq.length - 1; i++) for (let k = i + 1; k < seq.length; k++) {
+      const pa = i ? ex(seq[i - 1]) : ini, nb = k + 1 < seq.length ? en(seq[k + 1]) : null;
+      const antes = Geo.dist(pa, en(seq[i])) + (nb ? Geo.dist(ex(seq[k]), nb) : 0), despues = Geo.dist(pa, ex(seq[k])) + (nb ? Geo.dist(en(seq[i]), nb) : 0);
+      if (despues < antes - 0.01) { const mid = seq.slice(i, k + 1).reverse().map(x => ({ j: x.j, r: !x.r })); seq.splice(i, k - i + 1, ...mid); mejora = true; }
+    } }
+  // partes del plan (traslados con el apero levantado por zona libre; pasadas de repaso)
+  const parts = [], arrows = []; pos = ini; let Ltr = 0, Lw = 0, nTr = 0;
+  seq.forEach(x => { const a = en(x), b = ex(x);
+    if (Geo.dist(pos, a) > 0.5) { const c = caminoLibre(pos, a, L_, g); parts.push({ type: 'tras', xy: c }); Ltr += Geo.perim(c, false); nTr++; }
+    parts.push({ type: 'trabajo', xy: [a, b], swath: true }); Lw += Geo.dist(a, b);
+    arrows.push({ xy: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], az: (Math.atan2(b[0] - a[0], b[1] - a[1]) * 180 / Math.PI + 360) % 360 }); pos = b; });
+  // superficie roja que alcanzan las pasadas
+  const cov = new Uint8Array(g.cols * g.rows), rr = w / 2;
+  parts.filter(p => p.type === 'trabajo').forEach(p => { const [a, b] = p.xy, dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1e-12;
+    const c0 = Math.max(0, Math.floor((Math.min(a[0], b[0]) - rr - g.x0) / cs)), c1 = Math.min(g.cols - 1, Math.floor((Math.max(a[0], b[0]) + rr - g.x0) / cs));
+    const r0 = Math.max(0, Math.floor((Math.min(a[1], b[1]) - rr - g.y0) / cs)), r1 = Math.min(g.rows - 1, Math.floor((Math.max(a[1], b[1]) + rr - g.y0) / cs));
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) { const x = g.x0 + (c + .5) * cs, y = g.y0 + (r + .5) * cs; let tt = ((x - a[0]) * dx + (y - a[1]) * dy) / L2; tt = tt < 0 ? 0 : tt > 1 ? 1 : tt; if ((x - a[0] - tt * dx) ** 2 + (y - a[1] - tt * dy) ** 2 <= rr * rr) cov[r * g.cols + c] = 1; } });
+  let nCub = 0; for (let k = 0; k < cov.length; k++) if (cov[k] && g.mask[k] && !g.cnt[k] && !(g.treeM && g.treeM[k])) nCub++;
+  const aRed = nRed * cs * cs, aCub = nCub * cs * cs;
+  const vw = S2.velocidad / 3.6, vt = (S2.velocidadTraslado || 5) / 3.6;
+  const tW = Lw / vw, tT = Ltr / vt + nTr * (S2.tManiobra || 20), tTot = tW + tT;
+  const toLL = xy => Geo.toLL(xy, P).map(q => [+q[0].toFixed(7), +q[1].toFixed(7)]);
+  return {
+    fecha: Date.now(), geomKey: geomKey(f), az: Math.round(((90 - th * 180 / Math.PI) % 180 + 180) % 180), nH: 0, nHauto: 0, need: 0, ms: Math.round(performance.now() - T0), warn: [], inicio: o.inicio || null, fin: null, hlFinal: false,
+    repaso: { rutaId: t.id, ruta: nomRuta(t), rojo: aRed, cubre: aCub, minArea: minA },
+    params: { w, s: wEff, R: S2.radioGiro, marchaAtras: !!S2.marchaAtras, v: S2.velocidad, consumo: S2.consumo },
+    parts: parts.filter(p => Geo.perim(p.xy, false) > 0.05).map(p => ({ type: p.type, ll: toLL(p.xy), swath: !!p.swath })),
+    arrows: arrows.map(a => ({ ll: toLL([a.xy])[0], az: Math.round(a.az) })), missed: [],
+    stats: { nPasadas: seq.length, nVueltas: 0, nObs: 0, giros: { U: 0, K: 0, O: 0, rodeo: 0, tras: nTr }, esquinas: 0,
+      L: { trabajo: Lw, giro: 0, reversa: 0, traslado: Ltr, total: Lw + Ltr }, t: { trabajo: tW, giros: 0, traslado: tT, esquinas: 0, total: tTot },
+      litros: tTot / 3600 * S2.consumo, area: { objetivo: aRed, cubierta: aCub, noAlcanzada: Math.max(0, aRed - aCub), cobertura: aRed ? aCub / aRed : 0, franjaArboles: 0, coberturaAlcanzable: aRed ? aCub / aRed : 0 },
+      monte: false, haH: aCub / 1e4 / (tTot / 3600 || 1) }
+  };
+}
+async function repasoSheet(t) {
+  if (!t) { const trs = await numerarRutas(cur); t = trs.find(x => x.id === viewTrab) || trs[0]; if (!t) return toast('Aún no hay rutas de trabajo'); }
+  sheet(`<h3>🧹 Repaso de zonas sin limpiar</h3><div class="note">Plan corto solo por las zonas rojas de <b>${esc(nomRuta(t))}</b> (${fFecha(t.inicio)}). Pasadas en el sentido del plan; los traslados van con el apero levantado y sin salir del linde ni pisar exclusiones o troncos.</div>
+    <div class="srow"><span>Ignorar manchas menores de (m²)</span><input class="inp" id="rpM" inputmode="decimal" value="0,5" style="width:80px;text-align:right"></div>
+    <div class="srow"><span>Empezar en mi posición GPS</span><input type="checkbox" id="rpG" ${lastPos ? 'checked' : ''} style="width:auto"></div>
+    <button class="btn" id="rpOk" style="margin-top:10px">Calcular repaso</button>`,
+    () => { $('rpOk').onclick = async () => {
+      const minArea = Math.max(0, parseFloat($('rpM').value.replace(',', '.')) || 0), ini = $('rpG').checked && lastPos ? [lastPos.lat, lastPos.lon] : null;
+      closeSheet(); showBusy('Calculando el repaso…'); await new Promise(r => setTimeout(r, 30));
+      let pl; try { await cargarPlanes(cur); pl = planRepaso(cur, t, { minArea, inicio: ini }); } catch (e) { hideBusy(); return toast('Error en el repaso: ' + e.message, 5000); } hideBusy();
+      if (pl.vacio) return toast(pl.inalc ? `Lo que queda sin limpiar (${fmtArea(pl.inalc)}) no se alcanza sin salir del linde o tocar troncos.` : `✅ ${nomRuta(t)} no dejó zonas sin limpiar.`, 5000);
+      viewTrab = t.id; trabCache = null; CFG.pendiente = true; saveCfg(); drawFinca(); planReview(pl); setTimeout(fitFinca, 60);
+    }; });
+}
+
+/* ---- 4. Informe anual en PDF ---- */
+async function informeSheet(soloFinca) {
+  const trs = await DB.tAll(), anyos = [...new Set(trs.map(t => new Date(t.inicio).getFullYear()).concat(new Date().getFullYear()))].sort((a, b) => b - a);
+  sheet(`<h3>📄 Informe anual</h3><div class="note">Horas, gasóleo, coste y fechas de limpieza de cada ruta del año, con el cumplimiento de la franja contra incendios (limpia entre el 1 de octubre anterior y el 31 de mayo).</div>
+    ${preciosHTML()}<div class="note">El gasóleo de cada ruta se cuenta al precio que tenía al hacerla; las rutas antiguas, al precio actual.</div>
+    <label class="f">Año</label><select class="inp" id="iaA">${anyos.map(a => `<option>${a}</option>`).join('')}</select>
+    ${soloFinca ? `<button class="btn" id="iaF" style="margin-top:12px">📄 Informe de ${esc(soloFinca.nombre)}</button>` : ''}
+    <button class="btn ${soloFinca ? 'sec' : ''}" id="iaT" style="margin-top:8px">📄 Informe de todas las fincas</button>`,
+    () => {
+      preciosBind();
+      const go = async fs => { const y = +$('iaA').value; closeSheet(); showBusy('Preparando el informe…'); try { await informeAnual(fs, y); } catch (e) { toast('Error: ' + e.message, 5000); } finally { hideBusy(); } };
+      if ($('iaF')) $('iaF').onclick = () => go([soloFinca]);
+      $('iaT').onclick = async () => go((await DB.all()).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')));
+    });
+}
+function franjaIncendios(f, trs, y) {
+  const ini = new Date(y - 1, 9, 1).getTime(), fin = new Date(y, 4, 31, 23, 59).getTime();
+  const ok = trs.filter(t => t.inicio >= ini && t.inicio <= fin && t.resumen && (t.resumen.cobertura >= 0.85 || t.estado === 'cerrado')).map(t => t.inicio);
+  const man = f.mant && f.mant.ultimaManual >= ini && f.mant.ultimaManual <= fin ? [f.mant.ultimaManual] : [];
+  const fechas = ok.concat(man).sort((a, b) => a - b);
+  return fechas.length ? 'Cumplida: limpia el ' + new Date(fechas[fechas.length - 1]).toLocaleDateString('es-ES') : 'No consta limpieza entre 01/10/' + (y - 1) + ' y 31/05/' + y;
+}
+async function informeAnual(fincas, y) {
+  try { await cargarJsPDF(); } catch (e) { return toast('No se pudo cargar el generador de PDF: ' + e.message, 4000); }
+  const { jsPDF } = window.jspdf, doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const tx = v => String(v).replace(/²/g, '2').replace(/[–—]/g, '-').replace(/≈/g, '~').replace(/[^\x00-\xFF€]/g, '');
+  const titular = SB.titular || (Sync.user ? Sync.user.email.replace(/@.*/, '') : '');
+  const pG = +SB.precioGasoil || 0, pH = +SB.precioHora || 0, cuesta = t => costeRuta(t).coste;
+  const a0 = new Date(y, 0, 1).getTime(), a1 = new Date(y + 1, 0, 1).getTime();
+  const datos = [];
+  for (const f of fincas) {
+    const todas = await DB.tByFinca(f.id), pc = planesCache; let pcF = null;
+    for (const t of todas) if (!t.resumen && f.linde) { if (!pcF) { pcF = new Map((await DB.pByFinca(f.id)).map(r => [r.id, r])); } planesCache = pcF; try { t.resumen = resumenTrab(t, rebuildTrab(f, t)); } catch (e) { } planesCache = pc; }
+    todas.forEach(t => { if (t.resumen) t.resumen = { horas: sesHoras(t), litros: 0, limpia: 0, cobertura: 0, ...t.resumen }; if (t.resumen && !(t.resumen.litros > 0)) t.resumen.litros = t.resumen.horas * (effS(f, t.cfg || f.config).consumo || 0); });
+    const trs = todas.filter(t => t.inicio >= a0 && t.inicio < a1 && t.resumen).sort((a, b) => a.inicio - b.inicio);
+    const tot = trs.reduce((s, t) => ({ h: s.h + t.resumen.horas, l: s.l + t.resumen.litros, e: s.e + cuesta(t), a: s.a + t.resumen.limpia }), { h: 0, l: 0, e: 0, a: 0 });
+    datos.push({ f, trs, todas, tot });
+  }
+  const T = datos.reduce((s, d) => ({ h: s.h + d.tot.h, l: s.l + d.tot.l, e: s.e + d.tot.e, a: s.a + d.tot.a, n: s.n + d.trs.length }), { h: 0, l: 0, e: 0, a: 0, n: 0 });
+  let y_ = 16;
+  const cab = (t1, t2) => { doc.setFont('helvetica', 'bold'); doc.setFontSize(16); doc.text(tx(t1), 16, 16); doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.text(tx(`${titular ? titular + ' · ' : ''}${new Date().toLocaleDateString('es-ES')}`), 194, 16, { align: 'right' }); if (t2) { doc.setFontSize(12); doc.text(tx(t2), 16, 23); } y_ = t2 ? 30 : 24; };
+  const tabla = (cols, filas, neg) => {
+    doc.setFontSize(9); doc.setFont('helvetica', 'bold'); let x = 16; cols.forEach(c => { doc.text(tx(c[0]), c[2] === 'r' ? x + c[1] - 1 : x, y_, c[2] === 'r' ? { align: 'right' } : undefined); x += c[1]; }); y_ += 2; doc.line(16, y_, 194, y_); y_ += 4.5;
+    filas.forEach((fi, i) => { if (y_ > 280) { doc.addPage(); y_ = 16; } doc.setFont('helvetica', neg && i === filas.length - 1 ? 'bold' : 'normal'); let x2 = 16; cols.forEach((c, j) => { doc.text(tx(fi[j]), c[2] === 'r' ? x2 + c[1] - 1 : x2, y_, c[2] === 'r' ? { align: 'right' } : undefined); x2 += c[1]; }); y_ += 5.2; });
+  };
+  const e2 = v => fmt(v, 2) + ' €', ha = a => fmt(a / 1e4, 2);
+  // resumen general
+  cab(`Informe anual ${y}`, `${fincas.length === 1 ? fincas[0].nombre : fincas.length + ' fincas'} · LIMPFINC`);
+  doc.setFontSize(10); doc.text(tx(`Coste con el precio del gasóleo de cada ruta (actual ${fmt(pG, 2)} €/L) y tractor y operario ${fmt(pH, 2)} €/h · precio = coste + margen ${fmt(+SB.margen || 0, 0)} %`), 16, y_); y_ += 7;
+  const pr2 = v => e2(v * margenK());
+  tabla([['Finca', 38], ['Rutas', 12, 'r'], ['Horas', 20, 'r'], ['Gasóleo L', 18, 'r'], ['Coste', 22, 'r'], ['Precio', 24, 'r'], ['ha', 16, 'r'], ['', 4], ['Franja inc.', 24]],
+    [...datos.map(d => [d.f.nombre.slice(0, 22), d.trs.length, fmtH(d.tot.h), fmt(d.tot.l, 1), e2(d.tot.e), pr2(d.tot.e), ha(d.tot.a), '', d.f.mant && d.f.mant.incendios ? (franjaIncendios(d.f, d.todas, y).startsWith('Cumplida') ? 'Cumplida' : 'NO CONSTA') : '-']),
+     ['TOTAL', T.n, fmtH(T.h), fmt(T.l, 1), e2(T.e), pr2(T.e), ha(T.a), '', '']], true);
+  // una página por finca
+  for (const d of datos) {
+    const f = d.f; doc.addPage(); cab(`${f.nombre}`, `Informe ${y}`);
+    if (f.linde) { const img = croquis(f, d.trs[d.trs.length - 1] || null, 1400, 760).toDataURL('image/jpeg', 0.82); doc.addImage(img, 'JPEG', 16, y_, 178, 97); y_ += 102; }
+    const a = f.linde ? fincaAreas(f) : null, m = estadoMant(f, d.todas.filter(t => t.resumen && t.resumen.cobertura >= 0.85).reduce((mx, t) => Math.max(mx, t.inicio), 0));
+    doc.setFontSize(10); const ln = (t, v) => { doc.setFont('helvetica', 'normal'); doc.text(tx(t), 16, y_); doc.text(tx(v), 194, y_, { align: 'right' }); y_ += 5.5; };
+    if (a) ln('Superficie', fmtArea(a.neta));
+    if (f.sigpac && f.sigpac.parcelas) ln('SIGPAC', f.sigpac.parcelas.map(p => `${p.provincia}:${p.municipio}:${p.poligono}:${p.parcela}`).join(', ').slice(0, 80));
+    ln('Tipo', f.tipo === 'monte' ? 'Monte / plantación' : 'Abierta');
+    if (f.mant && f.mant.incendios) ln(`Franja contra incendios (campaña ${y})`, franjaIncendios(f, d.todas, y));
+    ln('Mantenimiento', m.txt);
+    const pel = (f.peligros || []).length, inc = (f.incidencias || []).filter(i => i.fecha >= a0 && i.fecha < a1).length;
+    ln('Peligros anotados · incidencias del año', `${pel} · ${inc}`);
+    y_ += 3;
+    if (!d.trs.length) { doc.text(tx(`Sin rutas de trabajo en ${y}.`), 16, y_); continue; }
+    const m2 = v => fmt(v, 0) + ' m2';
+    tabla([['Ruta', 26], ['Fecha', 20], ['Horas', 18, 'r'], ['Litros', 14, 'r'], ['Coste', 20, 'r'], ['Precio', 22, 'r'], ['Limpia', 20, 'r'], ['Cobert.', 14, 'r'], ['', 3], ['Plan', 21]],
+      [...d.trs.map(t => { const r = t.resumen, pr = t.planResumen ? t.planResumen.nombre : ''; return [nomRuta(t).slice(0, 16), new Date(t.inicio).toLocaleDateString('es-ES'), fmtH(r.horas), fmt(r.litros, 1), e2(cuesta(t)), pr2(cuesta(t)), m2(r.limpia), fmt(r.cobertura * 100, 0) + ' %', '', pr.slice(0, 12)]; }),
+       ['TOTAL', '', fmtH(d.tot.h), fmt(d.tot.l, 1), e2(d.tot.e), pr2(d.tot.e), m2(d.tot.a), '', '', '']], true);
+  }
+  const n = doc.getNumberOfPages(); for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text(tx(`LIMPFINC · Informe ${y} · página ${i} de ${n}`), 105, 292, { align: 'center' }); }
+  doc.save((fincas.length === 1 ? safeName(fincas[0].nombre) + '_' : '') + 'informe_' + y + '.pdf');
+  toast('📄 Informe ' + y + ' generado');
+}
+
+/* ---- 5. Exportar peligros (KML / GPX) para TopoGPS, Google Earth, OsmAnd… ---- */
+function pelKML(fs) {
+  const col = { piedra: 'ff1c1cb7', arbol: 'ff1c4a6d', otro: 'ff0080ff' };
+  let k = `<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Peligros LIMPFINC</name>` +
+    Object.keys(PEL).map(t => `<Style id="p_${t}"><IconStyle><color>${col[t]}</color><scale>1.2</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/caution.png</href></Icon></IconStyle><LineStyle><color>${col[t]}</color><width>2</width></LineStyle><PolyStyle><color>55${col[t].slice(2)}</color></PolyStyle></Style>`).join('');
+  fs.forEach(f => { if (!(f.peligros || []).length) return; k += `<Folder><name>${esc(f.nombre)}</name>`;
+    f.peligros.forEach(p => { const d = `${PEL[p.tipo][1]} · radio ${fmt(p.radio, 1)} m · ${new Date(p.fecha).toLocaleDateString('es-ES')}${p.nota ? ' · ' + p.nota : ''}`;
+      k += `<Placemark><name>${esc(PEL[p.tipo][1])}</name><description>${esc(d)}</description><styleUrl>#p_${p.tipo}</styleUrl><MultiGeometry><Point><coordinates>${p.ll[1]},${p.ll[0]},0</coordinates></Point><Polygon><outerBoundaryIs><LinearRing><coordinates>${[...circuloLL(p.ll, p.radio), circuloLL(p.ll, p.radio)[0]].map(q => q[1] + ',' + q[0] + ',0').join(' ')}</coordinates></LinearRing></outerBoundaryIs></Polygon></MultiGeometry></Placemark>`; });
+    k += '</Folder>'; });
+  return k + '</Document></kml>';
+}
+function pelGPX(fs) {
+  let g = `<?xml version="1.0" encoding="UTF-8"?><gpx version="1.1" creator="LIMPFINC" xmlns="http://www.topografix.com/GPX/1/1"><metadata><name>Peligros LIMPFINC</name></metadata>`;
+  fs.forEach(f => (f.peligros || []).forEach(p => { g += `<wpt lat="${p.ll[0]}" lon="${p.ll[1]}"><time>${new Date(p.fecha).toISOString()}</time><name>${esc(PEL[p.tipo][1])}</name><desc>${esc(`${f.nombre} · radio ${fmt(p.radio, 1)} m${p.nota ? ' · ' + p.nota : ''}`)}</desc><sym>Danger Area</sym><type>${p.tipo}</type></wpt>`; }));
+  return g + '</gpx>';
+}
+function exportarPeligros(fs, fmtX, nombre) {
+  const n = fs.reduce((s, f) => s + (f.peligros || []).length, 0); if (!n) return toast('No hay peligros que exportar');
+  if (fmtX === 'kml') download(nombre + '_peligros.kml', pelKML(fs), 'application/vnd.google-earth.kml+xml');
+  else download(nombre + '_peligros.gpx', pelGPX(fs), 'application/gpx+xml');
+  toast(`📤 ${n} peligro${n > 1 ? 's' : ''} exportado${n > 1 ? 's' : ''}`);
+}
+function exportPelSheet(f) {
+  sheet(`<h3>📤 Exportar peligros</h3><div class="note">Piedras, árboles caídos y obstáculos como puntos (y círculo del radio en KML). GPX para TopoGPS, OsmAnd o Garmin; KML para Google Earth, QGIS o TopoGPS.</div>
+    ${f ? `<div class="sgrp">${esc(f.nombre)} (${(f.peligros || []).length})</div><div class="row"><button class="btn sec" id="xpFk">KML</button><button class="btn sec" id="xpFg">GPX</button></div>` : ''}
+    <div class="sgrp">Todas las fincas</div><div class="row"><button class="btn sec" id="xpTk">KML</button><button class="btn sec" id="xpTg">GPX</button></div>`,
+    () => {
+      if (f) { $('xpFk').onclick = () => exportarPeligros([f], 'kml', safeName(f.nombre)); $('xpFg').onclick = () => exportarPeligros([f], 'gpx', safeName(f.nombre)); }
+      $('xpTk').onclick = async () => exportarPeligros(await DB.all(), 'kml', 'fincas'); $('xpTg').onclick = async () => exportarPeligros(await DB.all(), 'gpx', 'fincas');
+    });
+}
+
+/* =========================================================
+   v2.3 — El plan aprende de las rutas reales: velocidad en zona normal, giros, traslados y zonas lentas
+   ========================================================= */
+const APR = { cel: 2, maxRutas: 8, lento: 0.7 };
+const aprRef = f => { let la = 0, lo = 0; f.linde.coords.forEach(p => { la += p[0]; lo += p[1]; }); return [la / f.linde.coords.length, lo / f.linde.coords.length]; };
+// tiempo que el plan asigna a cada tramo (con los parámetros sin aprender)
+function tPlanParte(p, S2) {
+  const L = Geo.lenLL(p.ll), vw = S2.velocidad / 3.6, vg = (S2.velocidadGiro || 3) / 3.6, vt = (S2.velocidadTraslado || 5) / 3.6;
+  if (p.type === 'trabajo') return L / vw;
+  if (p.type === 'giro') return L / vg;
+  if (p.type === 'reversa') return L / vg + 2 * (S2.tCambioSentido || 4);
+  return L / vt + (S2.tManiobra || 20);
+}
+// reproduce una ruta sobre su plan: tiempo real en cada tramo y velocidad real por celdas de 2 m
+function reproducirRuta(f, t, plan) {
+  const g = Grid(f), S2 = effS(f, t.cfg || f.config), tr = Tracker(g, plan, S2, t.inicio), parts = plan.parts;
+  const P = Geo.proj(...aprRef(f)), per = parts.map(() => ({ real: 0, a: Infinity, b: -Infinity, n: 0 })), cells = new Map();
+  const sigTrab = parts.map((_, k) => { for (let j = k + 1; j < parts.length; j++) if (parts[j].type === 'trabajo') return j; return -1; });
+  const man = { giro: [0, 0, 0], tras: [0, 0, 0] };
+  t.sesiones.forEach(ses => {
+    tr.reset(); let prev = null, ult = null;   // ult: última lectura en una pasada {k, t}
+    ses.pts.forEach(pt => {
+      const r = tr.add(pt); if (!r.valid || !r.cut || !r.dev) { prev = null; return; }
+      const tt = pt[3] / 1000;
+      if (prev && r.dev.d < 4) {
+        const dt = Math.min(10, tt - prev.t), k = r.dev.part;
+        if (dt > 0 && k >= 0) {
+          const q = per[k]; q.real += dt; q.n++; q.a = Math.min(q.a, r.dev.into); q.b = Math.max(q.b, r.dev.into);
+          if (parts[k].type === 'trabajo' && pt[4] && prev.part === k) {
+            const ll = r.cutLL, xy = P.fwd(ll[0], ll[1]), key = Math.floor(xy[0] / APR.cel) + ',' + Math.floor(xy[1] / APR.cel);
+            const c = cells.get(key) || [0, 0, 0]; c[0] += Geo.dist(prev.cut, r.cut); c[1] += dt; c[2]++; cells.set(key, c);
+          }
+        }
+      }
+      const alin = tr.h && r.dev.dir ? Math.abs(tr.h[0] * r.dev.dir[0] + tr.h[1] * r.dev.dir[1]) : 0;
+      if (r.dev.d < 1.5 && alin > 0.97 && parts[r.dev.part] && parts[r.dev.part].type === 'trabajo') {
+        const k = r.dev.part;
+        if (ult && k !== ult.k && sigTrab[ult.k] === k && tt - ult.t < 600) {
+          let tp = 0, tras = false; for (let j = ult.k + 1; j < k; j++) { tp += tPlanParte(parts[j], S2); if (parts[j].type === 'tras') tras = true; }
+          if (tp > 0) { const g = tras ? man.tras : man.giro; g[0] += tt - ult.t; g[1] += tp; g[2]++; }
+        }
+        if (!ult || k === ult.k || sigTrab[ult.k] === k || k > ult.k) ult = { k, t: tt };
+      }
+      prev = { t: tt, cut: r.cut, part: r.dev ? r.dev.part : -1 };
+    });
+  });
+  // tramos hechos (recorridos en ≥ 70 % de su longitud)
+  return { giro: man.giro, tras: man.tras, cells };
+}
+async function aprenderFinca(f, silencio) {
+  if (!f || !f.linde) return null;
+  const pcF = new Map((await DB.pByFinca(f.id)).map(r => [r.id, r])), pc = planesCache;
+  const trs = (await DB.tByFinca(f.id)).filter(t => t.sesiones && t.sesiones.some(s => s.pts.length > 5)).slice(0, APR.maxRutas);
+  const tot = { giro: [0, 0, 0], tras: [0, 0, 0] }, cells = new Map(), usadas = [];
+  planesCache = pcF;
+  try {
+    for (const t of trs) {
+      const pr = t.planId && pcF.get(t.planId), plan = pr ? pr.plan : null; if (!plan) continue;
+      const mk = ((t.cfg || {}).tractorId) + '|' + ((t.cfg || {}).aperoId); if (tot.maq && mk !== tot.maq) continue; tot.maq = mk;   // solo rutas con la misma máquina
+      const r = reproducirRuta(f, t, plan); usadas.push(t.id);
+      ['giro', 'tras'].forEach(k => { for (let i = 0; i < 3; i++) tot[k][i] += r[k][i]; });
+      r.cells.forEach((c, key) => { const a = cells.get(key) || [0, 0, 0]; a[0] += c[0]; a[1] += c[1]; a[2] += c[2]; cells.set(key, a); });
+    }
+  } finally { planesCache = pc; }
+  if (!usadas.length) { if (!silencio) toast('Aún no hay rutas hechas con un plan guardado en esta finca'); return null; }
+  // velocidad en zona normal y zonas lentas
+  const vc = [...cells.entries()].filter(([, c]) => c[2] >= 3 && c[1] >= 2).map(([key, c]) => ({ key, v: c[0] / c[1], c }));
+  let vNormal = null, lentas = [], aLentas = 0;
+  if (vc.length >= 10) {
+    const vs = vc.map(x => x.v).sort((a, b) => a - b), med = vs[Math.floor(vs.length / 2)];
+    const norm = vc.filter(x => x.v >= APR.lento * med), sd = norm.reduce((s, x) => s + x.c[0], 0), st = norm.reduce((s, x) => s + x.c[1], 0);
+    vNormal = st > 0 ? sd / st * 3.6 : null;
+    lentas = vc.filter(x => x.v < APR.lento * med).map(x => { const [i, j] = x.key.split(',').map(Number); return [i, j, +Math.max(0.15, x.v / (vNormal / 3.6)).toFixed(2)]; });
+    aLentas = lentas.length * APR.cel * APR.cel;
+  }
+  const fac = (g, nMin, sMin) => g[2] >= nMin && g[1] >= sMin ? Math.max(0.4, Math.min(3, g[0] / g[1])) : null;
+  const S2 = effS(f), old = f.aprende || {};
+  const tU = trs.find(t => t.id === usadas[0]), cU = (tU && tU.cfg) || f.config || {};
+  const a = { v: 1, fecha: Date.now(), rutas: usadas, maquina: cU.tractorId + '|' + cU.aperoId, nRutas: usadas.length, ref: aprRef(f), geomKey: geomKey(f),
+    vConfig: S2.velocidad, vNormal: vNormal && vNormal > 0.5 && vNormal < 20 ? +vNormal.toFixed(2) : null,
+    fGiro: fac(tot.giro, 3, 30), nGiros: tot.giro[2], tGiroReal: tot.giro[2] ? tot.giro[0] / tot.giro[2] : null, tGiroPlan: tot.giro[2] ? tot.giro[1] / tot.giro[2] : null,
+    fTras: fac(tot.tras, 2, 20), nTras: tot.tras[2],
+    lentas: { cel: APR.cel, cells: lentas, area: aLentas }, usar: old.usar !== false };
+  f.aprende = a; await DB.put(f); if (cur && cur.id === f.id) cur.aprende = a;
+  // aprendizaje general por tractor + apero (giros y traslados) para fincas sin rutas
+  const key = a.maquina; SB.aprendeG = SB.aprendeG || {};
+  if (a.fGiro || a.fTras) { const G = SB.aprendeG[key] || {}; SB.aprendeG[key] = { fGiro: a.fGiro || G.fGiro || null, fTras: a.fTras || G.fTras || null, fecha: Date.now(), finca: f.nombre }; await DB.kvPut('settings', SB); }
+  return a;
+}
+// parámetros del plan con lo aprendido
+function aprendS(f, S_) {
+  if (f && f.aprende && f.aprende.usar === false) return null;
+  const key = (S_.tractorId || (f.config || {}).tractorId) + '|' + (S_.aperoId || (f.config || {}).aperoId);
+  const a = f && f.aprende && (!f.aprende.maquina || f.aprende.maquina === key) ? f.aprende : null;   // solo con la misma máquina
+  const G = SB.aprendeG ? SB.aprendeG[key] : null;
+  const fG = (a && a.fGiro) || (G && G.fGiro) || null, fT = (a && a.fTras) || (G && G.fTras) || null;
+  if (!a && !fG && !fT) return null;
+  if (a && a.usar === false) return null;
+  const S1 = { ...S_ };
+  if (a && a.vNormal) S1.velocidad = a.vNormal;
+  if (fG) { S1.velocidadGiro = (S_.velocidadGiro || 3) / fG; S1.tCambioSentido = (S_.tCambioSentido || 4) * fG; }
+  if (fT) { S1.velocidadTraslado = (S_.velocidadTraslado || 5) / fT; S1.tManiobra = (S_.tManiobra || 20) * fT; }
+  return { S1, a, fG, fT, general: !a || (!a.fGiro && !!G) };
+}
+// tiempo extra por las zonas lentas que cruzan las pasadas
+function ajustarLentas(f, pl, A) {
+  const a = A.a; if (!a || !a.lentas || !a.lentas.cells.length || a.geomKey !== geomKey(f)) return 0;
+  const P = Geo.proj(...a.ref), m = new Map(a.lentas.cells.map(c => [c[0] + ',' + c[1], c[2]])), v = A.S1.velocidad / 3.6;
+  let extra = 0;
+  pl.parts.forEach(p => { if (p.type !== 'trabajo') return; const xy = Geo.toXY(p.ll, P);
+    for (let i = 1; i < xy.length; i++) { const L = Geo.dist(xy[i - 1], xy[i]), n = Math.max(1, Math.ceil(L)); for (let k = 0; k < n; k++) { const x = xy[i - 1][0] + (xy[i][0] - xy[i - 1][0]) * (k + .5) / n, y = xy[i - 1][1] + (xy[i][1] - xy[i - 1][1]) * (k + .5) / n, r = m.get(Math.floor(x / a.lentas.cel) + ',' + Math.floor(y / a.lentas.cel)); if (r) extra += (L / n) / v * (1 / r - 1); } } });
+  return extra;
+}
+(() => {
+  const plan0 = Planner.plan;
+  Planner.plan = (f, S_, opt) => {
+    const maq = { tractor: S_.tractor, tipo: S_.tipoTractor, apero: S_.aperoNombre, ancho: S_.aperoAncho, tractorId: S_.tractorId, aperoId: S_.aperoId };
+    const A = aprendS(f, S_); if (!A) { const p0 = plan0(f, S_, opt); if (p0 && p0.params) p0.params.maq = maq; return p0; }
+    const pl = plan0(f, A.S1, opt); if (pl.error) return pl;
+    const extra = ajustarLentas(f, pl, A), st = pl.stats;
+    if (extra > 0) { st.t.trabajo += extra; st.t.total += extra; st.litros = st.t.total / 3600 * A.S1.consumo; st.haH = st.area.objetivo / 1e4 / (st.t.total / 3600); }
+    pl.params.v = A.S1.velocidad; pl.params.maq = maq;
+    pl.aprendido = { nRutas: A.a ? A.a.nRutas : 0, vNormal: A.a ? A.a.vNormal : null, vConfig: S_.velocidad, fGiro: A.fG, fTras: A.fT, extraLentas: extra, general: A.general, fecha: A.a ? A.a.fecha : null };
+    return pl;
+  };
+})();
+const aprTxt = ap => ap ? `🧠 Con lo aprendido${ap.nRutas ? ' de ' + ap.nRutas + ' ruta' + (ap.nRutas > 1 ? 's' : '') : ' (general del tractor y apero)'}: ${ap.vNormal ? fmt(ap.vNormal, 1) + ' km/h reales' : 'velocidad configurada'}${ap.fGiro ? ' · giros ×' + fmt(ap.fGiro, 2) : ''}${ap.fTras ? ' · traslados ×' + fmt(ap.fTras, 2) : ''}${ap.extraLentas > 30 ? ' · zonas lentas +' + fmt(ap.extraLentas / 60, 0) + ' min' : ''}` : '';
+async function aprendizajeSheet(f) {
+  f = f || cur; let a = f.aprende;
+  if (!a || a.geomKey !== geomKey(f)) { showBusy('Aprendiendo de las rutas…'); try { a = await aprenderFinca(f, true); } finally { hideBusy(); } }
+  if (!a) return sheet(`<h3>🧠 Lo aprendido · ${esc(f.nombre)}</h3><div class="note">Aún no hay rutas hechas con un plan guardado en esta finca. Al terminar cada ruta, LIMPFINC mide tu velocidad real, lo que tardas en cada giro y en los traslados, y las zonas donde vas más lento; los planes siguientes usan esos datos.</div>`);
+  const S2 = effS(f), pc = v => (v > 1 ? '+' : '') + fmt((v - 1) * 100, 0) + ' %';
+  sheet(`<h3>🧠 Lo aprendido · ${esc(f.nombre)}</h3>
+    <div class="note">De ${a.nRutas} ruta${a.nRutas > 1 ? 's' : ''} · actualizado ${fFecha(a.fecha)}</div>
+    <div class="card">
+      <div class="kv"><span>Velocidad de trabajo configurada</span><span>${fmt(S2.velocidad, 1)} km/h</span></div>
+      <div class="kv"><span><b>Velocidad real (zona normal)</b></span><span><b>${a.vNormal ? fmt(a.vNormal, 1) + ' km/h' : 'faltan datos'}</b></span></div>
+      <div class="kv"><span>Giro medio: plan → real</span><span>${a.tGiroReal ? fmt(a.tGiroPlan, 0) + ' s → <b>' + fmt(a.tGiroReal, 0) + ' s</b>' : '–'}${a.fGiro ? ' (' + pc(a.fGiro) + ')' : a.nGiros ? ' · pocos giros' : ''}</span></div>
+      <div class="kv"><span>Traslados</span><span>${a.fTras ? pc(a.fTras) + ' sobre el plan' : a.nTras ? 'pocos datos' : '–'}</span></div>
+      <div class="kv"><span>Zonas lentas (&lt; ${fmt(APR.lento * 100, 0)} % de tu velocidad)</span><span>${fmtArea(a.lentas.area)}</span></div>
+    </div>
+    <div class="srow"><span>Usar lo aprendido al calcular planes</span><input type="checkbox" id="apU" ${a.usar !== false ? 'checked' : ''} style="width:auto"></div>
+    <div class="note">Se usa la velocidad real de la zona normal y, en las zonas lentas, el tiempo extra que de verdad tardas. Giros y traslados se escalan con lo medido. Se actualiza al terminar cada ruta (últimas ${APR.maxRutas}).</div>
+    <button class="btn" id="apPl" style="margin-top:8px">🧭 Calcular plan nuevo con lo aprendido</button>
+    <div class="row" style="margin-top:8px"><button class="btn sec" id="apZ">${CFG.lentas ? '🙈 Ocultar' : '🟧 Ver'} zonas lentas</button><button class="btn sec" id="apR">🔄 Volver a aprender</button></div>
+    <button class="lnk" id="apO" style="color:var(--err);margin-top:10px">Olvidar lo aprendido en esta finca</button>`,
+    () => {
+      $('apU').onchange = async () => { a.usar = $('apU').checked; f.aprende = a; await DB.put(f); toast(a.usar ? '🧠 Los planes usarán lo aprendido' : 'Los planes usarán la velocidad configurada'); };
+      $('apPl').onclick = () => { closeSheet(); if (cur.tipo === 'monte' && !(cur.malla && cur.malla.arboles && cur.malla.arboles.length)) return toast('Marca primero los árboles'); applyS(); const o = cur.planOpt || { dirMode: 'auto', nHMode: 'auto' }, pl0 = cur.plan; runPlan(o, pl0 && pl0.inicio || null, pl0 && pl0.fin || null); };
+      $('apZ').onclick = () => { CFG.lentas = !CFG.lentas; saveCfg(); closeSheet(); drawFinca(); if (CFG.lentas) toast('🟧 Zonas lentas: cuanto más oscuro, más lento', 3500); };
+      $('apR').onclick = async () => { closeSheet(); showBusy('Aprendiendo de las rutas…'); try { await aprenderFinca(f); } finally { hideBusy(); } aprendizajeSheet(f); };
+      $('apO').onclick = () => confirmSheet('¿Olvidar lo aprendido en esta finca? Los planes volverán a la velocidad configurada.', 'Olvidar', async () => { delete f.aprende; await DB.put(f); if (cur && cur.id === f.id) delete cur.aprende; drawFinca(); toast('Olvidado'); }, true);
+    });
+}
+function drawLentas(f, layer) {
+  const a = f.aprende; if (!CFG.lentas || !a || !a.lentas || !a.lentas.cells.length || a.geomKey !== geomKey(f)) return;
+  const P = Geo.proj(...a.ref), c = a.lentas.cel;
+  a.lentas.cells.forEach(([i, j, r]) => { const p0 = P.inv(i * c, j * c), p1 = P.inv((i + 1) * c, (j + 1) * c);
+    L.rectangle([p0, p1], { stroke: false, fillColor: r < 0.4 ? '#bf360c' : r < 0.55 ? '#ef6c00' : '#ffa726', fillOpacity: .6, interactive: false }).addTo(layer); });
+}
+async function aprenderTrasRuta(f, trab) {
+  try {
+    const a0 = f.aprende, a = await aprenderFinca(f, true); if (!a) return;
+    const partes = [];
+    if (a.vNormal) partes.push(`velocidad real ${fmt(a.vNormal, 1)} km/h`);
+    if (a.tGiroReal) partes.push(`giro medio ${fmt(a.tGiroReal, 0)} s`);
+    if (a.lentas.area > 20) partes.push(`${fmtArea(a.lentas.area)} lentas`);
+    if (partes.length) setTimeout(() => toast(`🧠 Aprendido de ${nomRuta(trab)}: ${partes.join(' · ')}. ${a0 ? '' : 'Los próximos planes lo usarán.'}`, 6000), 4000);
+  } catch (e) { console.warn('aprender', e); }
 }
 
 /* ---------- Panel de herramienta genérico ---------- */
