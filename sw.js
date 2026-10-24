@@ -1,5 +1,5 @@
 // LIMPFINC service worker — app shell en caché; teselas siempre de red
-const CACHE = 'limpfinc-241';
+const CACHE = 'limpfinc-261';
 const TILES = 'limpfinc-teselas';
 let nPut = 0;
 async function recortar(ca) { if (++nPut % 50) return; const ks = await ca.keys(); for (let i = 0; i < ks.length - 3000; i++) await ca.delete(ks[i]); }
@@ -17,7 +17,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
-  if (/supabase\.co|open-meteo\.com|sigpac-hubcloud\.es/.test(u.hostname)) return; // datos: siempre red
+  if (/supabase\.co|open-meteo\.com|sigpac-hubcloud\.es|nominatim\.openstreetmap\.org|project-osrm\.org|photon\.komoot\.io/.test(u.hostname)) return; // datos: siempre red
   if (/openstreetmap\.org|opentopomap\.org/.test(u.hostname)) {
     // teselas: red primero; las ya vistas se guardan (máx. ~3000) para ver el mapa sin cobertura
     e.respondWith(fetch(e.request).then(r => { if (r.ok) { const c = r.clone(); caches.open(TILES).then(ca => ca.put(e.request, c).then(() => recortar(ca))); } return r; })

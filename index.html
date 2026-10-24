@@ -254,7 +254,7 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
 /* =========================================================
    LIMPFINC · F1 — Fincas, linde, exclusiones, área
    ========================================================= */
-const VERSION = '2.4.1';
+const VERSION = '2.6.1';
 
 /* ---------- Ajustes por defecto ---------- */
 const DEF = {
@@ -268,7 +268,7 @@ const DEF = {
   mallaX:3.5, mallaY:3.5, holguraTronco:0.30, diamTronco:500, promedioS:10,
   mapaBase:'OpenStreetMap',
   velAbierta:3.0, velMonte:2.3, ladoArbol:'der', distArbol:1.0,
-  precioGasoil:1.10, precioHora:35, precioFerrado:0, margen:70, titular:'', velCarretera:20, consumoTraslado:3, pendMax:25, ultimaCopia:0,
+  precioGasoil:1.10, precioHora:35, precioFerrado:0, margen:70, precioKm:1.5, horasJornada:8, base:{ lat:43.213143, lon:-8.297486, fuente:'dirección: lugar de Carballal, Cabanas, Abegondo' }, baseDir:'Carballal 20, Cabanas, 15318 Abegondo (A Coruña)', titular:'', velCarretera:20, consumoTraslado:3, pendMax:25, ultimaCopia:0,
   consumoAuto:true, velocidadGiro:3.0, velocidadTraslado:5.0, tCambioSentido:4, tManiobra:20, tEsquina:15, margenObstaculo:0.30
 };
 const SET_FIELDS = [
@@ -277,7 +277,7 @@ const SET_FIELDS = [
     ['tManiobra','Maniobra al iniciar traslado (s)'],['tEsquina','Maniobra en esquina (s)'],['margenObstaculo','Margen a exclusiones (m)']]],
   ['Unidades',[['verFerrados','Mostrar superficie también en ferrados','bool'],['ferrado','Ferrado de tu comarca (m²)']]],
   ['Medición GPS',[['umbralPrecision','Descartar puntos con precisión peor que (m)'],['promedioS','Segundos de promedio GPS por punto (árboles, exclusiones)'],['holguraLinde','Holgura lateral tractor–linde (m)']]],
-  ['Costes (presupuestos y partes)',[['precioGasoil','Gasóleo (€/L)'],['precioHora','Tractor y operario, coste (€/h)'],['margen','Margen sobre el coste (%)'],['precioFerrado','Precio por ferrado (€; 0 = no usar)'],['titular','Titular / empresa en los PDF','text']]],
+  ['Costes (presupuestos y partes)',[['precioGasoil','Gasóleo (€/L)'],['precioHora','Tractor y operario, coste (€/h)'],['margen','Margen sobre el coste (%)'],['precioKm','Traslado desde la base (€/km)'],['horasJornada','Horas de trabajo por jornada (viajes a la finca)'],['baseDir','Dirección de la base','text'],['precioFerrado','Precio por ferrado (€; 0 = no usar)'],['titular','Titular / empresa en los PDF','text']]],
   ['Jornada',[['velCarretera','Velocidad por carretera entre fincas (km/h)'],['consumoTraslado','Consumo en traslado (L/h)']]],
   ['Seguridad',[['pendMax','Avisar de pendiente mayor que (%) · 0 = no avisar']]],
   ['Monte',[['mallaX','Separación entre filas (m)'],['mallaY','Separación en fila (m)'],['holguraTronco','Holgura al tronco (m)'],['diamTronco','Diámetro medio del tronco (mm)']]]
@@ -540,6 +540,13 @@ function processTrack(pts, mode, S) {
   if (mode === 'tractor') {
     off = S.anchoTractor / 2 + S.holguraLinde;
     xy = Geo.offsetOut(xy, off);
+  } else if (mode === 'tractorIn') {   // exclusión rodeada con el tractor por fuera: se desplaza hacia dentro
+    off = -(S.anchoTractor / 2 + S.holguraLinde);
+    let ok = false;
+    if (window.ClipperLib) { const C = ClipperLib, K = 1000, co = new C.ClipperOffset(2, 20), o = new C.Paths(); co.AddPath(xy.map(p => ({ X: Math.round(p[0] * K), Y: Math.round(p[1] * K) })), C.JoinType.jtRound, C.EndType.etClosedPolygon); co.Execute(o, off * K);
+      const big = o.filter(pa => Math.abs(C.Clipper.Area(pa)) / K / K > 0.3).sort((a, b) => Math.abs(C.Clipper.Area(b)) - Math.abs(C.Clipper.Area(a)))[0];
+      if (big) { xy = Geo.ccw(big.map(q => [q.X / K, q.Y / K])); ok = true; } }
+    if (!ok) { const cx = xy.reduce((a, p) => a + p[0], 0) / xy.length, cy = xy.reduce((a, p) => a + p[1], 0) / xy.length; xy = []; for (let k = 0; k < 16; k++) xy.push([cx + 0.6 * Math.cos(k / 16 * 2 * Math.PI), cy + 0.6 * Math.sin(k / 16 * 2 * Math.PI)]); }
   }
   const seq = good.length >= 5 ? good : corners;
   const gap = Geo.dist(P.fwd(seq[0].lat, seq[0].lon), P.fwd(seq[seq.length - 1].lat, seq[seq.length - 1].lon));
@@ -749,15 +756,11 @@ function guiaExcl(trasMedir) {
   if (!exclAbiertas(cur)) return;
   setTimeout(() => sheet(`<h3>Exclusión ${n + 1}</h3>
     <div class="note" style="margin-bottom:8px">${n ? `Llevas <b>${n}</b> medida${n > 1 ? 's' : ''}. ` : ''}Mide la siguiente zona que no se debe pisar. Añade todas las que haya; cuando acabes pulsa «No hay más».</div>
-    <button class="opt" id="gPie">🚶 Rodear a pie<small>Da la vuelta a la zona con el iPhone.</small></button>
-    <button class="opt" id="gDraw">✍️ Dibujar sobre el mapa<small>Toca sus vértices en el mapa.</small></button>
-    <button class="opt" id="gPto">📍 Punto + radio<small>Árbol, poste, arqueta… varias seguidas, GPS promediado.</small></button>
+    ${exclMetodosHTML()}
     <button class="opt" id="gNo" style="color:var(--ok,#2a2)">✅ No hay más exclusiones<small>Cerrar con ${n} medida${n === 1 ? '' : 's'}. Podrás añadir más en ⋯ › Exclusiones.</small></button>
     <button class="opt" id="gLuego" style="color:var(--sub)">Más tarde<small>Se recordará al calcular el plan.</small></button>`,
     () => {
-      $('gPie').onclick = () => { closeSheet(); startRec('excl', 'pie'); };
-      $('gDraw').onclick = () => { closeSheet(); startDraw('excl'); };
-      $('gPto').onclick = () => { closeSheet(); exclPuntos(); };
+      exclMetodosBind(document.querySelector('.sheet'));
       $('gLuego').onclick = closeSheet;
       $('gNo').onclick = async () => { cur.exclPend = false; await saveCur(); closeSheet(); toast(`✅ Exclusiones cerradas: ${n}. Ya puedes calcular el plan.`, 3500); };
     }), trasMedir ? 700 : 0);
@@ -1124,15 +1127,16 @@ function lindeMenu() {
       if ($('oDel')) $('oDel').onclick = () => confirmSheet('¿Borrar el linde?', 'Borrar', async () => { cur.linde = null; await saveCur(); drawFinca(); }, true);
     });
 }
-function tractorSetup() {
-  sheet(`<h3>Medir con tractor</h3>
-    <div class="note" style="margin-bottom:8px">Recorre la finca por dentro, con el linde siempre al mismo lado y el tractor lo más pegado posible. La app desplaza el recorrido hacia fuera: medio ancho del tractor + holgura.</div>
+function tractorSetup(target, puntos) {
+  target = target || 'linde'; const ex = target === 'excl';
+  sheet(`<h3>${ex ? 'Exclusión con tractor' : 'Medir con tractor'}${puntos ? ' · por puntos' : ''}</h3>
+    <div class="note" style="margin-bottom:8px">${ex ? 'Rodea la zona por FUERA, con ella siempre al mismo lado y lo más pegado posible. La app desplaza el recorrido hacia DENTRO: medio ancho del tractor + holgura.' : 'Recorre la finca por dentro, con el linde siempre al mismo lado y el tractor lo más pegado posible. La app desplaza el recorrido hacia fuera: medio ancho del tractor + holgura.'}</div>
     <div class="srow"><span>Ancho tractor (m)</span><input class="inp" id="tAn" inputmode="decimal" value="${String(S.anchoTractor).replace('.', ',')}" style="width:100px;text-align:right"></div>
     <div class="srow"><span>Holgura lateral tractor–linde (m)</span><input class="inp" id="tHo" inputmode="decimal" value="${String(S.holguraLinde).replace('.', ',')}" style="width:100px;text-align:right"></div>
     <div class="note" id="tOff"></div>
     <button class="btn" id="tGo" style="margin-top:12px">Empezar</button>`,
     () => {
-      const upd = () => { const a = parseFloat($('tAn').value.replace(',', '.')), h = parseFloat($('tHo').value.replace(',', '.')); $('tOff').textContent = isFinite(a + h) ? `Corrección hacia fuera: ${fmt(a / 2 + h, 2)} m` : ''; };
+      const upd = () => { const a = parseFloat($('tAn').value.replace(',', '.')), h = parseFloat($('tHo').value.replace(',', '.')); $('tOff').textContent = isFinite(a + h) ? `Corrección hacia ${ex ? 'dentro' : 'fuera'}: ${fmt(a / 2 + h, 2)} m` : ''; };
       $('tAn').oninput = $('tHo').oninput = upd; upd();
       $('tGo').onclick = async () => {
         const a = parseFloat($('tAn').value.replace(',', '.')), h = parseFloat($('tHo').value.replace(',', '.'));
@@ -1140,29 +1144,33 @@ function tractorSetup() {
         S.holguraLinde = h; await saveSB();
         const tr = getTr(cur && cur.config && cur.config.tractorId); if (tr && +tr.ancho_m !== a) { tr.ancho_m = a; await DB.cPut('tractores', tr); await loadCat(); }
         applyS();
-        closeSheet(); startRec('linde', 'tractor');
+        closeSheet(); startRec(target, 'tractor', puntos);
       };
     });
 }
-function startRec(target, mode) {
+function startRec(target, mode, puntos) {
   startGPS(); keepAwake(true);
-  rec = { target, mode, pts: [], state: 'ready', paused: true, line: L.polyline([], { color: '#ff6f00', weight: 4 }).addTo(lyr.tmp) };
+  rec = { target, mode, pts: [], state: puntos ? 'pause' : 'ready', paused: true, puntos: !!puntos, line: L.polyline([], { color: '#ff6f00', weight: 4 }).addTo(lyr.tmp) };
   followPos = true;
   $('tbMain').classList.add('hidden'); $('pRec').classList.remove('hidden');
   paintRec(); updRecStats();
   if (lastPos) map.setView([lastPos.lat, lastPos.lon], Math.max(map.getZoom(), 18));
 }
 function paintRec() {
-  const st = rec.state, name = (rec.target === 'linde' ? 'Linde' : 'Exclusión') + ' · ' + (rec.mode === 'pie' ? 'a pie' : 'con tractor');
-  $('recTitle').textContent = { ready: 'Preparado · ', rec: 'Grabando · ', pause: 'En pausa · ' }[st] + name;
+  const st = rec.state, name = (rec.target === 'linde' ? 'Linde' : 'Exclusión') + ' · ' + (rec.mode === 'pie' ? 'a pie' : 'con tractor') + (rec.puntos ? ' · por puntos' : '');
+  $('recTitle').textContent = rec.puntos ? name : { ready: 'Preparado · ', rec: 'Grabando · ', pause: 'En pausa · ' }[st] + name;
+
   const dot = $('recDot'); dot.className = 'dot' + (st === 'rec' ? ' rec' : st === 'ready' ? ' st-ready' : ' st-pause');
   const bp = $('bPause');
   bp.textContent = st === 'ready' ? '▶ Iniciar' : st === 'rec' ? '⏸ Pausar' : '▶ Continuar';
   bp.className = 'btn big ' + (st === 'rec' ? 'warn' : '');
+  bp.classList.toggle('hidden', !!rec.puntos);
   $('bFin').classList.toggle('hidden', st === 'ready');
   $('bCorner').classList.toggle('hidden', st === 'ready');
-  if (!rec.avg) $('bCorner').textContent = '📍 Esquina';
-  const como = rec.mode === 'tractor'
+  if (!rec.avg) $('bCorner').textContent = rec.puntos ? '📍 Punto ' + (rec.pts.filter(q => q.corner).length + 1) : '📍 Esquina';
+  if (rec.puntos) { const nP = rec.pts.filter(q => q.corner).length; $('bFin').textContent = '✓ Terminar'; $('recHint').textContent = (rec.mode === 'tractor' ? (rec.target === 'excl' ? 'Con el tractor junto a cada vértice, por FUERA de la zona (se corrige hacia dentro). ' : 'Con el tractor junto a cada vértice, por DENTRO de la finca (se corrige hacia fuera). ') : 'Ponte en cada vértice. ') + `Pulsa «📍 Punto» y quédate quieto ${SB.promedioS || 10} s. Ve en orden alrededor de la zona. ${nP ? nP + ' punto' + (nP > 1 ? 's' : '') + (nP < 3 ? ' (mínimo 3)' : '. «Terminar» cierra el polígono.') : ''}`; return; }
+  $('bFin').textContent = '■ Parar';
+  const como = rec.target === 'excl' ? (rec.mode === 'tractor' ? 'Con tractor: rodea la zona por FUERA, lo más pegado posible. La app desplaza el trazado hacia dentro (' + fmt(S.anchoTractor / 2 + S.holguraLinde, 2) + ' m).' : 'A pie: camina POR EL BORDE de la zona a excluir.') : rec.mode === 'tractor'
     ? 'Con tractor: circula por DENTRO de la finca, lo más pegado posible al borde. La app desplaza el trazado hacia fuera (' + fmt(S.anchoTractor / 2 + S.holguraLinde, 2) + ' m).'
     : 'A pie: camina POR EL BORDE de la finca. Es la medición más precisa.';
   if (st === 'ready') $('recHint').textContent = como + ' Ve al punto de partida y pulsa «Iniciar».';
@@ -1190,7 +1198,7 @@ function updRecStats(p) {
   { const nc = rec.pts.filter(q => q.corner).length; $('sPts').textContent = (rec.pts.length - nc) + (nc ? ' · ' + nc + '📍' : ''); }
   const ll = rec.pts.filter(q => q.corner || q.acc <= S.umbralPrecision).map(q => [q.lat, q.lon]);
   $('sLen').textContent = fmt(Geo.lenLL(ll), 0) + ' m';
-  if (p && rec.pts.length > 20 && ll.length) {
+  if (p && rec.pts.length > 20 && ll.length && !rec.puntos) {
     const d = Geo.lenLL([ll[0], [p.lat, p.lon]]);
     $('recHint').textContent = d < 10 ? `Cerca del inicio (${fmt(d, 0)} m). Puedes terminar.` : `Distancia al inicio: ${fmt(d, 0)} m`;
   }
@@ -1212,16 +1220,16 @@ $('bCorner').onclick = () => {
   if (!rec || rec.state === 'ready') return;
   if (rec.avg) { clearInterval(rec.avg.tm); rec.avg = null; paintRec(); return toast('Esquina cancelada'); }   // segundo toque cancela
   if (!lastPos || gpsAge() > 10) return toast('Esperando señal GPS: el indicador de arriba a la izquierda debe estar en verde.', 4000);
-  const DUR = 20; let n = DUR;
+  const DUR = rec.puntos ? Math.max(3, +SB.promedioS || 10) : 20; let n = DUR;
   rec.avg = { s: [], tm: null };
-  $('bCorner').textContent = `⏳ ${n} s`; $('recHint').textContent = 'Quieto en la esquina… promediando el GPS. Toca otra vez para cancelar.';
-  try { speak('Esquina. No te muevas', true); } catch { }
+  $('bCorner').textContent = `⏳ ${n} s`; $('recHint').textContent = 'Quieto… promediando el GPS. Toca otra vez para cancelar.';
+  try { speak(rec.puntos ? 'Punto. No te muevas' : 'Esquina. No te muevas', true); } catch { }
   rec.avg.tm = setInterval(() => {
     n--; if (!rec || !rec.avg) return;
     $('bCorner').textContent = `⏳ ${n} s`;
     if (n > 0) return;
     clearInterval(rec.avg.tm); const S0 = rec.avg.s; rec.avg = null;
-    if (S0.length < 5) { paintRec(); return toast('Pocas lecturas con buena precisión: esquina no guardada. Inténtalo de nuevo.', 4000); }
+    if (S0.length < Math.min(5, DUR - 1)) { paintRec(); return toast('Pocas lecturas con buena precisión: punto no guardado. Inténtalo de nuevo.', 4000); }
     let sw = 0, la = 0, lo = 0; S0.forEach(q => { const w = 1 / (q.acc * q.acc); sw += w; la += q.lat * w; lo += q.lon * w; });
     // la precisión de la media no baja de 1/√n·σ por errores correlados del GPS: se limita a la mitad de la precisión media
     const accMean = S0.reduce((s, q) => s + q.acc, 0) / S0.length, acc = Math.max(Math.sqrt(1 / sw), accMean / 2);
@@ -1229,8 +1237,9 @@ $('bCorner').onclick = () => {
     rec.pts.push(c); rec.line.addLatLng([c.lat, c.lon]);
     const k = rec.pts.filter(q => q.corner).length;
     L.marker([c.lat, c.lon], { interactive: false, icon: L.divIcon({ className: '', html: `<div class="pin" style="background:#1565c0">${k}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] }) }).addTo(lyr.tmp);
-    paintRec(); updRecStats(); toast(`📍 Esquina ${k} guardada (±${fmt(acc, 1)} m, ${S0.length} lecturas)`, 3000);
-    try { speak(`Esquina ${k} guardada`, true); } catch { }
+    if (rec.puntos && k > 1) rec.line.setLatLngs(rec.pts.filter(q => q.corner).map(q => [q.lat, q.lon]).concat(k > 2 ? [[rec.pts.find(q => q.corner).lat, rec.pts.find(q => q.corner).lon]] : []));
+    paintRec(); updRecStats(); toast(`📍 ${rec.puntos ? 'Punto' : 'Esquina'} ${k} guardado (±${fmt(acc, 1)} m, ${S0.length} lecturas)`, 3000);
+    try { speak(`${rec.puntos ? 'Punto' : 'Esquina'} ${k} guardado`, true); } catch { }
   }, 1000);
 };
 function markRec(tipo) {
@@ -1242,8 +1251,9 @@ $('bCancelRec').onclick = () => rec && rec.pts.length ? confirmSheet('¿Descarta
 $('bFin').onclick = () => {
   if (!rec || rec.state === 'ready') return;
   if (rec.avg) return toast('Espera a que termine la esquina (o tócala para cancelar)');
+  if (rec.puntos && rec.pts.filter(q => q.corner).length < 3) return toast('Marca al menos 3 puntos');
   rec.state = 'pause'; rec.paused = true; paintRec();
-  const r = processTrack(rec.pts, rec.mode, S);
+  const r = processTrack(rec.pts, rec.target === 'excl' && rec.mode === 'tractor' ? 'tractorIn' : rec.mode, S);
   if (r.error) return toast(r.error, 4000);
   const { target, mode, pts } = rec;
   endRec();
@@ -1415,18 +1425,32 @@ function exclMenu() {
   sheet(`<h3>Zonas de exclusión</h3><div class="note" style="margin-bottom:8px">Rocas, pozos, zonas que no se pueden pisar. Se restan del área a limpiar.</div>
     <div class="srow"><span>Quedan exclusiones por medir</span><input type="checkbox" id="eExN" ${nO ? 'checked' : ''} style="width:auto"></div>
     <div class="note" id="eExS" style="margin-bottom:6px"></div>
-    <button class="opt" id="ePto">📍 Punto + radio (árbol, poste, farola, arqueta…)<small>Colócate junto al objeto: GPS promediado y círculo del radio que indiques. Rápido para muchos obstáculos.</small></button>
-    <button class="opt" id="eDraw">✍️ Dibujar sobre el mapa</button>
-    <button class="opt" id="ePie">🚶 Rodear a pie</button>
+    ${exclMetodosHTML()}
     ${(cur.exclusiones || []).length ? `<div class="sgrp">Existentes</div>` + cur.exclusiones.map(e => `<button class="opt" data-id="${e.id}">${esc(e.nombre)}<small>${fmtArea(Geo.areaLL(e.coords))} · tocar para editar o renombrar</small></button>`).join('') : ''}`,
     sh => {
       const est = v => { $('eExS').innerHTML = `Medidas: <b>${nM}</b>` + (v ? ' · se pueden añadir todas las que quieras.' : ' ✅ cerradas.'); };
       $('eExN').onchange = async () => { cur.exclPend = $('eExN').checked; est(cur.exclPend); await saveCur(); }; est(nO);
-      $('eDraw').onclick = () => { closeSheet(); startDraw('excl'); };
-      $('ePto').onclick = () => { closeSheet(); exclPuntos(); };
-      $('ePie').onclick = () => { closeSheet(); startRec('excl', 'pie'); };
+      exclMetodosBind(sh);
       sh.querySelectorAll('[data-id]').forEach(b => b.onclick = () => exclOpts(b.dataset.id));
     });
+}
+// formas de medir una exclusión (siempre se pueden añadir una o más)
+const exclMetodosHTML = () => `<div class="sgrp">Con GPS, automático</div>
+    <button class="opt" data-m="pie">🚶 Rodear a pie<small>Camina por el borde de la zona; se registra solo.</small></button>
+    <button class="opt" data-m="trac">🚜 Rodear con el tractor<small>Por fuera de la zona, pegado a ella; se corrige hacia dentro medio ancho del tractor + holgura.</small></button>
+    <div class="sgrp">Marcando puntos</div>
+    <button class="opt" data-m="ptsPie">📍 Vértices con GPS, a pie<small>En cada vértice pulsas «Punto» (GPS promediado). Mínimo 3.</small></button>
+    <button class="opt" data-m="ptsTrac">📍 Vértices con GPS, desde el tractor<small>Igual, con el tractor junto a cada vértice por fuera.</small></button>
+    <button class="opt" data-m="draw">✍️ Tocando el mapa<small>Toca sus vértices en la pantalla.</small></button>
+    <button class="opt" data-m="pto">⭕ Punto + radio<small>Árbol, poste, arqueta… varios seguidos (GPS o toque).</small></button>
+    <div class="sgrp">Peligros</div>
+    <button class="opt" data-m="pel">⚠️ Peligro tocando el mapa<small>Piedra, árbol caído, obstáculo o prohibido pasar: con señal en el mapa.</small></button>`;
+function exclMetodosBind(sh) {
+  const go = {
+    pie: () => startRec('excl', 'pie'), trac: () => tractorSetup('excl'), ptsPie: () => startRec('excl', 'pie', true), ptsTrac: () => tractorSetup('excl', true),
+    draw: () => startDraw('excl'), pto: () => exclPuntos(), pel: () => peligroTocar()
+  };
+  sh.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { closeSheet(); go[b.dataset.m](); });
 }
 // exclusiones rápidas: punto (GPS promediado o toque en el mapa) + radio → círculo de 16 lados; se encadenan
 let ptoW = null;
@@ -2416,7 +2440,7 @@ async function exportSheet() {
     <button class="opt" id="xGpx">🛰 GPX</button>
     <button class="opt" id="xJson">📦 JSON de LIMPFINC<small>Para importar la finca en otro móvil o guardarla.</small></button>
     <button class="opt" id="xGeo">🧩 GeoJSON</button>
-    <button class="opt" id="xPel">⚠️ Peligros (KML / GPX)<small>Para TopoGPS, OsmAnd, Google Earth o Garmin.</small></button>
+    <button class="opt" id="xPel">⚠️ Peligros (KML / GPX)<small>Para TopoGPS, OsmAnd, QGIS o Garmin.</small></button>
     <button class="opt" id="xM3d">🏔 Mapa 3D del terreno<small>KML, GPX, GeoJSON, CSV, XYZ y DXF 3D.</small></button>
     ${t ? '<button class="opt" id="xCsv">📄 CSV de puntos GPS del trabajo</button>' : ''}`,
     () => {
@@ -2468,7 +2492,7 @@ function buildKML({ f, t, real }) {
   (f.exclusiones || []).forEach(e => k += pm(e.nombre, 'excl', `<Polygon><outerBoundaryIs><LinearRing><coordinates>${ring(e.coords)}</coordinates></LinearRing></outerBoundaryIs></Polygon>`));
   if (f.malla && f.malla.arboles) k += pm('Árboles', 'linde', `<MultiGeometry>${f.malla.arboles.filter(a => !a[4]).map(a => `<Point><coordinates>${a[1]},${a[0]},0</coordinates></Point>`).join('')}</MultiGeometry>`);
   k += '</Folder>';
-  if ((f.peligros || []).length) k += `<Folder><name>Peligros</name>${f.peligros.map(p => `<Placemark><name>${esc(PEL[p.tipo][1])}</name><description>${esc('radio ' + fmt(p.radio, 1) + ' m' + (p.nota ? ' · ' + p.nota : ''))}</description><Style><IconStyle><color>ff1c1cb7</color><Icon><href>http://maps.google.com/mapfiles/kml/shapes/caution.png</href></Icon></IconStyle></Style><Point><coordinates>${p.ll[1]},${p.ll[0]},0</coordinates></Point></Placemark>`).join('')}</Folder>`;
+  if ((f.peligros || []).length) k += `<Folder><name>Peligros</name>${f.peligros.map(p => `<Placemark><name>${esc(PEL[p.tipo][1])}</name><description>${esc('radio ' + fmt(p.radio, 1) + ' m' + (p.nota ? ' · ' + p.nota : ''))}</description><Style><IconStyle><color>ff1c1cb7</color></IconStyle></Style><Point><coordinates>${p.ll[1]},${p.ll[0]},0</coordinates></Point></Placemark>`).join('')}</Folder>`;
   if (f.plan) k += `<Folder><name>Plan (ideal)</name>${f.plan.parts.map((p, i) => pm(`${i + 1} ${p.type}`, p.type === 'trabajo' ? 'plan' : p.type === 'tras' ? 'tras' : 'giro', ls(p.ll))).join('')}</Folder>`;
   if (real.length) {
     k += `<Folder><name>Real ${t ? new Date(t.inicio).toLocaleDateString('es-ES') : ''}</name>`;
@@ -2941,7 +2965,7 @@ async function endWork(estado) {
   if (!w.paused && w.ses) w.ses.fin = Date.now();
   w.trab.sesiones = w.trab.sesiones.filter(s => s.pts.length > 0);
   w.trab.sesiones.forEach(x => { const lp = x.pts[x.pts.length - 1]; if (lp) x.fin = Math.max(x.fin || 0, lp[3]); });
-  w.trab.estado = estado; w.trab.fin = Date.now(); w.trab.precios = { gasoil: +SB.precioGasoil || 0, hora: +SB.precioHora || 0, fecha: Date.now() };
+  w.trab.estado = estado; w.trab.fin = Date.now(); w.trab.precios = { gasoil: +SB.precioGasoil || 0, hora: +SB.precioHora || 0, km: +SB.precioKm || 0, kmIda: cur.traslado && SB.base && cur.traslado.key === trasladoKey(cur) ? cur.traslado.km : null, fecha: Date.now() };
   w.trab.resumen = resumenTrab(w.trab, w);
   if (w.plan) { const pr = w.trab.planId && planesCache.get(w.trab.planId); w.trab.planResumen = { nombre: pr ? nomPlan(pr) : 'Plan', t: w.plan.stats.t.total / 3600, litros: w.plan.stats.litros, L: w.plan.stats.L.total, fecha: w.plan.fecha }; }
   clearInterval(w.tRender); clearInterval(w.tSave); resumeEnd();
@@ -4583,7 +4607,7 @@ async function mapa3DSheet(f) {
     <button class="opt" id="m3V">🧊 Ver en 3D<small>Gira con un dedo, acerca con dos.</small></button>
     <button class="opt" id="m3Cot">📏 Ajustar cotas con un punto conocido<small>La altura del GPS del iPhone tiene error de varios metros; con una cota conocida se corrige todo.</small></button>
     <div class="sgrp">Exportar mapa 3D</div>
-    <button class="opt" id="m3Kml">🌍 KML / KMZ-compatible<small>Google Earth, Google My Maps, TopoGPS, QGIS. Curvas de nivel y puntos con altura.</small></button>
+    <button class="opt" id="m3Kml">🌍 KML / KMZ-compatible<small>TopoGPS, QGIS, Marble, OsmAnd. Curvas de nivel y puntos con altura.</small></button>
     <button class="opt" id="m3Gpx">🛰 GPX<small>TopoGPS, OsmAnd, Garmin… Puntos de cota y curvas de nivel con elevación.</small></button>
     <button class="opt" id="m3Geo">🧩 GeoJSON 3D<small>QGIS, web. Puntos y líneas con Z.</small></button>
     <button class="opt" id="m3Dxf">📐 DXF 3D (AutoCAD)<small>UTM ETRS89: puntos GPS, superficie TIN (3DFACE) y curvas de nivel en 3D.</small></button>
@@ -4688,8 +4712,8 @@ const llM = (M, xy) => M.P.inv(xy[0], xy[1]);
 function celdasMDT(M) { const o = []; for (let j = 0; j < M.ny; j++) for (let i = 0; i < M.nx; i++) { const k = j * M.nx + i; if (!isNaN(M.z[k])) o.push({ i, j, z: M.z[k], fill: M.fill[k], ll: llM(M, [M.x0 + i * M.c, M.y0 + j * M.c]) }); } return o; }
 function kml3D(f, M, pts) {
   const sty = `<Style id="cv"><LineStyle><color>ff2a3a4e</color><width>1.5</width></LineStyle></Style><Style id="cvm"><LineStyle><color>ff1a2a3e</color><width>3</width></LineStyle></Style>
-    <Style id="pt"><IconStyle><scale>0.4</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/shaded_dot.png</href></Icon></IconStyle><LabelStyle><scale>0.6</scale></LabelStyle></Style>
-    <Style id="gps"><IconStyle><color>ffc06515</color><scale>0.3</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/shaded_dot.png</href></Icon></IconStyle><LabelStyle><scale>0</scale></LabelStyle></Style>
+    <Style id="pt"><IconStyle><scale>0.4</scale></IconStyle><LabelStyle><scale>0.6</scale></LabelStyle></Style>
+    <Style id="gps"><IconStyle><color>ffc06515</color><scale>0.3</scale></IconStyle><LabelStyle><scale>0</scale></LabelStyle></Style>
     <Style id="linde"><LineStyle><color>ff205e1b</color><width>3</width></LineStyle><PolyStyle><fill>0</fill></PolyStyle></Style>`;
   const cv = M.curvas.map(c => `<Placemark><name>${fmt(c.z, 2)} m</name><styleUrl>#${c.maestra ? 'cvm' : 'cv'}</styleUrl><LineString><altitudeMode>absolute</altitudeMode><coordinates>${c.xy.map(q => { const l = llM(M, q); return `${l[1].toFixed(7)},${l[0].toFixed(7)},${c.z.toFixed(2)}`; }).join(' ')}</coordinates></LineString></Placemark>`).join('');
   const paso = Math.max(1, Math.round(Math.sqrt(celdasMDT(M).length / 1500)));
@@ -4862,32 +4886,97 @@ function incidenciasLista(f) {
    PRESUPUESTO Y PARTE DE TRABAJO (PDF con jsPDF, MIT)
    ========================================================= */
 const margenK = () => 1 + (+SB.margen || 0) / 100;
-function costePlan(pl) { const h = pl.stats.t.total / 3600, c = pl.stats.litros * (+SB.precioGasoil || 0) + h * (+SB.precioHora || 0); return { coste: c, precio: c * margenK() }; }
+function costePlan(pl, f) { f = f || cur; const h = pl.stats.t.total / 3600, tr = trasladoCoste(f, h), c = pl.stats.litros * (+SB.precioGasoil || 0) + h * (+SB.precioHora || 0) + tr.coste; return { coste: c, precio: c * margenK(), traslado: tr }; }
 // coste de una ruta con los precios guardados al hacerla (el gasóleo cambia mucho)
-function costeRuta(t) { const r = t.resumen || {}, pg = t.precios ? +t.precios.gasoil : +SB.precioGasoil || 0, ph = t.precios ? +t.precios.hora : +SB.precioHora || 0, c = (r.litros || 0) * pg + (r.horas || 0) * ph; return { cG: (r.litros || 0) * pg, cH: (r.horas || 0) * ph, coste: c, precio: c * margenK(), pg, ph }; }
+function costeRuta(t, f) {
+  const r = t.resumen || {}, P_ = t.precios || {}, pg = P_.gasoil != null ? +P_.gasoil : +SB.precioGasoil || 0, ph = P_.hora != null ? +P_.hora : +SB.precioHora || 0;
+  // traslado: un viaje de ida y vuelta por cada día con sesiones
+  const dias = new Set((t.sesiones || []).filter(x => x.pts && x.pts.length).map(x => new Date(x.inicio).toDateString())).size || 1;
+  const kmIda = P_.kmIda != null ? +P_.kmIda : f && f.traslado ? f.traslado.km : 0, pk = P_.km != null ? +P_.km : +SB.precioKm || 0, kmTot = kmIda * 2 * dias, cT = kmTot * pk;
+  const c = (r.litros || 0) * pg + (r.horas || 0) * ph + cT;
+  return { cG: (r.litros || 0) * pg, cH: (r.horas || 0) * ph, cT, kmTot, dias, pk, coste: c, precio: c * margenK(), pg, ph };
+}
+// traslado desde la base: ida y vuelta por cada jornada (horas de trabajo / horas por jornada)
+function trasladoCoste(f, h) {
+  const T = f && f.traslado && SB.base && f.traslado.key === trasladoKey(f) ? f.traslado : null; if (!T) return { coste: 0, km: 0, viajes: 0, T: null };
+  const viajes = Math.max(1, Math.ceil((h || 0) / (+SB.horasJornada || 8) - 1e-9)), km = T.km * 2 * viajes;
+  return { coste: km * (+SB.precioKm || 0), km, viajes, T };
+}
+const centroLL = ll => [ll.reduce((a, p) => a + p[0], 0) / ll.length, ll.reduce((a, p) => a + p[1], 0) / ll.length];
+const trasladoKey = f => SB.base && f && f.linde ? SB.base.lat.toFixed(5) + ',' + SB.base.lon.toFixed(5) + '|' + centroLL(f.linde.coords).map(v => v.toFixed(4)).join(',') : null;
+const fetchT = (url, ms) => { const ac = new AbortController(), tm = setTimeout(() => ac.abort(), ms || 8000); return fetch(url, { signal: ac.signal }).finally(() => clearTimeout(tm)); };
+// distancia por carretera (OSRM, libre); sin red: línea recta × 1,35
+async function trasladoFinca(f) {
+  if (!SB.base || !f || !f.linde) return null;
+  const key = trasladoKey(f); if (f.traslado && f.traslado.key === key && f.traslado.fuente !== 'estimado') return f.traslado;
+  const [la, lo] = centroLL(f.linde.coords); let km = null, min = null, fuente = 'estimado';
+  try { const r = await fetchT(`https://router.project-osrm.org/route/v1/driving/${SB.base.lon},${SB.base.lat};${lo},${la}?overview=false`, 8000), j = await r.json(); if (j.routes && j.routes[0]) { km = j.routes[0].distance / 1000; min = j.routes[0].duration / 60; fuente = 'carretera'; } } catch (e) { }
+  if (km == null) km = Geo.lenLL([[SB.base.lat, SB.base.lon], [la, lo]]) / 1000 * 1.35;
+  f.traslado = { key, km: +km.toFixed(2), min: min != null ? Math.round(min) : null, fuente, fecha: Date.now() }; await DB.put(f);
+  return f.traslado;
+}
+async function geocodificar(dir) {
+  const out = [];
+  const qs = [dir, dir.replace(/\b\d+\b,?/g, '').replace(/\b\d{5}\b/g, '').replace(/\s+,/g, ',').trim()];
+  for (const q of qs) {
+    try { const r = await fetchT(`https://nominatim.openstreetmap.org/search?format=json&limit=5&countrycodes=es&accept-language=es&q=${encodeURIComponent(q)}`), j = await r.json(); j.forEach(x => out.push({ lat: +x.lat, lon: +x.lon, nom: x.display_name })); } catch (e) { }
+    if (out.length) break;
+    try { const r = await fetchT(`https://photon.komoot.io/api/?limit=5&q=${encodeURIComponent(q)}`), j = await r.json(); (j.features || []).forEach(x => out.push({ lat: x.geometry.coordinates[1], lon: x.geometry.coordinates[0], nom: [x.properties.name, x.properties.street, x.properties.city || x.properties.county, x.properties.state].filter(Boolean).join(', ') })); } catch (e) { }
+    if (out.length) break;
+  }
+  return out;
+}
+// 🏠 base de salida (Carballal 20, Cabanas, Abegondo por defecto)
+function baseSheet(onOk) {
+  const b = SB.base;
+  sheet(`<h3>🏠 Base de salida</h3>
+    <label class="f">Dirección</label><input class="inp" id="bsD" value="${esc(SB.baseDir || '')}">
+    <div class="note" id="bsE">${b ? `Fijada: ${b.lat.toFixed(5)}, ${b.lon.toFixed(5)} (${esc(b.fuente)})` : 'Aún sin situar.'}</div>
+    <button class="btn" id="bsG" style="margin-top:8px">📍 Estoy en la base: usar mi GPS</button>
+    <button class="btn sec" id="bsB" style="margin-top:8px">🔎 Buscar la dirección</button>
+    ${map && cur ? '<button class="btn sec" id="bsM" style="margin-top:8px">👆 Tocar en el mapa</button>' : ''}
+    <div id="bsR"></div>`,
+    () => {
+      const fijar = async (lat, lon, fuente) => {
+        SB.base = { lat: +lat.toFixed(6), lon: +lon.toFixed(6), fuente, fecha: Date.now() }; SB.baseDir = $('bsD') ? $('bsD').value.trim() : SB.baseDir; await DB.kvPut('settings', SB);
+        toast('🏠 Base fijada: se recalculan los traslados', 3000); closeSheet(); onOk && onOk();
+      };
+      $('bsG').onclick = () => { if (!lastPos || gpsAge() > 15) { startGPS(); return toast('Esperando señal GPS. Inténtalo en unos segundos.', 3500); } fijar(lastPos.lat, lastPos.lon, 'GPS ±' + fmt(lastPos.acc, 0) + ' m'); };
+      $('bsB').onclick = async () => {
+        SB.baseDir = $('bsD').value.trim(); $('bsR').innerHTML = '<div class="note">Buscando…</div>';
+        const R = await geocodificar(SB.baseDir);
+        $('bsR').innerHTML = R.length ? '<div class="note">Elige el resultado correcto. En aldeas suele situar el lugar, no el número: si estás en la base, mejor el GPS.</div>' + R.map((x, i) => `<button class="opt" data-i="${i}">${esc(x.nom)}<small>${x.lat.toFixed(5)}, ${x.lon.toFixed(5)}</small></button>`).join('') : '<div class="card warnc">Sin resultados (o sin conexión). Usa el GPS estando en la base o toca en el mapa.</div>';
+        $('bsR').querySelectorAll('[data-i]').forEach(bt => bt.onclick = () => { const x = R[+bt.dataset.i]; fijar(x.lat, x.lon, 'dirección: ' + x.nom.slice(0, 60)); });
+      };
+      if ($('bsM')) $('bsM').onclick = () => { closeSheet(); followPos = false; toast('👆 Toca la base en el mapa (aleja el mapa si hace falta)', 4000); map.once('click', e => { SB.baseDir = SB.baseDir; fijar(e.latlng.lat, e.latlng.lng, 'mapa'); }); };
+    });
+}
 function presupuestoDatos(f) {
   const Sf = effS(f), a = fincaAreas(f);
   let h, lit, fuente;
   if (f.plan && !planStale(f)) { h = f.plan.stats.t.total / 3600; lit = f.plan.stats.litros; fuente = 'plan calculado'; }
   else { const vm = Sf.velocidad / 3.6, we = Math.max(0.3, Sf.aperoAncho - (Sf.solape || 0)); h = a.neta / (we * vm * 0.75) / 3600; lit = h * Sf.consumo; fuente = 'estimación por superficie (sin plan)'; }
-  const cG = lit * (+SB.precioGasoil || 0), cH = h * (+SB.precioHora || 0), coste = cG + cH, margen = coste * (margenK() - 1), porHora = coste + margen;
+  const tr = trasladoCoste(f, h), cG = lit * (+SB.precioGasoil || 0), cH = h * (+SB.precioHora || 0), cT = tr.coste, coste = cG + cH + cT, margen = coste * (margenK() - 1), porHora = coste + margen;
   const ferr = SB.ferrado > 0 ? a.neta / SB.ferrado : 0, porFerr = ferr * (+SB.precioFerrado || 0);
-  return { h, lit, cG, cH, coste, margen, porHora, ferr, porFerr, area: a.neta, fuente, Sf };
+  return { h, lit, cG, cH, cT, tr, coste, margen, porHora, ferr, porFerr, area: a.neta, fuente, Sf };
 }
 function preciosHTML() {
   const n = v => String(v ?? '').replace('.', ',');
   return `<div class="card"><div class="srow"><span><b>Gasóleo (€/L)</b>${SB.precioGasoilFecha ? `<br><small style="color:var(--sub)">actualizado ${new Date(SB.precioGasoilFecha).toLocaleDateString('es-ES')}</small>` : ''}</span><input class="inp" id="ppG" inputmode="decimal" value="${n(SB.precioGasoil)}" style="width:90px;text-align:right"></div>
     <div class="srow"><span>Máquina y operario, coste (€/h)</span><input class="inp" id="ppH" inputmode="decimal" value="${n(SB.precioHora)}" style="width:90px;text-align:right"></div>
-    <div class="srow"><span>Margen sobre el coste (%)</span><input class="inp" id="ppM" inputmode="decimal" value="${n(SB.margen)}" style="width:90px;text-align:right"></div></div>`;
+    <div class="srow"><span>Margen sobre el coste (%)</span><input class="inp" id="ppM" inputmode="decimal" value="${n(SB.margen)}" style="width:90px;text-align:right"></div>
+    <div class="srow"><span>Traslado desde la base (€/km)</span><input class="inp" id="ppK" inputmode="decimal" value="${n(SB.precioKm)}" style="width:90px;text-align:right"></div>
+    <div class="srow"><span>🏠 Base<br><small style="color:var(--sub)">${esc(SB.baseDir || '')}${SB.base ? '' : ' · <b style="color:var(--err)">sin situar</b>'}</small></span><button class="btn sec" id="ppB" style="width:auto;padding:8px 12px">${SB.base ? 'Cambiar' : 'Situar'}</button></div></div>`;
 }
 function preciosBind(onCh) {
   const rd = id => parseFloat($(id).value.replace(',', '.'));
-  ['ppG', 'ppH', 'ppM'].forEach(id => $(id).onchange = async () => {
-    const g = rd('ppG'), h = rd('ppH'), m = rd('ppM');
-    if (!(g >= 0 && g < 10) || !(h >= 0 && h < 1000) || !(m >= 0 && m < 1000)) return toast('Valor no válido');
+  ['ppG', 'ppH', 'ppM', 'ppK'].forEach(id => $(id).onchange = async () => {
+    const g = rd('ppG'), h = rd('ppH'), m = rd('ppM'), k = rd('ppK');
+    if (!(g >= 0 && g < 10) || !(h >= 0 && h < 1000) || !(m >= 0 && m < 1000) || !(k >= 0 && k < 100)) return toast('Valor no válido');
     if (g !== +SB.precioGasoil) SB.precioGasoilFecha = Date.now();
-    SB.precioGasoil = g; SB.precioHora = h; SB.margen = m; await DB.kvPut('settings', SB); applyS(); onCh && onCh();
+    SB.precioGasoil = g; SB.precioHora = h; SB.margen = m; SB.precioKm = k; await DB.kvPut('settings', SB); applyS(); onCh && onCh();
   });
+  $('ppB').onclick = () => baseSheet(() => onCh && onCh(true));
 }
 function presupuestoSheet(f) {
   const e = v => fmt(v, 2) + ' €';
@@ -4902,12 +4991,14 @@ function presupuestoSheet(f) {
       <div class="kv"><span>Tiempo</span><span>${fmtH(d.h)}</span></div>
       <div class="kv"><span>Gasóleo</span><span>${fmt(d.lit, 1)} L × ${fmt(+SB.precioGasoil, 2)} €/L = ${e(d.cG)}</span></div>
       <div class="kv"><span>Máquina y operario</span><span>${fmt(d.h, 2)} h × ${fmt(+SB.precioHora, 2)} €/h = ${e(d.cH)}</span></div>
+      <div class="kv"><span>Traslado desde la base${d.tr.T ? `<br><small style="color:var(--sub)">${fmt(d.tr.T.km, 1)} km ida${d.tr.T.min ? ' (' + d.tr.T.min + ' min)' : ''} × 2 × ${d.tr.viajes} viaje${d.tr.viajes > 1 ? 's' : ''} = ${fmt(d.tr.km, 1)} km × ${fmt(+SB.precioKm, 2)} €/km${d.tr.T.fuente === 'estimado' ? ' · estimado (sin ruta)' : ''}</small>` : '<br><small style="color:var(--err)">Sitúa la base para calcularlo</small>'}</span><span>${e(d.cT)}</span></div>
       <div class="kv"><span>Coste</span><span>${e(d.coste)}</span></div>
       <div class="kv"><span>Margen ${fmt(+SB.margen || 0, 0)} %</span><span>${e(d.margen)}</span></div>
       <div class="kv" style="font-size:18px"><span><b>Precio (sin IVA)</b></span><span><b>${e(d.porHora)}</b></span></div>
       ${+SB.precioFerrado > 0 ? `<div class="kv"><span>Precio por ferrado (${fmt(d.ferr, 1)} × ${fmt(+SB.precioFerrado, 2)} €)</span><span><b>${e(d.porFerr)}</b></span></div>` : ''}
       </div>`; $('prPdf').onclick = () => pdfDoc(f, null, d); };
-      preciosBind(pinta); pinta();
+      const todo = async () => { $('prRes').innerHTML = '<div class="note">Calculando el traslado desde la base…</div>'; try { await trasladoFinca(f); } catch (e) { } pinta(); };
+      preciosBind(base => base ? presupuestoSheet(f) : pinta()); todo();
     });
 }
 function cargarJsPDF() {
@@ -4951,16 +5042,18 @@ async function pdfDoc(f, trab, pres) {
   if (f.sigpac && f.sigpac.parcelas) ln('SIGPAC', f.sigpac.parcelas.map(p => `${p.provincia}:${p.municipio}:${p.poligono}:${p.parcela}`).join(', '));
   ln('Máquina', `${Sf.tractor || ''} + ${Sf.aperoNombre || ''} (${fmt(Sf.aperoAncho, 2)} m)`.slice(0, 80));
   if (trab) {
-    const r = trab.resumen || resumenTrab(trab, rebuildTrab(f, trab)); if (!trab.resumen) trab.resumen = r; const K = costeRuta(trab), cG = K.cG, cH = K.cH;
+    const r = trab.resumen || resumenTrab(trab, rebuildTrab(f, trab)); if (!trab.resumen) trab.resumen = r; const K = costeRuta(trab, f), cG = K.cG, cH = K.cH;
     ln('Fecha del trabajo', `${new Date(trab.inicio).toLocaleString('es-ES')} – ${new Date(trab.fin || trab.inicio).toLocaleTimeString('es-ES')}`);
     ln('Tiempo total · con apero', `${fmtH(r.horas)} · ${fmtH(r.horasOn)}`); ln('Superficie limpia · cobertura', `${fmtArea(r.limpia)} · ${fmt(r.cobertura * 100, 1)} %`);
     ln('Combustible', `${fmt(r.litros, 1)} L`); ln('Rendimiento', `${r.haH == null ? '–' : fmt(r.haH, 2) + ' ha/h'}`);
     const inc = (f.incidencias || []).filter(i => i.trabId === trab.id); if (inc.length) ln('Incidencias', inc.map(i => INC[i.tipo][1] + (i.nota ? ' (' + i.nota + ')' : '')).join('; ').slice(0, 90));
-    y += 2; ln(`Gasóleo (${fmt(K.pg, 2)} €/L)`, `${fmt(cG, 2)} €`); ln(`Tractor y operario (${fmt(K.ph, 2)} €/h)`, `${fmt(cH, 2)} €`); ln('Coste', `${fmt(K.coste, 2)} €`); ln(`Margen ${fmt(+SB.margen || 0, 0)} %`, `${fmt(K.precio - K.coste, 2)} €`); ln('PRECIO (sin IVA)', `${fmt(K.precio, 2)} €`, true);
+    y += 2; ln(`Gasóleo (${fmt(K.pg, 2)} €/L)`, `${fmt(cG, 2)} €`); ln(`Tractor y operario (${fmt(K.ph, 2)} €/h)`, `${fmt(cH, 2)} €`); if (K.cT) ln(`Traslado (${fmt(K.kmTot, 1)} km × ${fmt(K.pk, 2)} €/km)`, `${fmt(K.cT, 2)} €`); ln('Coste', `${fmt(K.coste, 2)} €`); ln(`Margen ${fmt(+SB.margen || 0, 0)} %`, `${fmt(K.precio - K.coste, 2)} €`); ln('PRECIO (sin IVA)', `${fmt(K.precio, 2)} €`, true);
   } else {
     const d = pres || presupuestoDatos(f);
     ln('Tiempo previsto', `${fmtH(d.h)} (${d.fuente})`); ln('Gasóleo previsto', `${fmt(d.lit, 1)} L × ${fmt(+SB.precioGasoil, 2)} €/L = ${fmt(d.cG, 2)} €`);
-    ln('Máquina y operario', `${fmt(d.h, 2)} h × ${fmt(+SB.precioHora, 2)} €/h = ${fmt(d.cH, 2)} €`); ln('Coste', `${fmt(d.coste, 2)} €`); ln(`Margen ${fmt(+SB.margen || 0, 0)} %`, `${fmt(d.margen, 2)} €`); ln('PRECIO (sin IVA)', `${fmt(d.porHora, 2)} €`, true);
+    ln('Máquina y operario', `${fmt(d.h, 2)} h × ${fmt(+SB.precioHora, 2)} €/h = ${fmt(d.cH, 2)} €`);
+    if (d.tr && d.tr.T) ln('Traslado desde la base', `${fmt(d.tr.km, 1)} km (${d.tr.viajes} viaje${d.tr.viajes > 1 ? 's' : ''} ida y vuelta) × ${fmt(+SB.precioKm, 2)} €/km = ${fmt(d.cT, 2)} €`);
+    ln('Coste', `${fmt(d.coste, 2)} €`); ln(`Margen ${fmt(+SB.margen || 0, 0)} %`, `${fmt(d.margen, 2)} €`); ln('PRECIO (sin IVA)', `${fmt(d.porHora, 2)} €`, true);
     if (+SB.precioFerrado > 0) ln(`Precio por ferrado (${fmt(d.ferr, 1)} ferr.)`, `${fmt(d.porFerr, 2)} €`, true);
     doc.setFontSize(9); doc.text('Presupuesto orientativo calculado con LIMPFINC. Impuestos no incluidos.', 16, 287);
   }
@@ -5123,7 +5216,7 @@ async function planesSheet() {
     ${recs.length > 1 ? '<button class="btn sec" id="plCmp" style="margin-top:6px">📊 Comparar planes</button>' : ''}`,
     sh => {
       sh.querySelectorAll('[data-id]').forEach(b => b.onclick = () => planOptsSheet(planesCache.get(b.dataset.id)));
-      if ($('plCmp')) $('plCmp').onclick = () => compararPlanes(recs);
+      if ($('plCmp')) $('plCmp').onclick = async () => { $('plCmp').textContent = 'Calculando…'; try { await trasladoFinca(cur); } catch (e) { } compararPlanes(recs); };
     });
 }
 function planOptsSheet(r) {
@@ -5156,7 +5249,7 @@ function compararPlanes(recs) {
     ['Cobertura teórica', r => fmt(r.plan.stats.area.cobertura * 100, 1) + ' %'], ['Rumbo', r => r.plan.az + '°'], ['Velocidad', r => fmt(r.plan.params.v, 1) + ' km/h']];
   const best = recs.reduce((a, b) => costePlan(b.plan).coste < costePlan(a.plan).coste ? b : a);
   sheet(`<h3>📊 Comparar planes</h3><div style="overflow-x:auto"><table class="cmp"><tr><th></th>${recs.map(r => `<th>${esc(nomPlan(r))}${r === best ? ' ⭐' : ''}</th>`).join('')}</tr>
-    ${rows.map(([n, f]) => `<tr><th>${n}</th>${recs.map(r => `<td>${f(r)}</td>`).join('')}</tr>`).join('')}</table></div><div class="note">⭐ el plan más barato (gasóleo ${fmt(+SB.precioGasoil, 2)} €/L + ${fmt(+SB.precioHora, 2)} €/h).</div>`);
+    ${rows.map(([n, f]) => `<tr><th>${n}</th>${recs.map(r => `<td>${f(r)}</td>`).join('')}</tr>`).join('')}</table></div><div class="note">⭐ el plan más barato (gasóleo ${fmt(+SB.precioGasoil, 2)} €/L + ${fmt(+SB.precioHora, 2)} €/h${cur.traslado && SB.base ? ` + traslado desde la base ${fmt(cur.traslado.km, 1)} km a ${fmt(+SB.precioKm, 2)} €/km, ida y vuelta por jornada` : ''}).</div>`);
 }
 
 /* ---- Rutas de trabajo ---- */
@@ -5217,26 +5310,49 @@ async function copiarRuta(t) {
 }
 
 /* ---- Peligros: piedras grandes, árboles caídos y obstáculos peligrosos (quedan en la finca) ---- */
-const PEL = { piedra: ['🪨', 'Piedra grande', 1.0], arbol: ['🪵', 'Árbol caído / tronco', 2.0], otro: ['⚠️', 'Obstáculo peligroso', 1.5] };
+const PEL = { piedra: ['🪨', 'Piedra grande', 1.0], arbol: ['🪵', 'Árbol caído / tronco', 2.0], otro: ['⚠️', 'Obstáculo peligroso', 1.5], prohibido: ['⛔', 'Prohibido pasar', 2.0] };
+// señal de tráfico en el mapa: triángulo de peligro con el tipo dentro, o dirección prohibida
+function senalPel(tipo, big) {
+  const z = big ? 40 : 32;
+  if (tipo === 'prohibido') return `<svg width="${z}" height="${z}" viewBox="0 0 32 32" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))"><circle cx="16" cy="16" r="14.5" fill="#d50000" stroke="#fff" stroke-width="2"/><rect x="6.5" y="12.5" width="19" height="7" rx="1.5" fill="#fff"/></svg>`;
+  return `<div style="position:relative;width:${z}px;height:${z}px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))"><svg width="${z}" height="${z}" viewBox="0 0 32 30"><path d="M16 2.5 L30 27.5 H2 Z" fill="#fff" stroke="#d50000" stroke-width="3.2" stroke-linejoin="round"/></svg><span style="position:absolute;left:0;right:0;top:${big ? 13 : 10}px;text-align:center;font-size:${big ? 15 : 12}px;line-height:1">${PEL[tipo][0]}</span></div>`;
+}
+const iconPel = (tipo, big) => L.divIcon({ className: '', html: senalPel(tipo, big), iconSize: [big ? 40 : 32, big ? 40 : 32], iconAnchor: [big ? 20 : 16, big ? 20 : 16] });
+// marcar peligros tocando el mapa (varios seguidos)
+let pelTap = null;
+function peligroTocar() {
+  if (!map || !cur) return;
+  const elegir = ll => {
+    lyr.tmp.clearLayers(); L.marker(ll, { icon: iconPel('otro', true), interactive: false, zIndexOffset: 1000 }).addTo(lyr.tmp);
+    sheet(`<h3>⚠️ ¿Qué hay aquí?</h3>
+      <div class="incg">${Object.entries(PEL).map(([k, [e, t]]) => `<button class="btn big" data-p="${k}" style="margin:0;background:#fff;color:#222;border:2px solid #d50000;display:flex;flex-direction:column;align-items:center;gap:4px">${senalPel(k)}<small style="font-size:14px">${t}</small></button>`).join('')}</div>
+      <div class="note" style="margin-top:8px">Queda guardado en la finca, los planes lo esquivan y avisa por voz al acercarte.</div>`,
+      sh => sh.querySelectorAll('[data-p]').forEach(b => b.onclick = async () => { lyr.tmp.clearLayers(); await registrarPeligro(b.dataset.p, [ll.lat, ll.lng]); if (pelTap) toast('Toca otro punto o pulsa «Terminar»', 2500); }));
+  };
+  if (work) { toast('👆 Toca en el mapa el punto del peligro', 3500); followPos = false; map.once('click', e => { elegir(e.latlng); setTimeout(() => { followPos = true; }, 8000); }); return; }
+  pelTap = { h: e => elegir(e.latlng) }; map.on('click', pelTap.h); followPos = false;
+  showTool('⚠️ Peligros: toca el mapa', 'Toca donde está la piedra, el árbol caído, el obstáculo o la zona prohibida. Puedes marcar varios seguidos.', [['Terminar', '', () => { if (pelTap) map.off('click', pelTap.h); pelTap = null; lyr.tmp.clearLayers(); showMain(); drawFinca(); }]]);
+}
 function peligroSheet() {
   if (!cur) return;
   sheet(`<h3>⚠️ Peligro aquí</h3>
     <div class="incg">${Object.entries(PEL).map(([k, [e, t]]) => `<button class="btn big" data-p="${k}" style="margin:0;background:#c62828">${e}<br><small style="font-size:14px">${t}</small></button>`).join('')}</div>
-    <div class="note" style="margin-top:8px">Se guarda en la posición del apero y queda en la finca: se esquiva en los planes y avisa por voz al acercarte. Se puede eliminar cuando quieras en ⋯ › ⚠️ Peligros.</div>`,
-    sh => sh.querySelectorAll('[data-p]').forEach(b => b.onclick = () => registrarPeligro(b.dataset.p)));
+    <button class="btn sec" id="pgTap" style="margin-top:8px">👆 Marcarlo tocando el mapa</button>
+    <div class="note" style="margin-top:8px">Los botones lo guardan en la posición del apero. Queda en la finca: se esquiva en los planes y avisa por voz al acercarte. Se puede eliminar cuando quieras en ⋯ › ⚠️ Peligros.</div>`,
+    sh => { sh.querySelectorAll('[data-p]').forEach(b => b.onclick = () => registrarPeligro(b.dataset.p)); $('pgTap').onclick = () => { closeSheet(); peligroTocar(); }; });
 }
 function circuloLL(ll, r) { const P = Geo.projFor([ll]), c = P.fwd(ll[0], ll[1]), xy = []; for (let k = 0; k < 16; k++) { const a = k / 16 * 2 * Math.PI; xy.push([c[0] + r * Math.cos(a), c[1] + r * Math.sin(a)]); } return Geo.toLL(xy, P).map(q => [+q[0].toFixed(8), +q[1].toFixed(8)]); }
-async function registrarPeligro(tipo) {
-  const ll = work && work.last && work.last.cutLL ? work.last.cutLL : lastPos ? [lastPos.lat, lastPos.lon] : null;
+async function registrarPeligro(tipo, llTocado) {
+  const ll = llTocado || (work && work.last && work.last.cutLL ? work.last.cutLL : lastPos ? [lastPos.lat, lastPos.lon] : null);
   if (!ll) return toast('Sin posición GPS');
-  const f = cur, r = PEL[tipo][2], p = { id: uid(), tipo, ll: [+ll[0].toFixed(7), +ll[1].toFixed(7)], radio: r, fecha: Date.now(), nota: '', trabId: work ? work.trab.id : null };
+  const f = cur, r = PEL[tipo][2], p = { id: uid(), tipo, ll: [+ll[0].toFixed(7), +ll[1].toFixed(7)], radio: r, fecha: Date.now(), nota: '', trabId: work ? work.trab.id : null, origen: llTocado ? 'mapa' : 'gps' };
   f.exclusiones = f.exclusiones || []; const ex = { id: uid(), nombre: PEL[tipo][1], coords: circuloLL(p.ll, r), metodo: 'peligro', centro: p.ll, radio: r, fecha: Date.now() };
   f.exclusiones.push(ex); p.exclId = ex.id; f.peligros = [...(f.peligros || []), p];
   await saveCur(); closeSheet(); drawFinca();
   speak(PEL[tipo][1] + ' anotado', true); toast(`${PEL[tipo][0]} ${PEL[tipo][1]} guardado en la finca`);
 }
 function drawPeligros(f, layer) {
-  (f.peligros || []).forEach(p => L.marker(p.ll, { zIndexOffset: 900, icon: L.divIcon({ className: '', html: `<div class="incpin" style="background:#ffebee;border:2px solid #c62828">${PEL[p.tipo][0]}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] }) })
+  (f.peligros || []).forEach(p => L.marker(p.ll, { zIndexOffset: 900, icon: iconPel(PEL[p.tipo] ? p.tipo : 'otro') })
     .on('click', () => peligroOpts(f, p.id)).addTo(layer));
 }
 function peligroOpts(f, id) {
@@ -5254,8 +5370,8 @@ function peligrosLista(f) {
   const L_ = (f.peligros || []).slice().sort((a, b) => b.fecha - a.fecha);
   sheet(`<h3>⚠️ Peligros · ${esc(f.nombre)}</h3>
     ${L_.length ? L_.map(p => `<button class="opt" data-id="${p.id}">${PEL[p.tipo][0]} ${PEL[p.tipo][1]}<small>${new Date(p.fecha).toLocaleDateString('es-ES')} · radio ${fmt(p.radio, 1)} m${p.nota ? ' · ' + esc(p.nota) : ''}</small></button>`).join('') : '<div class="note">Sin peligros. Se anotan durante el trabajo con el botón ⚠️.</div>'}
-    <div class="row" style="margin-top:8px"><button class="btn sec" id="pgA">＋ Anotar aquí (GPS)</button><button class="btn sec" id="pgX">📤 Exportar KML/GPX</button></div>`,
-    sh => { $('pgX').onclick = () => exportPelSheet(f); sh.querySelectorAll('[data-id]').forEach(b => b.onclick = () => { closeSheet(); const p = f.peligros.find(x => x.id === b.dataset.id); if (map) map.setView(p.ll, Math.max(map.getZoom(), 19)); peligroOpts(f, p.id); }); $('pgA').onclick = peligroSheet; });
+    <div class="row" style="margin-top:8px"><button class="btn sec" id="pgA">＋ Aquí (GPS)</button><button class="btn sec" id="pgT">👆 Tocando el mapa</button><button class="btn sec" id="pgX">📤 Exportar KML/GPX</button></div>`,
+    sh => { $('pgX').onclick = () => exportPelSheet(f); $('pgT').onclick = () => { closeSheet(); peligroTocar(); }; sh.querySelectorAll('[data-id]').forEach(b => b.onclick = () => { closeSheet(); const p = f.peligros.find(x => x.id === b.dataset.id); if (map) map.setView(p.ll, Math.max(map.getZoom(), 19)); peligroOpts(f, p.id); }); $('pgA').onclick = peligroSheet; });
 }
 function avisoPeligros(p) {
   if (!work || !cur || !(cur.peligros || []).length) return;
@@ -5522,7 +5638,8 @@ async function informeAnual(fincas, y) {
   const { jsPDF } = window.jspdf, doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const tx = v => String(v).replace(/²/g, '2').replace(/[–—]/g, '-').replace(/≈/g, '~').replace(/[^\x00-\xFF€]/g, '');
   const titular = SB.titular || (Sync.user ? Sync.user.email.replace(/@.*/, '') : '');
-  const pG = +SB.precioGasoil || 0, pH = +SB.precioHora || 0, cuesta = t => costeRuta(t).coste;
+  const fMap = new Map(fincas.map(f => [f.id, f])), pG = +SB.precioGasoil || 0, pH = +SB.precioHora || 0, cuesta = t => costeRuta(t, fMap.get(t.fincaId)).coste;
+  if (SB.base) for (const f of fincas) { try { await trasladoFinca(f); } catch (e) { } }
   const a0 = new Date(y, 0, 1).getTime(), a1 = new Date(y + 1, 0, 1).getTime();
   const datos = [];
   for (const f of fincas) {
@@ -5573,11 +5690,11 @@ async function informeAnual(fincas, y) {
   toast('📄 Informe ' + y + ' generado');
 }
 
-/* ---- 5. Exportar peligros (KML / GPX) para TopoGPS, Google Earth, OsmAnd… ---- */
+/* ---- 5. Exportar peligros (KML / GPX) para TopoGPS, OsmAnd, QGIS… ---- */
 function pelKML(fs) {
-  const col = { piedra: 'ff1c1cb7', arbol: 'ff1c4a6d', otro: 'ff0080ff' };
+  const col = { piedra: 'ff1c1cb7', arbol: 'ff1c4a6d', otro: 'ff0080ff', prohibido: 'ff0000d5' };
   let k = `<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Peligros LIMPFINC</name>` +
-    Object.keys(PEL).map(t => `<Style id="p_${t}"><IconStyle><color>${col[t]}</color><scale>1.2</scale><Icon><href>http://maps.google.com/mapfiles/kml/shapes/caution.png</href></Icon></IconStyle><LineStyle><color>${col[t]}</color><width>2</width></LineStyle><PolyStyle><color>55${col[t].slice(2)}</color></PolyStyle></Style>`).join('');
+    Object.keys(PEL).map(t => `<Style id="p_${t}"><IconStyle><color>${col[t]}</color><scale>1.2</scale></IconStyle><LineStyle><color>${col[t]}</color><width>2</width></LineStyle><PolyStyle><color>55${col[t].slice(2)}</color></PolyStyle></Style>`).join('');
   fs.forEach(f => { if (!(f.peligros || []).length) return; k += `<Folder><name>${esc(f.nombre)}</name>`;
     f.peligros.forEach(p => { const d = `${PEL[p.tipo][1]} · radio ${fmt(p.radio, 1)} m · ${new Date(p.fecha).toLocaleDateString('es-ES')}${p.nota ? ' · ' + p.nota : ''}`;
       k += `<Placemark><name>${esc(PEL[p.tipo][1])}</name><description>${esc(d)}</description><styleUrl>#p_${p.tipo}</styleUrl><MultiGeometry><Point><coordinates>${p.ll[1]},${p.ll[0]},0</coordinates></Point><Polygon><outerBoundaryIs><LinearRing><coordinates>${[...circuloLL(p.ll, p.radio), circuloLL(p.ll, p.radio)[0]].map(q => q[1] + ',' + q[0] + ',0').join(' ')}</coordinates></LinearRing></outerBoundaryIs></Polygon></MultiGeometry></Placemark>`; });
@@ -5596,7 +5713,7 @@ function exportarPeligros(fs, fmtX, nombre) {
   toast(`📤 ${n} peligro${n > 1 ? 's' : ''} exportado${n > 1 ? 's' : ''}`);
 }
 function exportPelSheet(f) {
-  sheet(`<h3>📤 Exportar peligros</h3><div class="note">Piedras, árboles caídos y obstáculos como puntos (y círculo del radio en KML). GPX para TopoGPS, OsmAnd o Garmin; KML para Google Earth, QGIS o TopoGPS.</div>
+  sheet(`<h3>📤 Exportar peligros</h3><div class="note">Piedras, árboles caídos y obstáculos como puntos (y círculo del radio en KML). GPX para TopoGPS, OsmAnd o Garmin; KML para QGIS, Marble o TopoGPS.</div>
     ${f ? `<div class="sgrp">${esc(f.nombre)} (${(f.peligros || []).length})</div><div class="row"><button class="btn sec" id="xpFk">KML</button><button class="btn sec" id="xpFg">GPX</button></div>` : ''}
     <div class="sgrp">Todas las fincas</div><div class="row"><button class="btn sec" id="xpTk">KML</button><button class="btn sec" id="xpTg">GPX</button></div>`,
     () => {
@@ -5807,7 +5924,8 @@ function ajustesFinca() {
     </div>
     <div class="sgrp">Más ajustes</div>
     <button class="opt" id="ajCat">🚜 Tractores, aperos y cortacéspedes<small>Añadir o modificar máquinas, medidas y velocidades.</small></button>
-    <button class="opt" id="ajPre">💶 Precios: gasóleo ${fmt(+SB.precioGasoil, 2)} €/L · ${fmt(+SB.precioHora, 0)} €/h · margen ${fmt(+SB.margen || 0, 0)} %</button>
+    <button class="opt" id="ajPre">💶 Precios: gasóleo ${fmt(+SB.precioGasoil, 2)} €/L · ${fmt(+SB.precioHora, 0)} €/h · margen ${fmt(+SB.margen || 0, 0)} % · ${fmt(+SB.precioKm || 0, 2)} €/km</button>
+    <button class="opt" id="ajBase">🏠 Base de salida<small>${esc(SB.baseDir || '')}${SB.base ? '' : ' · sin situar'}${cur.traslado && SB.base ? ' · a ' + fmt(cur.traslado.km, 1) + ' km de esta finca' : ''}</small></button>
     <button class="opt" id="ajApr">🧠 Lo aprendido de tus rutas</button>
     <button class="opt" id="ajGen">⚙️ Ajustes generales<small>Voz, GPS, unidades, planificación, monte, copia de seguridad.</small></button>`,
     () => {
@@ -5826,6 +5944,7 @@ function ajustesFinca() {
       $('ajCat').onclick = () => catSheet();
       $('ajPre').onclick = () => sheet(`<h3>💶 Precios</h3>${preciosHTML()}<div class="note">Precio (sin IVA) = coste × ${fmt(margenK(), 2)}. Cada ruta guarda el precio del gasóleo del día en que se hizo.</div>`, () => preciosBind(() => toast('Precios guardados')));
       $('ajApr').onclick = () => aprendizajeSheet(f);
+      $('ajBase').onclick = () => baseSheet(async () => { try { await trasladoFinca(f); } catch (e) { } if (f.traslado) toast(`🏠 Base a ${fmt(f.traslado.km, 1)} km de ${f.nombre}${f.traslado.min ? ' (' + f.traslado.min + ' min)' : ''}`, 4000); });
       $('ajGen').onclick = () => { closeSheet(); showSettings(true); };
     });
 }
