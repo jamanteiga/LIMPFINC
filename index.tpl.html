@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>LIMPFINC</title>
+<meta name="theme-color" content="#2e7d32">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="LIMPFINC">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/clipper-lib@6.4.2/clipper.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.js"></script>
+<!--CSS-->
+</head>
+<body>
+
+<header>
+  <button class="hbtn" id="hLeft"></button>
+  <h1 id="hTitle">LIMPFINC</h1>
+  <button class="syncSt" id="syncSt"></button>
+  <button class="hbtn r" id="hRight"></button>
+</header>
+
+<!-- LISTA -->
+<main id="vList"><div class="view">
+  <div id="fincaList"></div>
+</div></main>
+<button class="fab" id="bNueva">＋ Nueva finca</button>
+<input type="file" id="fImpF" accept=".json,.geojson,application/json,application/geo+json" class="hidden">
+
+<!-- AJUSTES -->
+<main id="vSet" class="hidden"><div class="view" id="setBody"></div></main>
+<main id="vLogin" class="hidden"><div class="view">
+  <div class="card" style="margin-top:20px">
+    <h3>Iniciar sesión</h3>
+    <div class="note" style="margin-bottom:8px">Tus fincas, trabajos, tractores y aperos se guardan en tu Supabase y se sincronizan entre dispositivos.</div>
+    <label class="f">Usuario o email</label><input class="inp" id="lMail" type="text" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="jamanteiga">
+    <label class="f">Contraseña</label><input class="inp" id="lPass" type="password" autocomplete="current-password">
+    <button class="btn" id="lGo" style="margin-top:14px">Entrar</button>
+    <div class="note" id="lErr" style="color:var(--err);margin-top:8px"></div>
+  </div>
+  <button class="lnk" id="lOff">Usar sin cuenta (solo en este dispositivo)</button>
+</div></main>
+
+<!-- MAPA -->
+<div id="mapWrap" class="hidden">
+  <div id="map"></div>
+  <button class="gpsChip" id="gpsChip"><span class="gdot"></span><span id="gpsTxt">GPS apagado</span></button>
+  <button class="mbtn" id="bLoc" title="Mi posición">◎</button>
+  <button class="mbtn" id="bLay" title="Capas y filtros">🗂</button>
+  <div class="panel hidden" id="pWork">
+    <div id="wGuide">
+      <div class="lbar" id="wBar"></div>
+      <div class="lbinfo"><b id="wSteer">–</b><span id="wPass">Sin plan</span></div>
+      <div class="lbnext" id="wNext"></div>
+    </div>
+    <div class="stats wst">
+      <div><b id="wSpd">–</b><small>km/h</small></div>
+      <div><b id="wCov">–</b><small>Limpio</small></div>
+      <div><b id="wTime">–</b><small>Tiempo</small></div>
+      <div><b id="wLit">–</b><small>Litros</small></div>
+      <div class="hidden"><b id="wDev">–</b><small id="wDevL"></small><b id="wEta">–</b></div>
+    </div>
+    <button class="btn big" id="wApero" style="margin-bottom:8px">🟢 APERO EN TRABAJO</button>
+    <div class="row"><button class="btn big" id="wPause">▶ Iniciar</button><button class="btn big err" id="wEnd">■ Parar</button></div>
+    <div class="wtools"><button id="wPel" style="background:#c62828;color:#fff;font-weight:700">⚠️ Peligro</button><button id="wInc" style="background:#fff3e0;font-weight:600">📍 Incidencia</button><button id="wVoz">🔊 Voz</button><button id="wHC">☀️ Contraste</button><span>GPS <b id="wAcc">–</b></span></div>
+  </div>
+  <div class="tb" id="tbMain">
+    <button id="tLinde"><b>⬠</b>Linde</button>
+    <button id="tExcl"><b>⛔</b>Exclusión</button>
+    <button id="tEdit"><b>✎</b>Editar</button>
+    <button id="tPlan"><b>🧭</b>Plan</button>
+    <button id="tWork"><b>🚜</b>Trabajar</button>
+    <button id="tInfo"><b>ⓘ</b>Datos</button>
+    <button id="tAj"><b>⚙️</b>Ajustes</button>
+  </div>
+  <!-- panel grabación -->
+  <div class="panel hidden" id="pRec">
+    <div class="title"><span class="dot rec" id="recDot"></span><span id="recTitle">Midiendo</span></div>
+    <div class="stats">
+      <div><b id="sAcc">–</b><small>Precisión</small></div>
+      <div><b id="sPts">0</b><small>Puntos</small></div>
+      <div><b id="sLen">0 m</b><small>Recorrido</small></div>
+    </div>
+    <div class="note" id="recHint" style="margin:-2px 0 8px"></div>
+    <div class="row">
+      <button class="btn big" id="bPause">▶ Iniciar</button>
+      <button class="btn big" id="bCorner" style="background:#1565c0;white-space:nowrap;font-size:16px">📍 Esquina</button>
+      <button class="btn big err" id="bFin">■ Parar</button>
+    </div>
+    <button class="lnk" id="bCancelRec">Cancelar y descartar</button>
+  </div>
+  <!-- panel dibujo / edición / revisión -->
+  <div class="panel hidden" id="pTool">
+    <div class="title" id="toolTitle"></div>
+    <div class="note" id="toolHint" style="margin:-2px 0 8px"></div>
+    <div class="row" id="toolBtns"></div>
+  </div>
+</div>
+
+<div id="sheetHost"></div>
+
+<!--SCRIPTS-->
+</body>
+</html>

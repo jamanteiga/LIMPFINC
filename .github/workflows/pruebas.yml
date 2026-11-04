@@ -1,0 +1,44 @@
+# LIMPFINC — pruebas automáticas en cada versión y publicación en GitHub Pages solo si pasan.
+# Para que la publicación dependa de las pruebas: Settings › Pages › Build and deployment › Source: «GitHub Actions».
+name: Pruebas y publicación
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Instalar Playwright (Chromium)
+        working-directory: pruebas
+        run: npm install --no-audit --no-fund playwright@1.56.0 && npx playwright install --with-deps chromium
+      - name: Pruebas en iPhone simulado
+        run: node pruebas/ejecutar.mjs
+  publicar:
+    needs: pruebas
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.despliegue.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preparar la web (sin pruebas ni herramientas)
+        run: rsync -a --exclude .git --exclude .github --exclude pruebas --exclude herramientas --exclude index.tpl.html ./ _web/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _web
+      - id: despliegue
+        uses: actions/deploy-pages@v4

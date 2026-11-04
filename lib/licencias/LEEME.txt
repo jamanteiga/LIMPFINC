@@ -1,0 +1,7 @@
+Librerías libres incluidas en LIMPFINC (copias sin modificar):
+- Leaflet 1.9.4 ............ BSD-2-Clause  (lib/leaflet)
+- clipper-lib 6.4.2 ........ Boost Software License 1.0 (lib/clipper.js, cabecera del fichero)
+- supabase-js 2.58.0 ....... MIT          (lib/supabase.js)
+- jsPDF 2.5.1 .............. MIT          (lib/jspdf.umd.min.js)
+- three.js r128 ............ MIT          (lib/three.min.js)
+- SheetJS (xlsx) 0.18.5 .... Apache-2.0   (lib/xlsx.full.min.js)
