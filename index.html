@@ -254,7 +254,7 @@ body.hc .lbinfo b{font-size:34px}body.hc .gpsChip{border:2px solid #000;font-siz
 /* =========================================================
    LIMPFINC · F1 — Fincas, linde, exclusiones, área
    ========================================================= */
-const VERSION = '2.6.1';
+const VERSION = '2.8.0';
 
 /* ---------- Ajustes por defecto ---------- */
 const DEF = {
@@ -268,11 +268,11 @@ const DEF = {
   mallaX:3.5, mallaY:3.5, holguraTronco:0.30, diamTronco:500, promedioS:10,
   mapaBase:'OpenStreetMap',
   velAbierta:3.0, velMonte:2.3, ladoArbol:'der', distArbol:1.0,
-  precioGasoil:1.10, precioHora:35, precioFerrado:0, margen:70, precioKm:1.5, horasJornada:8, base:{ lat:43.213143, lon:-8.297486, fuente:'dirección: lugar de Carballal, Cabanas, Abegondo' }, baseDir:'Carballal 20, Cabanas, 15318 Abegondo (A Coruña)', titular:'', velCarretera:20, consumoTraslado:3, pendMax:25, ultimaCopia:0,
+  precioGasoil:1.10, precioHora:35, precioFerrado:0, margen:70, precioKm:1.5, horasJornada:8, paradaMin:20, base:{ lat:43.213143, lon:-8.297486, fuente:'dirección: lugar de Carballal, Cabanas, Abegondo' }, baseDir:'Carballal 20, Cabanas, 15318 Abegondo (A Coruña)', titular:'', velCarretera:20, consumoTraslado:3, pendMax:25, ultimaCopia:0,
   consumoAuto:true, velocidadGiro:3.0, velocidadTraslado:5.0, tCambioSentido:4, tManiobra:20, tEsquina:15, margenObstaculo:0.30
 };
 const SET_FIELDS = [
-  ['Trabajo',[['velAbierta','Velocidad por defecto, finca abierta (km/h)'],['velMonte','Velocidad por defecto, monte / arbolada (km/h)'],['consumoAuto','Usar consumo calibrado en repostajes','bool'],['umbralDesv','Umbral desviación mínimo (m)'],['umbralAuto','Umbral automático según precisión GPS','bool'],['autoPausa','Pausa automática si está parado (s, 0 = no)'],['voz','Avisos por voz en el modo trabajo','bool'],['altoContraste','Alto contraste en el modo trabajo','bool']]],
+  ['Trabajo',[['paradaMin','Parada mínima en el mapa de velocidad (s)'],['velAbierta','Velocidad por defecto, finca abierta (km/h)'],['velMonte','Velocidad por defecto, monte / arbolada (km/h)'],['consumoAuto','Usar consumo calibrado en repostajes','bool'],['umbralDesv','Umbral desviación mínimo (m)'],['umbralAuto','Umbral automático según precisión GPS','bool'],['autoPausa','Pausa automática si está parado (s, 0 = no)'],['voz','Avisos por voz en el modo trabajo','bool'],['altoContraste','Alto contraste en el modo trabajo','bool']]],
   ['Planificación',[['velocidadGiro','Velocidad en giros (km/h)'],['velocidadTraslado','Velocidad en traslados (km/h)'],['tCambioSentido','Tiempo cambio de sentido (s)'],
     ['tManiobra','Maniobra al iniciar traslado (s)'],['tEsquina','Maniobra en esquina (s)'],['margenObstaculo','Margen a exclusiones (m)']]],
   ['Unidades',[['verFerrados','Mostrar superficie también en ferrados','bool'],['ferrado','Ferrado de tu comarca (m²)']]],
@@ -610,7 +610,7 @@ async function showList() {
     + (jSig ? `<button class="card lastc" id="lJor" style="background:#f3e5f5"><span style="font-size:24px">🗓</span><span>Jornada: siguiente finca<small>${esc(jSig.nombre)}</small></span></button>` : '')
     + (fs.length && (diasCopia == null || diasCopia >= 7) ? `<div class="card" style="background:#e3f2fd;color:#0d47a1;font-size:14px">💾 ${diasCopia == null ? 'Aún no has descargado ninguna copia de seguridad' : `Hace ${diasCopia} días de la última copia de seguridad`}. <button class="lnk" id="lCop" style="display:inline;margin:0">Descargar ahora</button></div>` : '');
   const top = (fu ? `<button class="card lastc" id="lLast"><span style="font-size:24px">▶</span><span>Continuar con ${esc(fu.nombre)}<small>${fu.linde ? fmtArea(fincaAreas(fu).neta) : 'sin linde'}${fu.plan ? ' · plan ' + fmtH(fu.plan.stats.t.total / 3600) : ''}</small></span></button>` : '')
-    + `<div class="row" style="margin-bottom:10px"><button class="btn sec" id="lMap">🗺 Mapa de fincas</button><button class="btn sec" id="lJo">🗓 Jornada</button><button class="btn sec" id="lImp">📥 Importar</button></div><div class="row" style="margin:-4px 0 10px"><button class="btn sec" id="lInf">📄 Informe anual</button><button class="btn sec" id="lPel">⚠️ Exportar peligros</button></div>`;
+    + `<div class="row" style="margin-bottom:10px"><button class="btn sec" id="lMap">🗺 Mapa de fincas</button><button class="btn sec" id="lJo">🗓 Jornada</button><button class="btn sec" id="lImp">📥 Importar</button></div><div class="row" style="margin:-4px 0 10px"><button class="btn sec" id="lInf">📄 Informe / 📊 Excel</button><button class="btn sec" id="lPel">⚠️ Exportar peligros</button></div>`;
   el.innerHTML = nube + avisos + top + (fs.length > 4 ? `<input class="inp" id="fBus" placeholder="🔍 Buscar finca…" style="margin-bottom:10px">` : '') + fs.map(f => {
     const a = fincaAreas(f), c = f.config || {};
     return `<div class="card fcard" data-n="${esc(normName(f.nombre))}"><div class="finca" data-id="${f.id}">
@@ -958,7 +958,7 @@ function drawFinca(fit) {
     L.polygon(e.coords, { color: '#b71c1c', weight: 2, dashArray: '6 4', fillColor: '#757575', fillOpacity: .55 })
       .bindTooltip(esc(e.nombre), { sticky: true }).addTo(lyr.finca);
   });
-  drawTrabView(); drawFotos(); drawIncidencias(cur, lyr.finca); drawPeligros(cur, lyr.finca); drawLentas(cur, lyr.finca);
+  drawTrabView(); drawFotos(); drawIncidencias(cur, lyr.finca); drawPeligros(cur, lyr.finca); drawLentas(cur, lyr.finca); drawInclinaciones(cur, lyr.finca);
   if (fit) fitFinca();
 }
 // encuadra la finca en la parte visible del mapa (entre la cabecera y el panel inferior), en cualquier pantalla
@@ -2290,13 +2290,13 @@ function planDetail(pl) {
 /* =========================================================
    F5 — FILTROS DE CAPAS, HISTÓRICO, EXPORTACIÓN
    ========================================================= */
-const CFG_DEF = { area: true, excl: true, arboles: true, plan: true, noAlc: false, real: true, desv: true, limpia: true, solape: true, pendiente: false, lentas: false };
+const CFG_DEF = { area: true, excl: true, arboles: true, plan: true, noAlc: false, real: true, desv: true, limpia: true, solape: true, pendiente: false, lentas: false, inclina: true };
 let CFG = { ...CFG_DEF }, viewTrab = null;
 const CAPAS = [
   ['area', 'Área finca (linde)', '#a5d6a7'], ['excl', 'Exclusiones', '#757575'], ['arboles', 'Árboles', '#33691e'],
   ['plan', 'Trayectoria ideal', '#1565c0'], ['noAlc', 'Zonas no alcanzadas (plan)', '#ff9800'],
   ['real', 'Trayectoria real', '#7b1fa2'], ['desv', 'Desviaciones', '#d50000'],
-  ['limpia', 'Área real limpia', '#1b5e20'], ['solape', 'Solape (≥ 2 pasadas)', '#fdd835'], ['pendiente', 'Zonas sin limpiar (rojo)', '#d32f2f'], ['lentas', 'Zonas lentas (aprendidas)', '#ef6c00']
+  ['limpia', 'Área real limpia', '#1b5e20'], ['solape', 'Solape (≥ 2 pasadas)', '#fdd835'], ['pendiente', 'Zonas sin limpiar (rojo)', '#d32f2f'], ['lentas', 'Zonas lentas (aprendidas)', '#ef6c00'], ['inclina', 'Puntos de inclinación 📐', '#d50000']
 ];
 const PRESETS_DEF = [
   { nombre: 'Todo', cfg: { ...CFG_DEF, noAlc: true, pendiente: true } },
@@ -2365,6 +2365,7 @@ function trabOpts(t) {
     <button class="opt" id="tVer">🗺 Ver en el mapa</button>
     <button class="opt" id="tRoj">🔴 Ver zonas sin limpiar</button>
     <button class="opt" id="tRep">🧹 Repaso de zonas sin limpiar<small>Plan corto solo por lo rojo.</small></button>
+    <button class="opt" id="tVel">🎨 Velocidad y paradas<small>La ruta coloreada por velocidad y las paradas marcadas.</small></button>
     <button class="opt" id="tRes">📋 Resumen</button>
     <button class="opt" id="tAn">📊 Analizar frente al plan</button>
     <button class="opt" id="tEd">✎ Nombre y nota</button>
@@ -2374,7 +2375,7 @@ function trabOpts(t) {
     <button class="opt" id="tDel" style="color:var(--err)">🗑 Eliminar</button>`,
     () => {
       $('tVer').onclick = () => { viewTrab = t.id; trabCache = null; closeSheet(); drawFinca(); };
-      $('tRes').onclick = () => resumenSheet(t);
+      $('tRes').onclick = () => resumenSheet(t); $('tVel').onclick = () => verVelocidad(t);
       $('tRoj').onclick = () => verSinLimpiar(t); $('tRep').onclick = () => repasoSheet(t);
       $('tAn').onclick = () => analizarRutas([t]);
       $('tPdf').onclick = () => pdfDoc(cur, t);
@@ -2521,7 +2522,7 @@ function fincaMenu() {
     <button class="opt" id="fmHis">🛤 Rutas de trabajo (guardadas y análisis)</button>
     <button class="opt" id="fmApr">🧠 Lo aprendido<small>Velocidad real, giros, traslados y zonas lentas de tus rutas.</small></button>
     <button class="opt" id="fmRep">🧹 Repaso de zonas sin limpiar<small>Plan corto por lo que quedó en rojo en una ruta.</small></button>
-    <button class="opt" id="fmInf">📄 Informe anual (PDF)</button>
+    <button class="opt" id="fmInf">📄 Informe anual (PDF) y hoja de cálculo</button>
     <button class="opt" id="fmPel">⚠️ Peligros (piedras, árboles caídos…)${(cur.peligros || []).length ? ' (' + cur.peligros.length + ')' : ''}</button>
     ${cur.tipo === 'monte' ? '<button class="opt" id="fmMal">🌳 Arboleda (marcar árboles)</button>' : ''}
     <button class="opt" id="fmInc">📍 Incidencias${(cur.incidencias || []).filter(i => !i.resuelta).length ? ' (' + cur.incidencias.filter(i => !i.resuelta).length + ')' : ''}</button>
@@ -2755,6 +2756,7 @@ async function workMenu() {
     });
 }
 async function startWork(trab) {
+  incStart(true);   // seguridad: se pide el permiso del sensor dentro del toque
   const cont = !!trab;
   const hasPlan = cur.plan && !planStale(cur);
   if (!trab && cur.plan && !hasPlan) toast('⚠️ El plan está desactualizado (cambió el linde, una exclusión o un peligro): esta ruta se guarda sin plan. Recalcula el plan para compararla.', 6000);
@@ -2968,7 +2970,7 @@ async function endWork(estado) {
   w.trab.estado = estado; w.trab.fin = Date.now(); w.trab.precios = { gasoil: +SB.precioGasoil || 0, hora: +SB.precioHora || 0, km: +SB.precioKm || 0, kmIda: cur.traslado && SB.base && cur.traslado.key === trasladoKey(cur) ? cur.traslado.km : null, fecha: Date.now() };
   w.trab.resumen = resumenTrab(w.trab, w);
   if (w.plan) { const pr = w.trab.planId && planesCache.get(w.trab.planId); w.trab.planResumen = { nombre: pr ? nomPlan(pr) : 'Plan', t: w.plan.stats.t.total / 3600, litros: w.plan.stats.litros, L: w.plan.stats.L.total, fecha: w.plan.fecha }; }
-  clearInterval(w.tRender); clearInterval(w.tSave); resumeEnd();
+  clearInterval(w.tRender); clearInterval(w.tSave); resumeEnd(); incStop();
   if (w.trab.sesiones.length) await DB.tPut(w.trab); else await DB.tDel(w.trab.id);
   setActivo(null);
   work = null; keepAwake(false); followPos = false; document.body.classList.remove('hc'); try { speechSynthesis.cancel(); } catch { }
@@ -5614,16 +5616,21 @@ async function repasoSheet(t) {
 /* ---- 4. Informe anual en PDF ---- */
 async function informeSheet(soloFinca) {
   const trs = await DB.tAll(), anyos = [...new Set(trs.map(t => new Date(t.inicio).getFullYear()).concat(new Date().getFullYear()))].sort((a, b) => b - a);
-  sheet(`<h3>📄 Informe anual</h3><div class="note">Horas, gasóleo, coste y fechas de limpieza de cada ruta del año, con el cumplimiento de la franja contra incendios (limpia entre el 1 de octubre anterior y el 31 de mayo).</div>
+  sheet(`<h3>📄 Informe anual y hoja de cálculo</h3><div class="note">Horas, gasóleo, coste y fechas de limpieza de cada ruta del año, con el cumplimiento de la franja contra incendios (limpia entre el 1 de octubre anterior y el 31 de mayo).</div>
     ${preciosHTML()}<div class="note">El gasóleo de cada ruta se cuenta al precio que tenía al hacerla; las rutas antiguas, al precio actual.</div>
     <label class="f">Año</label><select class="inp" id="iaA">${anyos.map(a => `<option>${a}</option>`).join('')}</select>
     ${soloFinca ? `<button class="btn" id="iaF" style="margin-top:12px">📄 Informe de ${esc(soloFinca.nombre)}</button>` : ''}
-    <button class="btn ${soloFinca ? 'sec' : ''}" id="iaT" style="margin-top:8px">📄 Informe de todas las fincas</button>`,
+    <button class="btn ${soloFinca ? 'sec' : ''}" id="iaT" style="margin-top:8px">📄 Informe de todas las fincas</button>
+    <div class="sgrp">📊 Hoja de cálculo: todas las rutas del año</div>
+    <div class="note">Una fila por ruta (horas, paradas, superficie, cobertura, gasóleo, traslado, coste y precio) y una hoja de resumen por finca. ODS para LibreOffice; XLSX para Excel; CSV para cualquiera.</div>
+    ${soloFinca ? `<div class="srow"><span>${esc(soloFinca.nombre)}</span><span style="display:flex;gap:6px"><button class="btn sec" data-x="f:csv" style="width:auto;padding:8px 10px">CSV</button><button class="btn sec" data-x="f:ods" style="width:auto;padding:8px 10px">ODS</button><button class="btn sec" data-x="f:xlsx" style="width:auto;padding:8px 10px">XLSX</button></span></div>` : ''}
+    <div class="srow"><span>Todas las fincas</span><span style="display:flex;gap:6px"><button class="btn sec" data-x="t:csv" style="width:auto;padding:8px 10px">CSV</button><button class="btn sec" data-x="t:ods" style="width:auto;padding:8px 10px">ODS</button><button class="btn sec" data-x="t:xlsx" style="width:auto;padding:8px 10px">XLSX</button></span></div>`,
     () => {
       preciosBind();
       const go = async fs => { const y = +$('iaA').value; closeSheet(); showBusy('Preparando el informe…'); try { await informeAnual(fs, y); } catch (e) { toast('Error: ' + e.message, 5000); } finally { hideBusy(); } };
       if ($('iaF')) $('iaF').onclick = () => go([soloFinca]);
       $('iaT').onclick = async () => go((await DB.all()).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')));
+      document.querySelectorAll('.sheet [data-x]').forEach(b => b.onclick = async () => { const [qu, fm] = b.dataset.x.split(':'), y = +$('iaA').value; const fs = qu === 'f' ? [soloFinca] : (await DB.all()).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')); closeSheet(); exportarRutas(fs, y, fm); });
     });
 }
 function franjaIncendios(f, trs, y) {
@@ -5893,6 +5900,318 @@ async function aprenderTrasRuta(f, trab) {
   } catch (e) { console.warn('aprender', e); }
 }
 
+/* =========================================================
+   v2.7 — Mapa de velocidad y paradas · exportar rutas a hoja de cálculo
+   ========================================================= */
+let velVista = null;
+// segmentos con velocidad (km/h) y paradas (≥ paradaMin s dentro de 3 m) de una ruta, a partir de los puntos GPS
+function analisisVelocidad(t) {
+  const segs = [], paradas = [], minS = +SB.paradaMin || 20;
+  let tMov = 0, dMov = 0, tPar = 0;
+  (t.sesiones || []).forEach(ses => {
+    const pts = (ses.pts || []).filter(p => p[2] <= (S.umbralPrecision || 8) * 1.5); if (pts.length < 2) return;
+    const P = Geo.proj(pts[0][0], pts[0][1]), xy = pts.map(p => P.fwd(p[0], p[1]));
+    // velocidad suavizada: distancia en una ventana de ±2 puntos
+    for (let i = 1; i < pts.length; i++) {
+      const a = Math.max(0, i - 3), b = Math.min(pts.length - 1, i + 2), dt = (pts[b][3] - pts[a][3]) / 1000;
+      let d = 0; for (let k = a + 1; k <= b; k++) d += Geo.dist(xy[k - 1], xy[k]);
+      const v = dt > 0 ? d / dt * 3.6 : 0, dt1 = (pts[i][3] - pts[i - 1][3]) / 1000;
+      if (dt1 > 30) continue;   // hueco en el registro
+      segs.push({ a: [pts[i - 1][0], pts[i - 1][1]], b: [pts[i][0], pts[i][1]], v, on: !!pts[i][4], t: pts[i][3] });
+      if (v >= 0.4) { tMov += dt1; dMov += Geo.dist(xy[i - 1], xy[i]); }
+    }
+    // paradas: el tractor permanece dentro de 3 m durante ≥ minS
+    let i = 0;
+    while (i < pts.length) {
+      let j = i; while (j + 1 < pts.length && Geo.dist(xy[i], xy[j + 1]) <= 3 && (pts[j + 1][3] - pts[j][3]) < 30000) j++;
+      const dur = (pts[j][3] - pts[i][3]) / 1000;
+      if (dur >= minS) { let la = 0, lo = 0; for (let k = i; k <= j; k++) { la += pts[k][0]; lo += pts[k][1]; } paradas.push({ ll: [la / (j - i + 1), lo / (j - i + 1)], ini: pts[i][3], dur, on: !!pts[i][4] }); tPar += dur; i = j + 1; }
+      else i++;
+    }
+  });
+  const vs = segs.filter(s => s.on && s.v >= 0.4).map(s => s.v).sort((a, b) => a - b), q = p => vs.length ? vs[Math.min(vs.length - 1, Math.floor(p * vs.length))] : null;
+  return { segs, paradas, tMov, tPar, vMed: tMov > 0 ? dMov / tMov * 3.6 : null, p10: q(0.1), p50: q(0.5), p90: q(0.9) };
+}
+const durTxt = s => s >= 3600 ? Math.floor(s / 3600) + ' h ' + Math.round(s % 3600 / 60) + ' min' : s >= 60 ? Math.floor(s / 60) + ' min ' + Math.round(s % 60) + ' s' : Math.round(s) + ' s';
+function velColor(v, ref) { const r = v / ref; return r < 0.15 ? '#424242' : r < 0.5 ? '#d50000' : r < 0.8 ? '#ff6d00' : r < 1.1 ? '#2e7d32' : '#1565c0'; }
+function verVelocidad(t) {
+  if (!map) return;
+  const A = analisisVelocidad(t), ref = (t.cfg && +t.cfg.velocidad) || S.velocidad || 3;
+  if (!A.segs.length) return toast('Esta ruta no tiene puntos GPS suficientes');
+  quitarVelocidad(); closeSheet();
+  const lay = L.layerGroup().addTo(map); velVista = { t, lay, A, paradas: true };
+  // tramos agrupados por color para no crear miles de líneas
+  let run = null; const flush = () => { if (run && run.ll.length > 1) L.polyline(run.ll, { color: run.c, weight: run.on ? 5 : 3, opacity: run.on ? .95 : .6, dashArray: run.on ? null : '4 6', interactive: false }).addTo(lay); };
+  A.segs.forEach(s => { const c = velColor(s.v, ref); if (!run || run.c !== c || run.on !== s.on || Geo.lenLL([run.ll[run.ll.length - 1], s.a]) > 1) { flush(); run = { c, on: s.on, ll: [s.a] }; } run.ll.push(s.b); }); flush();
+  const pinta = () => {
+    if (velVista.pLay) lay.removeLayer(velVista.pLay); velVista.pLay = L.layerGroup().addTo(lay); if (!velVista.paradas) return;
+    A.paradas.forEach((p, k) => L.marker(p.ll, { zIndexOffset: 800, icon: L.divIcon({ className: '', html: `<div class="pin" style="background:#37474f;width:auto;min-width:22px;padding:0 5px;border-radius:11px;font-size:11px;white-space:nowrap">⏸ ${p.dur >= 60 ? Math.round(p.dur / 60) + "'" : Math.round(p.dur) + '"'}</div>`, iconSize: null, iconAnchor: [14, 11] }) })
+      .on('click', () => toast(`⏸ Parada ${k + 1}: ${durTxt(p.dur)} · ${new Date(p.ini).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })} · apero ${p.on ? 'en trabajo' : 'levantado'}`, 4000)).addTo(velVista.pLay));
+  };
+  pinta();
+  const ley = [['#d50000', `< ${fmt(ref * 0.5, 1)}`], ['#ff6d00', `${fmt(ref * 0.5, 1)}–${fmt(ref * 0.8, 1)}`], ['#2e7d32', `${fmt(ref * 0.8, 1)}–${fmt(ref * 1.1, 1)}`], ['#1565c0', `> ${fmt(ref * 1.1, 1)}`], ['#424242', 'parado']];
+  const largas = A.paradas.slice().sort((a, b) => b.dur - a.dur).slice(0, 3);
+  showTool(`🎨 Velocidad · ${nomRuta(t)}`,
+    `<div style="display:flex;flex-wrap:wrap;gap:4px 10px;margin-bottom:4px">${ley.map(([c, x]) => `<span style="white-space:nowrap"><i style="display:inline-block;width:14px;height:6px;background:${c};border-radius:3px;vertical-align:middle"></i> ${x}</span>`).join('')}<span>km/h (ref. ${fmt(ref, 1)})</span></div>
+     Media en marcha <b>${A.vMed ? fmt(A.vMed, 1) : '–'} km/h</b> · con apero p10/p50/p90: ${A.p10 ? fmt(A.p10, 1) + ' / ' + fmt(A.p50, 1) + ' / ' + fmt(A.p90, 1) : '–'}<br>
+     <b>${A.paradas.length}</b> parada${A.paradas.length === 1 ? '' : 's'} ≥ ${+SB.paradaMin || 20} s · <b>${durTxt(A.tPar)}</b> parado${largas.length ? ' · más largas: ' + largas.map(p => durTxt(p.dur)).join(', ') : ''}`,
+    [['Cerrar', 'sec', () => { quitarVelocidad(); showMain(); }], ['⏸ Paradas', '', () => { velVista.paradas = !velVista.paradas; pinta(); }]]);
+  map.fitBounds(L.latLngBounds(A.segs.map(s => s.a)), { padding: [30, 30], maxZoom: 19 });
+}
+function quitarVelocidad() { if (velVista) { map.removeLayer(velVista.lay); velVista = null; } }
+
+/* ---- Exportar rutas a hoja de cálculo (CSV · ODS de LibreOffice · XLSX), con SheetJS (Apache 2.0) ---- */
+function cargarXLSX() {
+  if (window.XLSX) return Promise.resolve();
+  return new Promise((ok, ko) => { const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; sc.onload = ok; sc.onerror = () => ko(new Error('sin conexión')); document.head.appendChild(sc); });
+}
+async function filasRutas(fincas, y) {
+  const a0 = y ? new Date(y, 0, 1).getTime() : 0, a1 = y ? new Date(y + 1, 0, 1).getTime() : Infinity, filas = [];
+  for (const f of fincas) {
+    if (SB.base && f.linde) { try { await trasladoFinca(f); } catch (e) { } }
+    const pcF = new Map((await DB.pByFinca(f.id)).map(r => [r.id, r])), pc = planesCache;
+    const trs = (await DB.tByFinca(f.id)).filter(t => t.inicio >= a0 && t.inicio < a1).sort((a, b) => a.inicio - b.inicio);
+    for (const t of trs) {
+      if (!t.resumen && f.linde) { planesCache = pcF; try { t.resumen = resumenTrab(t, rebuildTrab(f, t)); } catch (e) { } planesCache = pc; }
+      const r = { horas: sesHoras(t), horasOn: 0, L: 0, limpia: 0, cobertura: 0, litros: 0, ...(t.resumen || {}) };
+      if (!(r.litros > 0)) r.litros = r.horas * (effS(f, t.cfg || f.config).consumo || 0);
+      const K = costeRuta({ ...t, resumen: r }, f), pr = t.planId && pcF.get(t.planId), tr = getTr((t.cfg || {}).tractorId), ap = getAp((t.cfg || {}).aperoId), A = analisisVelocidad(t);
+      filas.push({
+        'Finca': f.nombre, 'Ruta': nomRuta(t), 'Inicio': new Date(t.inicio), 'Fin': t.fin ? new Date(t.fin) : null, 'Estado': t.estado || '',
+        'Plan': pr ? nomPlan(pr) : t.planResumen ? t.planResumen.nombre : '', 'Máquina': tr ? tr.nombre : '', 'Apero': ap ? ap.nombre : '',
+        'Horas': +r.horas.toFixed(3), 'Horas con apero': +(r.horasOn || 0).toFixed(3), 'Parado (h)': +(A.tPar / 3600).toFixed(3), 'Paradas': A.paradas.length,
+        'Recorrido (m)': Math.round(r.L || 0), 'Velocidad media (km/h)': r.vMedia != null ? +r.vMedia.toFixed(2) : null,
+        'Superficie limpia (m²)': Math.round(r.limpia || 0), 'Cobertura (%)': +((r.cobertura || 0) * 100).toFixed(1), 'Solape (%)': r.solapePct != null ? +(r.solapePct * 100).toFixed(1) : null,
+        'Desviación media (m)': r.devMed != null ? +r.devMed.toFixed(2) : null, 'Gasóleo (L)': +r.litros.toFixed(2), 'Gasóleo (€/L)': +K.pg.toFixed(3),
+        'Coste gasóleo (€)': +K.cG.toFixed(2), 'Máquina y operario (€/h)': +K.ph.toFixed(2), 'Coste máquina (€)': +K.cH.toFixed(2),
+        'Traslado (km)': +K.kmTot.toFixed(1), 'Coste traslado (€)': +K.cT.toFixed(2), 'Coste total (€)': +K.coste.toFixed(2),
+        ['Precio +' + (+SB.margen || 0) + ' % (€)']: +K.precio.toFixed(2), 'Nota': t.nota || ''
+      });
+    }
+  }
+  return filas;
+}
+function resumenFilas(filas) {
+  const m = new Map(), suma = (o, k, v) => { o[k] = +((o[k] || 0) + (v || 0)).toFixed(2); };
+  filas.forEach(r => { const o = m.get(r.Finca) || { 'Finca': r.Finca, 'Rutas': 0 }; o.Rutas++; ['Horas', 'Gasóleo (L)', 'Superficie limpia (m²)', 'Traslado (km)', 'Coste total (€)'].forEach(k => suma(o, k, r[k])); const kp = Object.keys(r).find(k => k.startsWith('Precio')); suma(o, 'Precio (€)', r[kp]); m.set(r.Finca, o); });
+  const out = [...m.values()]; if (out.length > 1) { const T = { 'Finca': 'TOTAL', 'Rutas': 0 }; out.forEach(o => Object.keys(o).forEach(k => { if (k !== 'Finca') suma(T, k, o[k]); })); out.push(T); }
+  return out;
+}
+const csvVal = v => v == null ? '' : v instanceof Date ? v.toLocaleString('es-ES') : typeof v === 'number' ? String(v).replace('.', ',') : /[;"\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
+async function exportarRutas(fincas, y, formato) {
+  showBusy('Preparando la hoja de cálculo…');
+  try {
+    const filas = await filasRutas(fincas, y); if (!filas.length) return toast(`No hay rutas${y ? ' en ' + y : ''}`);
+    const nombre = (fincas.length === 1 ? safeName(fincas[0].nombre) + '_' : '') + 'rutas' + (y ? '_' + y : '');
+    if (formato === 'csv') {
+      const cols = Object.keys(filas[0]), txt = '﻿' + [cols.join(';'), ...filas.map(r => cols.map(c => csvVal(r[c])).join(';'))].join('\r\n');
+      download(nombre + '.csv', txt, 'text/csv;charset=utf-8');
+    } else {
+      try { await cargarXLSX(); } catch (e) { return toast('No se pudo cargar SheetJS (sin conexión). Usa CSV.', 4000); }
+      // fechas como número de serie (hora local exacta) con formato de fecha
+      const ser = d => (d.getTime() - d.getTimezoneOffset() * 60000) / 864e5 + 25569, cols = Object.keys(filas[0]), dc = cols.filter(k => filas.some(r => r[k] instanceof Date));
+      const wb = XLSX.utils.book_new(), ws = XLSX.utils.json_to_sheet(filas.map(r => { const o = { ...r }; dc.forEach(k => { if (o[k] instanceof Date) o[k] = formato === 'ods' ? o[k].toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ser(o[k]); }); return o; }));
+      dc.forEach(k => { const ci = cols.indexOf(k); for (let i = 0; i < filas.length; i++) { const c = ws[XLSX.utils.encode_cell({ r: i + 1, c: ci })]; if (c && c.t === 'n') c.z = 'dd/mm/yyyy hh:mm'; } });
+      ws['!cols'] = Object.keys(filas[0]).map(k => ({ wch: Math.max(10, Math.min(28, k.length + 2)) }));
+      XLSX.utils.book_append_sheet(wb, ws, 'Rutas');
+      const ws2 = XLSX.utils.json_to_sheet(resumenFilas(filas)); ws2['!cols'] = [{ wch: 28 }, { wch: 7 }, { wch: 10 }, { wch: 12 }, { wch: 20 }, { wch: 13 }, { wch: 15 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(wb, ws2, 'Resumen por finca');
+      XLSX.writeFile(wb, nombre + '.' + formato, { bookType: formato });
+    }
+    toast(`📊 ${filas.length} ruta${filas.length > 1 ? 's' : ''} exportada${filas.length > 1 ? 's' : ''} (${formato.toUpperCase()})`);
+  } catch (e) { toast('Error al exportar: ' + e.message, 5000); } finally { hideBusy(); }
+}
+
+/* =========================================================
+   v2.8 — Seguridad: inclinómetro antivuelco y aviso de persona caída
+   ========================================================= */
+const INC_DEF = { on: true, aviso: 15, peligro: 20, vuelco: 40, golpeG: 3, inmovilMin: 10, respuestaS: 60, contacto: '', telefono: '', g0: null, inv: false, caida: true };
+const incCfg = () => (SB.incl = { ...INC_DEF, ...(SB.incl || {}) });
+const esIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const INCL = { on: false, gF: null, lin: 0, roll: 0, pitch: 0, t: 0, est: 'ok', since: {}, lastSay: 0, lastMd: 0, anchor: null, anchorT: 0, md: null, ac: null, tick: null };
+// ---- sonido (WebAudio; se desbloquea con un toque)
+function incAudio() { try { if (!INCL.ac) INCL.ac = new (window.AudioContext || window.webkitAudioContext)(); if (INCL.ac.state === 'suspended') INCL.ac.resume(); } catch (e) { } return INCL.ac; }
+function pitido(f, dur, vol) { const ac = incAudio(); if (!ac) return; const o = ac.createOscillator(), g = ac.createGain(); o.type = 'square'; o.frequency.value = f || 1800; g.gain.value = vol || 0.25; o.connect(g).connect(ac.destination); const t = ac.currentTime; g.gain.setValueAtTime(vol || 0.25, t); g.gain.exponentialRampToValueAtTime(0.0001, t + (dur || 0.15)); o.start(t); o.stop(t + (dur || 0.15) + 0.02); }
+function sirena(on) {
+  const ac = incAudio(); if (!ac) return;
+  if (!on) { if (INCL.sir) { try { INCL.sir.o.stop(); } catch (e) { } INCL.sir = null; } return; }
+  if (INCL.sir) return; const o = ac.createOscillator(), g = ac.createGain(), l = ac.createOscillator(), lg = ac.createGain();
+  o.type = 'sawtooth'; o.frequency.value = 1200; l.frequency.value = 1.6; lg.gain.value = 500; l.connect(lg).connect(o.frequency); g.gain.value = 0.35; o.connect(g).connect(ac.destination); o.start(); l.start(); INCL.sir = { o, l };
+}
+// ---- marco del vehículo: gravedad calibrada (o el eje del móvil más próximo) y eje de avance
+const v3 = { dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]], n: a => { const m = Math.hypot(...a) || 1; return a.map(x => x / m); }, sub: (a, b) => a.map((x, i) => x - b[i]), k: (a, s) => a.map(x => x * s) };
+function incMarco() {
+  const c = incCfg(); let g0 = c.g0;
+  if (!g0 && INCL.gF) { const a = INCL.gF.map(Math.abs), i = a.indexOf(Math.max(...a)); g0 = [0, 0, 0]; g0[i] = Math.sign(INCL.gF[i]) * 9.81; }   // sin calibrar: el móvil va recto en su soporte
+  if (!g0) return null;
+  const gh = v3.n(g0), a = gh.map(Math.abs), eje = a.indexOf(Math.max(...a));
+  // avance: pantalla hacia el conductor (vertical o apaisado) → −z; móvil tumbado → la parte de arriba (+y) hacia delante
+  let f = eje === 2 ? [0, 1, 0] : [0, 0, -1]; if (c.inv) f = v3.k(f, -1);
+  f = v3.n(v3.sub(f, v3.k(gh, v3.dot(f, gh))));
+  const abajo = esIOS ? 1 : -1;   // iOS da la gravedad hacia abajo; Android, la reacción hacia arriba
+  return { gh, f, r: v3.cross(gh, f), abajo, montaje: eje === 2 ? 'tumbado' : eje === 1 ? 'vertical' : 'apaisado' };
+}
+function onMotion(e) {
+  const ag = e.accelerationIncludingGravity; if (!ag || ag.x == null) return;
+  const now = performance.now(), dt = INCL.t ? Math.min(0.5, (now - INCL.t) / 1000) : 0.02; INCL.t = now;
+  const v = [ag.x, ag.y, ag.z];
+  if (!INCL.gF) INCL.gF = v; else { const k = dt / (0.8 + dt); INCL.gF = INCL.gF.map((x, i) => x + k * (v[i] - x)); }
+  const li = e.acceleration && e.acceleration.x != null ? Math.hypot(e.acceleration.x, e.acceleration.y, e.acceleration.z) : Math.hypot(...v3.sub(v, INCL.gF));
+  INCL.lin = li; if (li >= incCfg().golpeG * 9.81) incGolpe(li);
+}
+function incCalc() {
+  const M = incMarco(); if (!M || !INCL.gF) return null;
+  const g = v3.n(INCL.gF);
+  INCL.roll = Math.asin(Math.max(-1, Math.min(1, v3.dot(g, M.r)))) * 180 / Math.PI;           // + = lado derecho más bajo
+  INCL.pitch = M.abajo * Math.asin(Math.max(-1, Math.min(1, v3.dot(g, M.f)))) * 180 / Math.PI;  // + = morro hacia abajo
+  return M;
+}
+async function incStart(silencio) {
+  const c = incCfg(); if (!c.on) return false; incAudio();
+  if (INCL.on) return true;
+  if (typeof DeviceMotionEvent === 'undefined') { if (!silencio) toast('Este dispositivo no tiene sensor de movimiento'); return false; }
+  try {
+    if (typeof DeviceMotionEvent.requestPermission === 'function') { const r = await DeviceMotionEvent.requestPermission(); if (r !== 'granted') { incChip('perm'); if (!silencio) toast('Sin permiso de movimiento: toca 📐 para activarlo', 4000); return false; } }
+  } catch (e) { incChip('perm'); return false; }
+  window.addEventListener('devicemotion', onMotion); INCL.on = true; INCL.est = 'ok'; INCL.since = {};
+  INCL.anchor = lastPos ? [lastPos.lat, lastPos.lon] : null; INCL.anchorT = Date.now();
+  clearInterval(INCL.tick); INCL.tick = setInterval(incTick, 100); incChip(); return true;
+}
+function incStop() { window.removeEventListener('devicemotion', onMotion); INCL.on = false; clearInterval(INCL.tick); INCL.tick = null; INCL.gF = null; incChip('off'); incOverlay(null); }
+function incChip(modo) {
+  let el = $('incChip');
+  if (!el) { el = document.createElement('button'); el.id = 'incChip'; el.className = 'gpsChip'; el.style.cssText = 'left:auto;right:8px;top:8px'; el.onclick = () => { if (!INCL.on) incStart(); else seguridadSheet(); }; $('mapWrap').appendChild(el); }
+  if (modo === 'off') { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  if (modo === 'perm') { el.innerHTML = '📐 Toca para activar'; el.style.background = '#fff3e0'; return; }
+  const lr = Math.abs(INCL.roll), fb = Math.abs(INCL.pitch), c = incCfg();
+  el.style.background = INCL.est === 'peligro' ? '#d50000' : INCL.est === 'aviso' ? '#ff9800' : 'rgba(255,255,255,.97)'; el.style.color = INCL.est === 'peligro' ? '#fff' : '#222';
+  el.innerHTML = `📐 ↔ ${Math.round(lr)}°${lr >= 1 ? (INCL.roll > 0 ? ' der' : ' izq') : ''} · ↕ ${Math.round(fb)}°${c.g0 ? '' : ' <small>(sin calibrar)</small>'}`;
+}
+function incOverlay(txt, rojo) {
+  let el = $('incOv');
+  if (!txt) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'incOv'; el.style.cssText = 'position:fixed;left:8px;right:8px;top:calc(env(safe-area-inset-top) + 60px);z-index:4000;border-radius:16px;padding:14px;text-align:center;font-weight:800;font-size:26px;color:#fff;box-shadow:0 4px 18px rgba(0,0,0,.4);pointer-events:none'; document.body.appendChild(el); }
+  el.style.background = rojo ? '#d50000' : '#ef6c00'; el.innerHTML = txt;
+}
+function incTick() {
+  const M = incCalc(); if (!M) return;
+  const c = incCfg(), now = Date.now(), lr = Math.abs(INCL.roll), fb = Math.abs(INCL.pitch);
+  const dura = (k, cond, s) => { if (cond) { INCL.since[k] = INCL.since[k] || now; return now - INCL.since[k] >= s * 1000; } INCL.since[k] = 0; return false; };
+  // vuelco: inclinación imposible de trabajo mantenida 2 s
+  if (c.caida && dura('vuelco', Math.max(lr, fb) >= c.vuelco, 2)) manDown('vuelco');
+  const pel = dura('pel', lr >= c.peligro || fb >= c.peligro + 10, 1), avi = dura('avi', lr >= c.aviso || fb >= c.aviso + 10, 1.5);
+  const est = pel ? 'peligro' : avi ? 'aviso' : (lr < c.aviso - 2 && fb < c.aviso + 8) ? 'ok' : INCL.est;
+  const lado = lr >= fb - 10 ? (INCL.roll > 0 ? 'a la derecha' : 'a la izquierda') : (INCL.pitch > 0 ? 'morro abajo' : 'morro arriba'), ang = Math.round(lr >= fb - 10 ? lr : fb);
+  if (est !== INCL.est) { INCL.est = est; INCL.lastSay = 0; if (est !== 'ok') incRegistrar(est, ang, lado); }
+  if (est === 'peligro') { incOverlay(`⚠️ PELIGRO DE VUELCO<br><span style="font-size:44px">${ang}°</span> ${lado}`, true); if (now - INCL.lastSay > 4000) { INCL.lastSay = now; speak(`Peligro de vuelco. ${ang} grados ${lado}`, true); } if (now % 600 < 120) pitido(2200, 0.12, 0.35); }
+  else if (est === 'aviso') { incOverlay(`Precaución: ${ang}° ${lado}`); if (now - INCL.lastSay > 8000) { INCL.lastSay = now; speak(`Precaución. Inclinación ${ang} grados ${lado}`, true); pitido(1500, 0.2); } }
+  else incOverlay(null);
+  if (now % 500 < 110) incChip();
+  // inmóvil durante el trabajo (no cuenta la pausa manual)
+  if (c.caida && work && !(work.paused && !work.autoPaused) && lastPos) {
+    const p = [lastPos.lat, lastPos.lon];
+    if (!INCL.anchor || Geo.lenLL([INCL.anchor, p]) > 8) { INCL.anchor = p; INCL.anchorT = now; }
+    else if (now - INCL.anchorT > c.inmovilMin * 60000) { INCL.anchorT = now; manDown('inmovil'); }
+  } else INCL.anchorT = now;
+}
+async function incRegistrar(nivel, ang, lado) {
+  if (!cur || !lastPos) return; const ll = [+lastPos.lat.toFixed(7), +lastPos.lon.toFixed(7)];
+  cur.inclinaciones = cur.inclinaciones || [];
+  const prev = cur.inclinaciones.find(x => Geo.lenLL([x.ll, ll]) < 5);
+  if (prev) { if (ang > prev.ang) Object.assign(prev, { ang, lado, nivel, fecha: Date.now() }); prev.n = (prev.n || 1) + 1; }
+  else cur.inclinaciones.push({ id: uid(), ll, ang, lado, nivel, fecha: Date.now(), n: 1, trabId: work ? work.trab.id : null });
+  try { await saveCur(); drawFinca(); } catch (e) { }
+}
+function drawInclinaciones(f, layer) {
+  if (CFG.inclina === false) return;
+  (f.inclinaciones || []).forEach(x => L.marker(x.ll, { zIndexOffset: 850, icon: L.divIcon({ className: '', html: `<div class="pin" style="background:${x.nivel === 'peligro' ? '#d50000' : '#ef6c00'};width:auto;min-width:26px;padding:0 5px;border-radius:12px;font-size:11px;white-space:nowrap">📐 ${x.ang}°</div>`, iconSize: null, iconAnchor: [16, 11] }) })
+    .on('click', () => toast(`📐 ${x.nivel === 'peligro' ? 'Peligro de vuelco' : 'Precaución'}: ${x.ang}° ${x.lado} · ${fFecha(x.fecha)}${x.n > 1 ? ' · ' + x.n + ' veces' : ''}`, 4000)).addTo(layer));
+}
+// ---- persona caída: golpe, vuelco o inmóvil → «¿Estás bien?» → alarma y aviso al contacto
+function incGolpe(li) { if (!incCfg().caida || !work) return; manDown('golpe', li); }
+function manDown(tipo, extra) {
+  const c = incCfg(), now = Date.now();
+  if (INCL.md || now - INCL.lastMd < 30000) return; INCL.lastMd = now;
+  const txt = { vuelco: 'Posible vuelco', golpe: 'Golpe fuerte detectado', inmovil: `Sin moverte desde hace ${fmt(c.inmovilMin, 0)} min`, prueba: 'Prueba del aviso' }[tipo];
+  const ov = document.createElement('div'); ov.id = 'mdOv';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:6000;background:#b71c1c;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;gap:14px';
+  document.body.appendChild(ov);
+  INCL.md = { tipo, t0: now, fase: 'pregunta', ov, ll: lastPos ? [lastPos.lat, lastPos.lon, lastPos.acc] : null };
+  let n = tipo === 'prueba' ? 10 : c.respuestaS;
+  const fin = async resp => {
+    clearInterval(INCL.md.iv); sirena(false); ov.remove();
+    if (cur) { cur.alarmas = cur.alarmas || []; cur.alarmas.push({ tipo, fecha: now, ll: INCL.md.ll, respuesta: resp }); if (cur.alarmas.length > 50) cur.alarmas.shift(); try { await saveCur(); } catch (e) { } }
+    INCL.md = null; INCL.anchorT = Date.now(); speak(resp === 'ok' ? 'De acuerdo' : 'Alarma detenida', true);
+  };
+  const pinta = () => {
+    if (INCL.md.fase === 'pregunta') ov.innerHTML = `<div style="font-size:22px;font-weight:700">⚠️ ${txt}</div><div style="font-size:40px;font-weight:900">¿ESTÁS BIEN?</div>
+      <div style="font-size:64px;font-weight:900">${n}</div><div>Si no respondes, sonará la alarma y se preparará el aviso${c.telefono ? ' a ' + esc(c.contacto || c.telefono) : ''}.</div>
+      <button id="mdOk" style="background:#fff;color:#1b5e20;border:0;border-radius:18px;font-size:30px;font-weight:900;padding:26px 30px;width:100%;max-width:420px">✅ ESTOY BIEN</button>
+      <button id="mdYa" style="background:transparent;color:#fff;border:2px solid #fff;border-radius:14px;font-size:18px;padding:12px;width:100%;max-width:420px">🆘 Necesito ayuda ya</button>`;
+    else {
+      const ll = INCL.md.ll, url = ll ? `https://www.openstreetmap.org/?mlat=${ll[0].toFixed(6)}&mlon=${ll[1].toFixed(6)}#map=18/${ll[0].toFixed(6)}/${ll[1].toFixed(6)}` : '';
+      const msg = `LIMPFINC · ${txt}${cur ? ' en ' + cur.nombre : ''} a las ${new Date(now).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}. No responde. Posición: ${ll ? ll[0].toFixed(6) + ', ' + ll[1].toFixed(6) + ' (±' + Math.round(ll[2] || 0) + ' m) ' + url : 'sin GPS'}`;
+      INCL.md.msg = msg;
+      const tel = (c.telefono || '').replace(/[^\d+]/g, '');
+      ov.innerHTML = `<div style="font-size:34px;font-weight:900">🆘 ALARMA</div><div style="font-size:18px">${txt}. Pide ayuda:</div>
+        ${tel ? `<a href="sms:${tel}&body=${encodeURIComponent(msg)}" style="display:block;background:#fff;color:#b71c1c;border-radius:16px;font-size:22px;font-weight:900;padding:18px;width:100%;max-width:420px;text-decoration:none">📩 Enviar SMS a ${esc(c.contacto || c.telefono)}</a>
+        <a href="tel:${tel}" style="display:block;background:#fff;color:#b71c1c;border-radius:16px;font-size:20px;font-weight:800;padding:14px;width:100%;max-width:420px;text-decoration:none">📞 Llamar a ${esc(c.contacto || c.telefono)}</a>` : '<div style="background:#fff3;border-radius:12px;padding:10px">Sin contacto de emergencia: añádelo en ⚙️ Ajustes › 📐 Seguridad</div>'}
+        <a href="tel:112" style="display:block;background:#fff;color:#b71c1c;border-radius:16px;font-size:22px;font-weight:900;padding:16px;width:100%;max-width:420px;text-decoration:none">📞 Llamar al 112</a>
+        ${navigator.share ? '<button id="mdSh" style="background:transparent;color:#fff;border:2px solid #fff;border-radius:14px;font-size:18px;padding:12px;width:100%;max-width:420px">📤 Compartir posición (WhatsApp, Telegram…)</button>' : ''}
+        <button id="mdOk" style="background:transparent;color:#fff;border:2px solid #fff;border-radius:14px;font-size:18px;padding:12px;width:100%;max-width:420px">Estoy bien: parar alarma</button>`;
+      if ($('mdSh')) $('mdSh').onclick = () => navigator.share({ title: 'LIMPFINC · aviso', text: msg }).catch(() => { });
+    }
+    $('mdOk').onclick = () => fin(INCL.md.fase === 'pregunta' ? 'ok' : 'alarma-parada');
+    if ($('mdYa')) $('mdYa').onclick = () => alarma();
+  };
+  const alarma = () => { INCL.md.fase = 'alarma'; clearInterval(INCL.md.iv); pinta(); sirena(true); speak('Alarma. Posible accidente.', true); INCL.md.iv = setInterval(() => speak('Alarma. Posible accidente. Llamar al uno uno dos.', true), 15000); };
+  pinta(); speak(`${txt}. ¿Estás bien? Toca la pantalla`, true); pitido(1800, 0.3, 0.4);
+  INCL.md.iv = setInterval(() => { n--; if (n <= 0) return alarma(); const el = ov.querySelector('div:nth-child(3)'); if (el) el.textContent = n; if (n % 2 === 0) pitido(1800, 0.2, 0.4); if (n % 10 === 0) speak('¿Estás bien?', true); }, 1000);
+}
+// ---- hoja de ajustes de seguridad
+function seguridadSheet() {
+  const c = incCfg(), n = v => String(v ?? '').replace('.', ','), M = INCL.on ? incCalc() : null;
+  const pts = (cur && cur.inclinaciones) || [], al = (cur && cur.alarmas) || [];
+  sheet(`<h3>📐 Seguridad</h3>
+    <div class="card">
+      <div class="srow"><span><b>Inclinómetro antivuelco</b><br><small style="color:var(--sub)">Se activa al trabajar. El iPhone fijo en la cabina, con la pantalla encendida.</small></span><input type="checkbox" id="sgOn" ${c.on ? 'checked' : ''} style="width:auto"></div>
+      <div class="kv"><span>Ahora</span><span id="sgNow">${INCL.on ? `↔ ${Math.round(Math.abs(INCL.roll))}° ${INCL.roll > 0 ? 'der' : 'izq'} · ↕ ${Math.round(Math.abs(INCL.pitch))}°` : 'sensor parado'}</span></div>
+      <div class="kv"><span>Montaje detectado</span><span>${M ? M.montaje : '–'} · ${c.g0 ? '✅ calibrado' : 'sin calibrar'}</span></div>
+      <button class="btn" id="sgCal" style="margin-top:8px">🎯 Calibrar (tractor parado en terreno llano)</button>
+      <div class="srow"><span>La pantalla mira hacia delante (no al conductor)</span><input type="checkbox" id="sgInv" ${c.inv ? 'checked' : ''} style="width:auto"></div>
+      <div class="row"><div><label class="f">Precaución lateral (°)</label><input class="inp" id="sgA" inputmode="decimal" value="${n(c.aviso)}"></div><div><label class="f">Peligro lateral (°)</label><input class="inp" id="sgP" inputmode="decimal" value="${n(c.peligro)}"></div></div>
+      <div class="note">Adelante/atrás avisa con 10° más. Cada aviso queda marcado 📐 en el mapa de la finca.</div>
+    </div>
+    <div class="card">
+      <div class="srow"><span><b>Aviso de persona caída</b><br><small style="color:var(--sub)">Golpe fuerte, vuelco (≥ ${c.vuelco}°) o inmóvil trabajando → «¿Estás bien?» → alarma.</small></span><input type="checkbox" id="sgMd" ${c.caida ? 'checked' : ''} style="width:auto"></div>
+      <label class="f">Contacto de emergencia</label><input class="inp" id="sgCn" placeholder="Nombre" value="${esc(c.contacto)}">
+      <input class="inp" id="sgTe" type="tel" placeholder="Teléfono (+34 6…)" value="${esc(c.telefono)}" style="margin-top:6px">
+      <div class="row"><div><label class="f">Inmóvil (min)</label><input class="inp" id="sgIm" inputmode="decimal" value="${n(c.inmovilMin)}"></div><div><label class="f">Tiempo para responder (s)</label><input class="inp" id="sgRs" inputmode="decimal" value="${n(c.respuestaS)}"></div></div>
+      <div class="row"><div><label class="f">Golpe (g)</label><input class="inp" id="sgG" inputmode="decimal" value="${n(c.golpeG)}"></div><div><label class="f">Vuelco (°)</label><input class="inp" id="sgV" inputmode="decimal" value="${n(c.vuelco)}"></div></div>
+      <div class="note">El iPhone no deja que una app web envíe el SMS sola: la alarma lo deja escrito con tu posición y solo hay que pulsar «Enviar». Con la pantalla bloqueada o la app cerrada no vigila.</div>
+      <button class="btn sec" id="sgT" style="margin-top:8px">🔔 Probar el aviso (10 s)</button>
+    </div>
+    ${pts.length ? `<div class="sgrp">Puntos de inclinación en ${esc(cur.nombre)} (${pts.length})</div>${pts.slice().sort((a, b) => b.ang - a.ang).slice(0, 8).map(x => `<div class="kv"><span>📐 ${x.ang}° ${esc(x.lado)}${x.n > 1 ? ' · ' + x.n + ' veces' : ''}</span><span>${fFecha(x.fecha)}</span></div>`).join('')}<button class="lnk" id="sgBo" style="color:var(--err)">Borrar los puntos de inclinación</button>` : ''}
+    ${al.length ? `<div class="sgrp">Avisos de caída (${al.length})</div>${al.slice(-5).reverse().map(x => `<div class="kv"><span>${x.tipo} · ${x.respuesta === 'ok' ? '✅ respondió' : '🆘 alarma'}</span><span>${fFecha(x.fecha)}</span></div>`).join('')}` : ''}`,
+    () => {
+      const rd = id => parseFloat($(id).value.replace(',', '.'));
+      const guarda = async () => {
+        const v = { on: $('sgOn').checked, inv: $('sgInv').checked, caida: $('sgMd').checked, aviso: rd('sgA'), peligro: rd('sgP'), inmovilMin: rd('sgIm'), respuestaS: rd('sgRs'), golpeG: rd('sgG'), vuelco: rd('sgV'), contacto: $('sgCn').value.trim(), telefono: $('sgTe').value.trim() };
+        if (!(v.aviso > 2 && v.aviso < v.peligro && v.peligro < 45 && v.inmovilMin >= 1 && v.respuestaS >= 10 && v.golpeG >= 1.5 && v.vuelco > v.peligro)) return toast('Revisa los valores');
+        Object.assign(incCfg(), v); await DB.kvPut('settings', SB); if (!v.on && INCL.on) incStop();
+      };
+      document.querySelectorAll('.sheet input').forEach(i => i.onchange = guarda);
+      $('sgCal').onclick = async () => {
+        if (!INCL.on && !(await incStart())) return;
+        toast('Calibrando… no te muevas 3 s', 3000); setTimeout(async () => { if (!INCL.gF) return toast('Sin datos del sensor'); incCfg().g0 = INCL.gF.slice(); await DB.kvPut('settings', SB); toast('🎯 Calibrado: 0° en esta posición'); seguridadSheet(); }, 3000);
+      };
+      $('sgT').onclick = async () => { await guarda(); closeSheet(); incAudio(); manDown('prueba'); };
+      if ($('sgBo')) $('sgBo').onclick = () => confirmSheet('¿Borrar los puntos de inclinación de esta finca?', 'Borrar', async () => { cur.inclinaciones = []; await saveCur(); drawFinca(); }, true);
+      if (INCL.on) { const iv = setInterval(() => { const el = $('sgNow'); if (!el) return clearInterval(iv); el.textContent = `↔ ${Math.round(Math.abs(INCL.roll))}° ${INCL.roll > 0 ? 'der' : 'izq'} · ↕ ${Math.round(Math.abs(INCL.pitch))}°`; }, 300); }
+    });
+}
+
 /* ---------- Panel de herramienta genérico ---------- */
 function showTool(title, hint, btns) {
   $('tbMain').classList.add('hidden'); $('pRec').classList.add('hidden'); $('pTool').classList.remove('hidden');
@@ -5926,6 +6245,7 @@ function ajustesFinca() {
     <button class="opt" id="ajCat">🚜 Tractores, aperos y cortacéspedes<small>Añadir o modificar máquinas, medidas y velocidades.</small></button>
     <button class="opt" id="ajPre">💶 Precios: gasóleo ${fmt(+SB.precioGasoil, 2)} €/L · ${fmt(+SB.precioHora, 0)} €/h · margen ${fmt(+SB.margen || 0, 0)} % · ${fmt(+SB.precioKm || 0, 2)} €/km</button>
     <button class="opt" id="ajBase">🏠 Base de salida<small>${esc(SB.baseDir || '')}${SB.base ? '' : ' · sin situar'}${cur.traslado && SB.base ? ' · a ' + fmt(cur.traslado.km, 1) + ' km de esta finca' : ''}</small></button>
+    <button class="opt" id="ajSeg">📐 Seguridad: antivuelco y aviso de caída<small>${incCfg().on ? 'Inclinómetro activo al trabajar' : 'Inclinómetro desactivado'}${incCfg().caida ? ' · aviso de caída' + (incCfg().telefono ? ' a ' + esc(incCfg().contacto || incCfg().telefono) : ' (sin contacto)') : ''}</small></button>
     <button class="opt" id="ajApr">🧠 Lo aprendido de tus rutas</button>
     <button class="opt" id="ajGen">⚙️ Ajustes generales<small>Voz, GPS, unidades, planificación, monte, copia de seguridad.</small></button>`,
     () => {
@@ -5943,7 +6263,7 @@ function ajustesFinca() {
       $('ajAlt').onclick = () => recalcSheet();
       $('ajCat').onclick = () => catSheet();
       $('ajPre').onclick = () => sheet(`<h3>💶 Precios</h3>${preciosHTML()}<div class="note">Precio (sin IVA) = coste × ${fmt(margenK(), 2)}. Cada ruta guarda el precio del gasóleo del día en que se hizo.</div>`, () => preciosBind(() => toast('Precios guardados')));
-      $('ajApr').onclick = () => aprendizajeSheet(f);
+      $('ajApr').onclick = () => aprendizajeSheet(f); $('ajSeg').onclick = () => seguridadSheet();
       $('ajBase').onclick = () => baseSheet(async () => { try { await trasladoFinca(f); } catch (e) { } if (f.traslado) toast(`🏠 Base a ${fmt(f.traslado.km, 1)} km de ${f.nombre}${f.traslado.min ? ' (' + f.traslado.min + ' min)' : ''}`, 4000); });
       $('ajGen').onclick = () => { closeSheet(); showSettings(true); };
     });

@@ -29,6 +29,7 @@ create table if not exists public.tractores (
   id            text primary key,
   user_id       uuid not null default auth.uid() references auth.users(id) on delete cascade,
   nombre        text not null,
+  tipo          text,
   potencia_cv   numeric,
   ancho_m       numeric,
   longitud_m    numeric,
@@ -91,14 +92,27 @@ create table if not exists public.fotos (
 );
 create index if not exists fotos_finca_idx on public.fotos(finca_id);
 
+-- Planes numerados (v2.0)
+create table if not exists public.planes (
+  id          text primary key,
+  user_id     uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  finca_id    text not null references public.fincas(id) on delete cascade,
+  data        jsonb not null default '{}'::jsonb,
+  updated_at  timestamptz not null default now()
+);
+create index if not exists planes_finca_idx on public.planes(finca_id);
+
 -- Seguridad: cada usuario solo accede a sus filas
 do $$
 declare t text;
 begin
-  foreach t in array array['fincas','trabajos','tractores','aperos','velocidades','ajustes','fotos'] loop
+  foreach t in array array['fincas','trabajos','tractores','aperos','velocidades','ajustes','fotos','planes'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists "propietario" on public.%I', t);
     execute format('create policy "propietario" on public.%I for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid())', t);
     execute format('grant select, insert, update, delete on public.%I to authenticated', t);
   end loop;
 end $$;
+
+-- v2.4.0 (bases ya creadas)
+alter table public.tractores add column if not exists tipo text;
