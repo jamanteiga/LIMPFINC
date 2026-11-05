@@ -55,6 +55,7 @@ console.log('planes:', await pg.evaluate(async () => (await window.LIMPFINC.DB.p
 // trabajo 1 (con Plan 2): recorre media finca, anota una piedra
 const pasar = async (ys, t0) => { let t = t0; for (const y of ys) for (let x = 3; x <= 97; x += 0.85) { t += 1000; await pg.evaluate(([x, y, t]) => { const { Geo } = window.LIMPFINC, P = Geo.proj(43.22, -8.29), q = Geo.toLL([[x, y]], P)[0]; __f(q[0], q[1], t); }, [ys.indexOf(y) % 2 ? 100 - x : x, y, t]); } return t; };
 await pg.evaluate(() => { const { Geo } = window.LIMPFINC, P = Geo.proj(43.22, -8.29), q = Geo.toLL([[3, 3]], P)[0]; __f(q[0], q[1]); });
+await pg.evaluate(() => { const c = incCfg(); c.g0 = [0, -9.81, 0]; c.g0Fecha = Date.now(); });   // 0° ya fijado hoy
 await pg.tap('#tWork'); await pg.waitForTimeout(300); await pg.tap('#wNew').catch(() => {}); await pg.waitForTimeout(300); await pg.tap('#wPause'); await pg.waitForTimeout(200);
 let t = await pasar([3, 4.6, 6.2, 7.8, 9.4, 11, 30, 31.6], Date.now());
 await pg.tap('#wPel'); await pg.waitForTimeout(300); console.log('peligro hoja:', (await sh()).slice(0, 110)); await pg.screenshot({ path: 'v1_pel.png' }); await pg.tap('[data-p=piedra]'); await pg.waitForTimeout(400);

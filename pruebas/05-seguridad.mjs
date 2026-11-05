@@ -34,11 +34,15 @@ await pg.evaluate(async () => { const { Geo, DB, Planner, S } = window.LIMPFINC;
   await DB.tPut({ id: 't1', fincaId: 'g', inicio: Date.now() - 864e5 * 3, fin: Date.now() - 864e5 * 3, estado: 'cerrado', sesiones: [], resumen: { cobertura: 0.95 } }); });
 await pg.evaluate(() => showList()); await pg.waitForTimeout(400);
 const out = [];
-const mot = async (deg, secs, lin) => { await pg.evaluate(async ([deg, secs, lin]) => { const r = deg * Math.PI / 180; const n = Math.round(secs * 50);
+let OFF = 0; const mot = (d, s, l) => motA(d + OFF, s, l);
+const motA = async (deg, secs, lin) => { await pg.evaluate(async ([deg, secs, lin]) => { const r = deg * Math.PI / 180; const n = Math.round(secs * 50);
   for (let i = 0; i < n; i++) { window.dispatchEvent(new DeviceMotionEvent('devicemotion', { accelerationIncludingGravity: { x: 9.81 * Math.sin(r), y: -9.81 * Math.cos(r), z: 0 }, acceleration: { x: lin || 0, y: 0, z: 0 }, interval: 20 })); await new Promise(z => setTimeout(z, 20)); } }, [deg, secs, lin]); };
 await pg.evaluate(async () => { await openFinca('g'); SB.incl = { ...(SB.incl || {}), respuestaS: 10, inmovilMin: 0.1, contacto: 'María', telefono: '+34 600 111 222' }; __f(cur.linde.coords[0][0] + 0.0001, cur.linde.coords[0][1] + 0.0001, Date.now()); });
-await pg.evaluate(() => startWork(null)); await pg.waitForTimeout(800);
-await pg.evaluate(() => { work.paused = true; work.autoPaused = false; });   // pausa manual: no cuenta como inmóvil
+await pg.evaluate(() => startWork(null)); await pg.waitForTimeout(400); await mot(4, 2);
+out.push('al empezar: ' + await pg.evaluate(() => (document.querySelector('.sheet h3') || {}).textContent + ' · chip ' + $('incChip').textContent));
+const fz = pg.click('#czOk'); await mot(4, 3.2); await fz; await pg.waitForTimeout(300);
+out.push('0° fijado: ' + await pg.evaluate(() => 'hoy ' + calHoy() + ' · lateral ' + Math.round(INCL.roll) + '° · chip ' + $('incChip').textContent + ' · hoja abierta ' + !!document.querySelector('.sheet h3')));
+OFF = 4; await pg.evaluate(() => { work.paused = true; work.autoPaused = false; });   // pausa manual: no cuenta como inmóvil
 await mot(3, 1); out.push('llano: ' + await pg.evaluate(() => $('incChip').textContent + ' · est ' + INCL.est));
 await mot(17, 2.5); out.push('17°: ' + await pg.evaluate(() => INCL.est + ' · ' + ($('incOv') ? $('incOv').textContent : '-') + ' · chip ' + $('incChip').textContent));
 await mot(23, 2); out.push('23°: ' + await pg.evaluate(() => INCL.est + ' · ' + ($('incOv') ? $('incOv').textContent : '-')));
@@ -58,15 +62,16 @@ out.push('sms: ' + await pg.evaluate(() => decodeURIComponent(document.querySele
 await pg.screenshot({ path: 'z44b.png' });
 await pg.click('#mdOk'); await pg.waitForTimeout(300);
 // inmóvil (0,1 min = 6 s) trabajando sin pausa
-await pg.evaluate(() => { INCL.lastMd = 0; INCL.anchorT = Date.now(); }); await mot(2, 7.5);
+await pg.evaluate(() => { INCL.lastMd = 0; INCL.anchorT = Date.now(); }); await mot(0, 7.5);
 out.push('inmóvil: ' + await pg.evaluate(() => ($('mdOv') ? $('mdOv').innerText.split('\n').filter(Boolean)[0] : 'sin aviso')));
 await pg.click('#mdOk');
 out.push('registro alarmas: ' + await pg.evaluate(() => cur.alarmas.map(a => a.tipo + ':' + a.respuesta).join(', ')));
-// hoja y calibración
+// hoja de ajustes y volver a fijar el 0° desde el chip
 await pg.evaluate(() => seguridadSheet()); await pg.waitForTimeout(300);
-const calP = pg.click('#sgCal'); await mot(4, 3.6); await calP; await pg.waitForTimeout(500);
-out.push('calibrado: ' + await pg.evaluate(() => JSON.stringify(SB.incl.g0.map(v => +v.toFixed(2))) + ' · ' + (document.querySelector('.sheet') ? document.querySelector('.sheet').innerText.split('\n').filter(l => /Montaje|Ahora/.test(l)).join(' ') : '')));
-await mot(4, 1); out.push('tras calibrar a 4°: ' + await pg.evaluate(() => Math.round(INCL.roll) + '°'));
+out.push('ajustes: ' + await pg.evaluate(() => document.querySelector('.sheet').innerText.split('\n').filter(l => /lateral ahora|Posición 0/.test(l)).join(' · ')));
+await pg.evaluate(() => closeSheet()); await pg.click('#incChip'); await pg.waitForTimeout(400);
+OFF = 0; const fz2 = pg.click('#czOk'); await mot(-3, 3.2); await fz2; await mot(-3, 0.5);
+out.push('nuevo 0° con el móvil a −3°: lateral ' + await pg.evaluate(() => Math.round(INCL.roll) + '°'));
 await pg.screenshot({ path: 'z44c.png' });
 await pg.evaluate(() => { closeSheet(); endWork('cerrado'); }); await pg.waitForTimeout(500);
 out.push('fin trabajo: sensor ' + await pg.evaluate(() => INCL.on));

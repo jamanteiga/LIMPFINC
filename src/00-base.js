@@ -2,7 +2,7 @@
 /* =========================================================
    LIMPFINC · F1 — Fincas, linde, exclusiones, área
    ========================================================= */
-const VERSION = '2.9.0';
+const VERSION = '2.9.1';
 
 /* ---------- Ajustes por defecto ---------- */
 const DEF = {

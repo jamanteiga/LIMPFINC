@@ -208,7 +208,7 @@ async function workMenu() {
     });
 }
 async function startWork(trab) {
-  incStart(true);   // seguridad: se pide el permiso del sensor dentro del toque
+  incStart(true).then(ok => { if (ok && !calHoy()) setTimeout(() => { if (work) ceroSheet(true); }, 1800); });   // seguridad: permiso del sensor dentro del toque; 0° cada día
   const cont = !!trab;
   const hasPlan = cur.plan && !planStale(cur);
   if (!trab && cur.plan && !hasPlan) toast('⚠️ El plan está desactualizado (cambió el linde, una exclusión o un peligro): esta ruta se guarda sin plan. Recalcula el plan para compararla.', 6000);

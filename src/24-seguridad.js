@@ -57,13 +57,39 @@ async function incStart(silencio) {
 function incStop() { window.removeEventListener('devicemotion', onMotion); INCL.on = false; clearInterval(INCL.tick); INCL.tick = null; INCL.gF = null; incChip('off'); incOverlay(null); }
 function incChip(modo) {
   let el = $('incChip');
-  if (!el) { el = document.createElement('button'); el.id = 'incChip'; el.className = 'gpsChip'; el.style.cssText = 'left:auto;right:8px;top:8px'; el.onclick = () => { if (!INCL.on) incStart(); else seguridadSheet(); }; $('mapWrap').appendChild(el); }
+  if (!el) { el = document.createElement('button'); el.id = 'incChip'; el.className = 'gpsChip'; el.style.cssText = 'left:8px;top:52px;z-index:1100;font-size:15px;padding:7px 12px'; el.onclick = async () => { if (!INCL.on && !(await incStart())) return; ceroSheet(); }; $('mapWrap').appendChild(el); }
   if (modo === 'off') { el.classList.add('hidden'); return; }
   el.classList.remove('hidden');
   if (modo === 'perm') { el.innerHTML = '📐 Toca para activar'; el.style.background = '#fff3e0'; return; }
-  const lr = Math.abs(INCL.roll), fb = Math.abs(INCL.pitch), c = incCfg();
-  el.style.background = INCL.est === 'peligro' ? '#d50000' : INCL.est === 'aviso' ? '#ff9800' : 'rgba(255,255,255,.97)'; el.style.color = INCL.est === 'peligro' ? '#fff' : '#222';
-  el.innerHTML = `📐 ↔ ${Math.round(lr)}°${lr >= 1 ? (INCL.roll > 0 ? ' der' : ' izq') : ''} · ↕ ${Math.round(fb)}°${c.g0 ? '' : ' <small>(sin calibrar)</small>'}`;
+  const lr = Math.abs(INCL.roll), hoy = calHoy();
+  el.style.background = INCL.est === 'peligro' ? '#d50000' : INCL.est === 'aviso' ? '#ff9800' : hoy ? 'rgba(255,255,255,.97)' : '#fff3e0'; el.style.color = INCL.est === 'peligro' ? '#fff' : '#222';
+  el.innerHTML = `📐 ${Math.round(lr)}°${lr >= 1 ? (INCL.roll > 0 ? ' der' : ' izq') : ''}${hoy ? '' : ' · <b>fijar 0°</b>'}`;
+}
+const calHoy = () => { const c = incCfg(); return !!(c.g0 && c.g0Fecha && new Date(c.g0Fecha).toDateString() === new Date().toDateString()); };
+async function fijarCero() {
+  if (!INCL.on && !(await incStart())) return false;
+  await new Promise(r => setTimeout(r, 800));   // deja asentarse el filtro
+  const m = []; for (let i = 0; i < 15; i++) { await new Promise(r => setTimeout(r, 100)); if (INCL.gF) m.push(INCL.gF.slice()); }
+  if (m.length < 5) { toast('Sin datos del sensor de movimiento'); return false; }
+  const c = incCfg(); c.g0 = [0, 1, 2].map(i => m.reduce((a, v) => a + v[i], 0) / m.length); c.g0Fecha = Date.now();
+  await DB.kvPut('settings', SB); INCL.since = {}; INCL.est = 'ok'; incChip();
+  speak('Inclinómetro a cero', true); toast('🎯 0° fijado en esta posición de trabajo', 3000); return true;
+}
+function ceroSheet(inicio) {
+  const c = incCfg(), hoy = calHoy();
+  sheet(`<h3>📐 Inclinómetro lateral</h3>
+    <div style="text-align:center;font-size:52px;font-weight:900;margin:4px 0" id="czV">–</div>
+    <div class="note" style="text-align:center">${hoy ? '0° fijado hoy a las ' + new Date(c.g0Fecha).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : inicio ? '<b>Primer trabajo de hoy:</b> fija el 0° antes de empezar.' : c.g0Fecha ? 'Último 0°: ' + fFecha(c.g0Fecha) + '. Fíjalo de nuevo hoy.' : 'Aún no has fijado el 0°.'}</div>
+    <div class="card">1. Móvil puesto en su soporte, en su posición normal de trabajo.<br>2. Tractor parado en terreno llano.<br>3. Pulsa el botón y no lo toques 3 s.</div>
+    <button class="btn" id="czOk" style="font-size:20px;padding:18px">🎯 Fijar 0° aquí</button>
+    <button class="lnk" id="czAj" style="margin-top:10px">⚙️ Ajustes de seguridad (avisos, contacto de emergencia…)</button>
+    ${inicio ? '<button class="lnk" id="czNo" style="margin-top:6px;color:var(--sub)">Ahora no</button>' : ''}`,
+    () => {
+      const iv = setInterval(() => { const el = $('czV'); if (!el) return clearInterval(iv); const lr = Math.abs(INCL.roll); el.textContent = Math.round(lr) + '°' + (lr >= 1 ? (INCL.roll > 0 ? ' der' : ' izq') : ''); }, 250);
+      $('czOk').onclick = async () => { const b = $('czOk'); b.disabled = true; b.textContent = 'Midiendo… no lo toques'; const ok = await fijarCero(); if (ok) closeSheet(); else { b.disabled = false; b.textContent = '🎯 Fijar 0° aquí'; } };
+      $('czAj').onclick = () => seguridadSheet();
+      if ($('czNo')) $('czNo').onclick = closeSheet;
+    });
 }
 function incOverlay(txt, rojo) {
   let el = $('incOv');
@@ -77,9 +103,9 @@ function incTick() {
   const dura = (k, cond, s) => { if (cond) { INCL.since[k] = INCL.since[k] || now; return now - INCL.since[k] >= s * 1000; } INCL.since[k] = 0; return false; };
   // vuelco: inclinación imposible de trabajo mantenida 2 s
   if (c.caida && dura('vuelco', Math.max(lr, fb) >= c.vuelco, 2)) manDown('vuelco');
-  const pel = dura('pel', lr >= c.peligro || fb >= c.peligro + 10, 1), avi = dura('avi', lr >= c.aviso || fb >= c.aviso + 10, 1.5);
-  const est = pel ? 'peligro' : avi ? 'aviso' : (lr < c.aviso - 2 && fb < c.aviso + 8) ? 'ok' : INCL.est;
-  const lado = lr >= fb - 10 ? (INCL.roll > 0 ? 'a la derecha' : 'a la izquierda') : (INCL.pitch > 0 ? 'morro abajo' : 'morro arriba'), ang = Math.round(lr >= fb - 10 ? lr : fb);
+  const pel = dura('pel', lr >= c.peligro, 1), avi = dura('avi', lr >= c.aviso, 1.5);
+  const est = pel ? 'peligro' : avi ? 'aviso' : lr < c.aviso - 2 ? 'ok' : INCL.est;
+  const lado = INCL.roll > 0 ? 'a la derecha' : 'a la izquierda', ang = Math.round(lr);
   if (est !== INCL.est) { INCL.est = est; INCL.lastSay = 0; if (est !== 'ok') incRegistrar(est, ang, lado); }
   if (est === 'peligro') { incOverlay(`⚠️ PELIGRO DE VUELCO<br><span style="font-size:44px">${ang}°</span> ${lado}`, true); if (now - INCL.lastSay > 4000) { INCL.lastSay = now; speak(`Peligro de vuelco. ${ang} grados ${lado}`, true); } if (now % 600 < 120) pitido(2200, 0.12, 0.35); }
   else if (est === 'aviso') { incOverlay(`Precaución: ${ang}° ${lado}`); if (now - INCL.lastSay > 8000) { INCL.lastSay = now; speak(`Precaución. Inclinación ${ang} grados ${lado}`, true); pitido(1500, 0.2); } }
@@ -153,12 +179,13 @@ function seguridadSheet() {
   sheet(`<h3>📐 Seguridad</h3>
     <div class="card">
       <div class="srow"><span><b>Inclinómetro antivuelco</b><br><small style="color:var(--sub)">Se activa al trabajar. El iPhone fijo en la cabina, con la pantalla encendida.</small></span><input type="checkbox" id="sgOn" ${c.on ? 'checked' : ''} style="width:auto"></div>
-      <div class="kv"><span>Ahora</span><span id="sgNow">${INCL.on ? `↔ ${Math.round(Math.abs(INCL.roll))}° ${INCL.roll > 0 ? 'der' : 'izq'} · ↕ ${Math.round(Math.abs(INCL.pitch))}°` : 'sensor parado'}</span></div>
-      <div class="kv"><span>Montaje detectado</span><span>${M ? M.montaje : '–'} · ${c.g0 ? '✅ calibrado' : 'sin calibrar'}</span></div>
-      <button class="btn" id="sgCal" style="margin-top:8px">🎯 Calibrar (tractor parado en terreno llano)</button>
+      <div class="kv"><span>Inclinación lateral ahora</span><span id="sgNow">${INCL.on ? `${Math.round(Math.abs(INCL.roll))}° ${INCL.roll > 0 ? 'der' : 'izq'}` : 'sensor parado'}</span></div>
+      <div class="kv"><span>Posición 0°</span><span>${c.g0Fecha ? (calHoy() ? '✅ fijada hoy ' + new Date(c.g0Fecha).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : 'fijada ' + fFecha(c.g0Fecha) + ' · hay que fijarla hoy') : 'sin fijar'}</span></div>
+      <button class="btn" id="sgCal" style="margin-top:8px">🎯 Fijar 0° (móvil en su posición de trabajo, tractor en llano)</button>
+      <div class="note">Se pide al empezar el primer trabajo de cada día. Tocando 📐 en el mapa se puede volver a fijar.</div>
       <div class="srow"><span>La pantalla mira hacia delante (no al conductor)</span><input type="checkbox" id="sgInv" ${c.inv ? 'checked' : ''} style="width:auto"></div>
       <div class="row"><div><label class="f">Precaución lateral (°)</label><input class="inp" id="sgA" inputmode="decimal" value="${n(c.aviso)}"></div><div><label class="f">Peligro lateral (°)</label><input class="inp" id="sgP" inputmode="decimal" value="${n(c.peligro)}"></div></div>
-      <div class="note">Adelante/atrás avisa con 10° más. Cada aviso queda marcado 📐 en el mapa de la finca.</div>
+      <div class="note">Cada aviso queda marcado 📐 en el mapa de la finca.</div>
     </div>
     <div class="card">
       <div class="srow"><span><b>Aviso de persona caída</b><br><small style="color:var(--sub)">Golpe fuerte, vuelco (≥ ${c.vuelco}°) o inmóvil trabajando → «¿Estás bien?» → alarma.</small></span><input type="checkbox" id="sgMd" ${c.caida ? 'checked' : ''} style="width:auto"></div>
@@ -179,13 +206,10 @@ function seguridadSheet() {
         Object.assign(incCfg(), v); await DB.kvPut('settings', SB); if (!v.on && INCL.on) incStop();
       };
       document.querySelectorAll('.sheet input').forEach(i => i.onchange = guarda);
-      $('sgCal').onclick = async () => {
-        if (!INCL.on && !(await incStart())) return;
-        toast('Calibrando… no te muevas 3 s', 3000); setTimeout(async () => { if (!INCL.gF) return toast('Sin datos del sensor'); incCfg().g0 = INCL.gF.slice(); await DB.kvPut('settings', SB); toast('🎯 Calibrado: 0° en esta posición'); seguridadSheet(); }, 3000);
-      };
+      $('sgCal').onclick = async () => { const b = $('sgCal'); b.disabled = true; b.textContent = 'Midiendo… no lo toques'; if (await fijarCero()) seguridadSheet(); else { b.disabled = false; b.textContent = '🎯 Fijar 0°'; } };
       $('sgT').onclick = async () => { await guarda(); closeSheet(); incAudio(); manDown('prueba'); };
       if ($('sgBo')) $('sgBo').onclick = () => confirmSheet('¿Borrar los puntos de inclinación de esta finca?', 'Borrar', async () => { cur.inclinaciones = []; await saveCur(); drawFinca(); }, true);
-      if (INCL.on) { const iv = setInterval(() => { const el = $('sgNow'); if (!el) return clearInterval(iv); el.textContent = `↔ ${Math.round(Math.abs(INCL.roll))}° ${INCL.roll > 0 ? 'der' : 'izq'} · ↕ ${Math.round(Math.abs(INCL.pitch))}°`; }, 300); }
+      if (INCL.on) { const iv = setInterval(() => { const el = $('sgNow'); if (!el) return clearInterval(iv); el.textContent = `${Math.round(Math.abs(INCL.roll))}° ${INCL.roll > 0 ? 'der' : 'izq'}`; }, 300); }
     });
 }
 
